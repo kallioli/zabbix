@@ -26,6 +26,7 @@
 #include "zbxalgo.h"
 #include "zbxstr.h"
 #include "zbxtime.h"
+#include "zbxlog.h"
 
 #define ZBX_IPC_DATA_DUMP_SIZE		128
 

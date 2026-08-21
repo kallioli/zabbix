@@ -18,6 +18,7 @@
 #include "zbxstr.h"
 #include "zbxsysinfo.h"
 #include "zbxalgo.h"
+#include "zbxlog.h"
 
 #ifdef _WINDOWS
 /* a loadable module is a DLL here; the dl* interface maps directly onto the
