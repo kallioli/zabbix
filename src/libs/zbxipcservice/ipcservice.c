@@ -173,6 +173,41 @@ static int	ipc_socket_set_nonblocking(int fd)
 #endif
 }
 
+/* Socket I/O differs from file I/O on Windows: a SOCKET is not a CRT file
+   descriptor, so read() and write() cannot be used on it, and the failure code
+   comes from WSAGetLastError() instead of errno. */
+#ifdef _WINDOWS
+#	define ZBX_IPC_EINTR		WSAEINTR
+#	define ZBX_IPC_EWOULDBLOCK	WSAEWOULDBLOCK
+#	define ZBX_IPC_EAGAIN		WSAEWOULDBLOCK
+#	define ipc_socket_errno()	WSAGetLastError()
+#	define ipc_socket_strerror(e)	zbx_strerror_from_system((unsigned long)(e))
+#else
+#	define ZBX_IPC_EINTR		EINTR
+#	define ZBX_IPC_EWOULDBLOCK	EWOULDBLOCK
+#	define ZBX_IPC_EAGAIN		EAGAIN
+#	define ipc_socket_errno()	errno
+#	define ipc_socket_strerror(e)	zbx_strerror(e)
+#endif
+
+static int	ipc_socket_send(int fd, const unsigned char *data, zbx_uint32_t size)
+{
+#ifdef _WINDOWS
+	return send((SOCKET)fd, (const char *)data, (int)size, 0);
+#else
+	return (int)write(fd, data, size);
+#endif
+}
+
+static int	ipc_socket_recv(int fd, unsigned char *buffer, zbx_uint32_t size)
+{
+#ifdef _WINDOWS
+	return recv((SOCKET)fd, (char *)buffer, (int)size, 0);
+#else
+	return (int)read(fd, buffer, size);
+#endif
+}
+
 #define ZBX_IPC_CLIENT_STATE_NONE	0
 #define ZBX_IPC_CLIENT_STATE_QUEUED	1
 
@@ -319,27 +354,29 @@ static const char	*ipc_make_path(const char *service_name, char **error)
 static int	ipc_write_data(int fd, const unsigned char *data, zbx_uint32_t size, zbx_uint32_t *size_sent)
 {
 	zbx_uint32_t	offset = 0;
-	int		ret = SUCCEED;
-	ssize_t		n;
+	int		ret = SUCCEED, n;
 
 	while (offset != size)
 	{
-		n = write(fd, data + offset, size - offset);
+		n = ipc_socket_send(fd, data + offset, size - offset);
 
 		if (-1 == n)
 		{
-			if (EINTR == errno)
+			int	err = ipc_socket_errno();
+
+			if (ZBX_IPC_EINTR == err)
 				continue;
 
-			if (EWOULDBLOCK == errno || EAGAIN == errno)
+			if (ZBX_IPC_EWOULDBLOCK == err || ZBX_IPC_EAGAIN == err)
 				break;
 
-			zabbix_log(LOG_LEVEL_WARNING, "cannot write to IPC socket: %s", strerror(errno));
+			zabbix_log(LOG_LEVEL_WARNING, "cannot write to IPC socket: %s",
+					ipc_socket_strerror(err));
 			ret = FAIL;
 			break;
 		}
 
-		offset += n;
+		offset += (zbx_uint32_t)n;
 	}
 
 	*size_sent = offset;
@@ -369,12 +406,14 @@ static int	ipc_read_data(int fd, unsigned char *buffer, zbx_uint32_t size, zbx_u
 
 	*read_size = 0;
 
-	while (-1 == (n = read(fd, buffer + *read_size, size - *read_size)))
+	while (-1 == (n = ipc_socket_recv(fd, buffer + *read_size, size - *read_size)))
 	{
-		if (EINTR == errno)
+		int	err = ipc_socket_errno();
+
+		if (ZBX_IPC_EINTR == err)
 			continue;
 
-		if (EWOULDBLOCK == errno || EAGAIN == errno)
+		if (ZBX_IPC_EWOULDBLOCK == err || ZBX_IPC_EAGAIN == err)
 			return SUCCEED;
 
 		return FAIL;
