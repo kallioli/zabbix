@@ -73,6 +73,9 @@
 #include "zbxstr.h"
 #include "zbxtime.h"
 #include "zbxbincommon.h"
+#ifdef _WINDOWS
+#include "zbxwinservice.h"
+#endif
 
 #ifdef HAVE_OPENIPMI
 #include "zbxipmi.h"
@@ -81,11 +84,34 @@
 ZBX_GET_CONFIG_VAR2(const char*, const char*, zbx_progname, NULL)
 
 static const char	title_message[] = "zabbix_proxy";
+
+#ifdef _WINDOWS
+#define ZBX_SERVICE_NAME_LEN	64
+char	zabbix_service_name[ZBX_SERVICE_NAME_LEN] = "Zabbix Proxy";
+char	zabbix_event_source[ZBX_SERVICE_NAME_LEN] = "Zabbix Proxy";
+#undef ZBX_SERVICE_NAME_LEN
+
+static const char	*get_zbx_service_name(void)
+{
+	return zabbix_service_name;
+}
+
+static const char	*get_zbx_event_source(void)
+{
+	return zabbix_event_source;
+}
+#endif
 static const char	syslog_app_name[] = "zabbix_proxy";
 static const char	*usage_message[] = {
 	"[-c config-file]", NULL,
 	"[-c config-file]", "-R runtime-option", NULL,
 	"[-c config-file]", "-T", NULL,
+#ifdef _WINDOWS
+	"[-c config-file]", "-i", "[-S startup-type]", NULL,
+	"[-c config-file]", "-d", NULL,
+	"[-c config-file]", "-s", NULL,
+	"[-c config-file]", "-x", NULL,
+#endif
 	"-h", NULL,
 	"-V", NULL,
 	NULL	/* end of text */
@@ -146,6 +172,21 @@ static const char	*help_message[] = {
 	"                                 (e.g., history syncer,1,processing)",
 	"",
 	"  -T --test-config               Validate configuration file and exit",
+#ifdef _WINDOWS
+	"",
+	"  -S --startup-type              Startup type of the service being installed.",
+	"                                 Allowed values: " ZBX_SERVICE_STARTUP_AUTOMATIC " (default), "
+			ZBX_SERVICE_STARTUP_DELAYED ",",
+	"                                 " ZBX_SERVICE_STARTUP_MANUAL ", " ZBX_SERVICE_STARTUP_DISABLED,
+	"",
+	"Functions:",
+	"",
+	"  -i --install                   Install Zabbix proxy as service",
+	"  -d --uninstall                 Uninstall Zabbix proxy from service",
+	"  -s --start                     Start Zabbix proxy service",
+	"  -x --stop                      Stop Zabbix proxy service",
+	"",
+#endif
 	"  -h --help                      Display this help message",
 	"  -V --version                   Display version number",
 	"",
@@ -168,13 +209,25 @@ static struct zbx_option	longopts[] =
 	{"foreground",		0,	NULL,	'f'},
 	{"runtime-control",	1,	NULL,	'R'},
 	{"test-config",		0,	NULL,	'T'},
+#ifdef _WINDOWS
+	{"install",		0,	NULL,	'i'},
+	{"uninstall",		0,	NULL,	'd'},
+	{"start",		0,	NULL,	's'},
+	{"stop",		0,	NULL,	'x'},
+	{"startup-type",	1,	NULL,	'S'},
+#endif
 	{"help",		0,	NULL,	'h'},
 	{"version",		0,	NULL,	'V'},
 	{0}
 };
 
 /* short options */
-static char	shortopts[] = "c:hVR:Tf";
+static char	shortopts[] =
+	"c:hVR:Tf"
+#ifdef _WINDOWS
+	"idsxS:"
+#endif
+	;
 
 /* end of COMMAND LINE OPTIONS */
 
@@ -1243,6 +1296,38 @@ static void	zbx_on_exit(int ret, void *on_exit_args)
  * Purpose: executes proxy processes                                          *
  *                                                                            *
  ******************************************************************************/
+#ifdef _WINDOWS
+static int	exec_service_task(const char *path, const ZBX_TASK_EX *t)
+{
+	int	ret;
+
+	switch (t->task)
+	{
+		case ZBX_TASK_INSTALL_SERVICE:
+			ret = ZabbixCreateService(path, config_file, t->flags);
+			break;
+		case ZBX_TASK_UNINSTALL_SERVICE:
+			ret = ZabbixRemoveService();
+			break;
+		case ZBX_TASK_START_SERVICE:
+			ret = ZabbixStartService();
+			break;
+		case ZBX_TASK_STOP_SERVICE:
+			ret = ZabbixStopService();
+			break;
+		case ZBX_TASK_SET_SERVICE_STARTUP_TYPE:
+			ret = zbx_service_startup_type_change(t->flags);
+			break;
+		default:
+			/* there can not be other choice */
+			zbx_this_should_never_happen_backtrace();
+			assert(0);
+	}
+
+	return ret;
+}
+#endif	/* _WINDOWS */
+
 int	main(int argc, char **argv)
 {
 	static zbx_config_icmpping_t	config_icmpping = {
@@ -1318,6 +1403,24 @@ int	main(int argc, char **argv)
 				opt_f++;
 				t.flags |= ZBX_TASK_FLAG_FOREGROUND;
 				break;
+#ifdef _WINDOWS
+			case 'i':
+				t.task = ZBX_TASK_INSTALL_SERVICE;
+				break;
+			case 'd':
+				t.task = ZBX_TASK_UNINSTALL_SERVICE;
+				break;
+			case 's':
+				t.task = ZBX_TASK_START_SERVICE;
+				break;
+			case 'x':
+				t.task = ZBX_TASK_STOP_SERVICE;
+				break;
+			case 'S':
+				if (SUCCEED != zbx_service_startup_flags_set(zbx_optarg, &t.flags))
+					exit(EXIT_FAILURE);
+				break;
+#endif
 			default:
 				zbx_print_usage(zbx_progname, usage_message);
 				exit(EXIT_FAILURE);
@@ -1412,6 +1515,21 @@ int	main(int argc, char **argv)
 		exit(SUCCEED == ret ? EXIT_SUCCESS : EXIT_FAILURE);
 	}
 
+#ifdef _WINDOWS
+	zbx_service_init(get_zbx_service_name, get_zbx_event_source);
+
+	switch (t.task)
+	{
+		case ZBX_TASK_INSTALL_SERVICE:
+		case ZBX_TASK_UNINSTALL_SERVICE:
+		case ZBX_TASK_START_SERVICE:
+		case ZBX_TASK_STOP_SERVICE:
+		case ZBX_TASK_SET_SERVICE_STARTUP_TYPE:
+			exit(SUCCEED == exec_service_task(argv[0], &t) ? EXIT_SUCCESS : EXIT_FAILURE);
+		default:
+			break;
+	}
+#endif
 	return zbx_daemon_start(config_allow_root, config_user, t.flags, get_zbx_config_pid_file, zbx_on_exit,
 			log_file_cfg.log_type, log_file_cfg.log_file_name, NULL, get_zbx_threads, get_zbx_threads_num);
 }
