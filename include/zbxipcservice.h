@@ -18,7 +18,15 @@
 #include "zbxalgo.h"
 #include "zbxtime.h"
 
+#ifdef _WINDOWS
+/* The Windows transport uses loopback sockets and an in-process registry
+ * rather than a unix domain socket, so there is no sun_path to measure. The
+ * service path is only a naming key there; this keeps the same bound the rest
+ * of the code sizes its buffers against. */
+#define ZBX_IPC_PATH_MAX	108
+#else
 #define ZBX_IPC_PATH_MAX	sizeof(((struct sockaddr_un *)0)->sun_path)
+#endif
 
 #define ZBX_IPC_SOCKET_BUFFER_SIZE	4096
 
