@@ -413,7 +413,6 @@ OBJS = \
 	..\..\..\src\libs\zbxwin\pid_win.o \
 	..\..\..\src\libs\zbxwin\pthread_win.o \
 	..\..\..\src\libs\zbxwin\posix_win.o \
-	..\..\..\src\libs\zbxsysinfo\win32\system.o \
 	..\..\..\src\libs\zbxsysinfo\win32\cpu.o \
 	..\..\..\src\libs\zbxsysinfo\win32\perfstat\perfstat.o
 

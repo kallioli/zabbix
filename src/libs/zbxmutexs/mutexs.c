@@ -367,6 +367,33 @@ void	zbx_locks_enable(void)
 #endif
 #endif	/* _WINDOWS */
 
+#ifdef _WINDOWS
+/******************************************************************************
+ *                                                                            *
+ * Purpose: creates process-shared locks                                      *
+ *                                                                            *
+ * Comments: Windows workers are threads of a single process, and             *
+ *           zbx_mutex_create() and zbx_rwlock_create() build their objects   *
+ *           on demand, so there is no pool to set up in advance.             *
+ *                                                                            *
+ ******************************************************************************/
+int	zbx_locks_create(char **error)
+{
+	ZBX_UNUSED(error);
+
+	return SUCCEED;
+}
+
+/******************************************************************************
+ *                                                                            *
+ * Purpose: destroys process-shared locks                                     *
+ *                                                                            *
+ ******************************************************************************/
+void	zbx_locks_destroy(void)
+{
+}
+#endif	/* _WINDOWS */
+
 /******************************************************************************
  *                                                                            *
  * Purpose: Create the mutex                                                  *
