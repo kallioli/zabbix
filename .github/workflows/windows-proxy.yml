@@ -40,6 +40,11 @@ jobs:
             --x-install-root=%GITHUB_WORKSPACE%\vcpkg_installed
           if errorlevel 1 exit /b 1
 
+      - name: List installed libraries
+        shell: cmd
+        run: |
+          dir /b "%GITHUB_WORKSPACE%\vcpkg_installed\%VCPKG_TRIPLET%\lib"
+
       - name: Build
         shell: cmd
         run: |
