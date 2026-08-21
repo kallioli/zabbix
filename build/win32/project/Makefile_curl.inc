@@ -25,14 +25,21 @@ LIBS = $(LIBS) "$(CURLLIBDIR)\libcurl-d.lib"
 LIBS = $(LIBS) crypt32.lib normaliz.lib
 
 !	IF "$(ZLIBLIBDIR)" != ""
-!		IF EXISTS("$(ZLIBLIBDIR)\zlib.lib")
+# zlib 1.3.1 names its static library zs.lib on Windows, so that it does not
+# collide with the import library of zlib1.dll. Older builds used zlib.lib or
+# zlibstatic.lib.
+!		IF EXISTS("$(ZLIBLIBDIR)\zs.lib")
+LIBS = $(LIBS) "$(ZLIBLIBDIR)\zs.lib"
+!		ELSEIF EXISTS("$(ZLIBLIBDIR)\zlib.lib")
 LIBS = $(LIBS) "$(ZLIBLIBDIR)\zlib.lib"
 !		ELSEIF EXISTS("$(ZLIBLIBDIR)\zlibstatic.lib")
 LIBS = $(LIBS) "$(ZLIBLIBDIR)\zlibstatic.lib"
+!		ELSEIF EXISTS("$(ZLIBLIBDIR)\zsd.lib")
+LIBS = $(LIBS) "$(ZLIBLIBDIR)\zsd.lib"
 !		ELSEIF EXISTS("$(ZLIBLIBDIR)\zlibd.lib")
 LIBS = $(LIBS) "$(ZLIBLIBDIR)\zlibd.lib"
 !		ELSE
-!			ERROR ZLIBLIBDIR "$(ZLIBLIBDIR)" cannot find "$(ZLIBLIBDIR)\zlib.lib", "$(ZLIBLIBDIR)\zlibstatic.lib" nor "$(ZLIBLIBDIR)\zlibd.lib"
+!			ERROR ZLIBLIBDIR "$(ZLIBLIBDIR)" cannot find "$(ZLIBLIBDIR)\zs.lib", "$(ZLIBLIBDIR)\zlib.lib" nor "$(ZLIBLIBDIR)\zlibstatic.lib"
 !		ENDIF
 !	ELSE
 !		ERROR Please specify directory containing zlib libraries (e. g. ZLIBLIBDIR="\somepath\lib").
