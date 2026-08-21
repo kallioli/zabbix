@@ -55,6 +55,14 @@ jobs:
         run: |
           dir /b "%GITHUB_WORKSPACE%\vcpkg_installed\%VCPKG_TRIPLET%\lib"
 
+      # dbschema.c is generated, and the release tooling ships it in the tarball
+      # rather than committing it.
+      - name: Generate the database schema source
+        shell: bash
+        run: |
+          perl create/bin/gen_schema.pl c > src/libs/zbxdbschema/dbschema.c
+          wc -c src/libs/zbxdbschema/dbschema.c
+
       - name: Build
         shell: cmd
         run: |
