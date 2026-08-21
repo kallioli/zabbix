@@ -27,6 +27,43 @@
 
 ZBX_VECTOR_IMPL(fping_host, zbx_fping_host_t)
 
+#ifdef _WINDOWS
+/* ICMP checks drive the external fping utility, which this build does not
+ * ship. The entry points stay so that their callers link unchanged, and
+ * report the check as unsupported rather than silently returning no data. */
+
+void	zbx_init_library_icmpping(const zbx_config_icmpping_t *config)
+{
+	ZBX_UNUSED(config);
+}
+
+void	zbx_init_icmpping_env(const char *prefix, long int id)
+{
+	ZBX_UNUSED(prefix);
+	ZBX_UNUSED(id);
+}
+
+int	zbx_ping(zbx_fping_host_t *hosts, int hosts_count, int requests_count, int period, int size, int timeout,
+		int retries, double backoff, unsigned char allow_redirect, int rdns, char *error,
+		size_t max_error_len)
+{
+	ZBX_UNUSED(hosts);
+	ZBX_UNUSED(hosts_count);
+	ZBX_UNUSED(requests_count);
+	ZBX_UNUSED(period);
+	ZBX_UNUSED(size);
+	ZBX_UNUSED(timeout);
+	ZBX_UNUSED(retries);
+	ZBX_UNUSED(backoff);
+	ZBX_UNUSED(allow_redirect);
+	ZBX_UNUSED(rdns);
+
+	zbx_strlcpy(error, "ICMP checks are not supported on this platform", max_error_len);
+
+	return NOTSUPPORTED;
+}
+#else
+
 static const zbx_config_icmpping_t	*config_icmpping;
 
 /* old official fping (2.4b2_to_ipv6) did not support source IP address */
@@ -1288,3 +1325,4 @@ int	zbx_ping(zbx_fping_host_t *hosts, int hosts_count, int requests_count, int p
 
 	return ret;
 }
+#endif	/* _WINDOWS */

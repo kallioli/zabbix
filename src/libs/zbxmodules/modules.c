@@ -19,6 +19,16 @@
 #include "zbxsysinfo.h"
 #include "zbxalgo.h"
 
+#ifdef _WINDOWS
+/* a loadable module is a DLL here; the dl* interface maps directly onto the
+   Windows library calls, so the loader below stays as it is */
+#	define RTLD_NOW		0
+#	define dlopen(path, mode)	((void)(mode), (void *)LoadLibraryA(path))
+#	define dlsym(lib, sym)		((void *)GetProcAddress((HMODULE)(lib), sym))
+#	define dlclose(lib)		(0 != FreeLibrary((HMODULE)(lib)) ? 0 : -1)
+#	define dlerror()		zbx_strerror_from_system(GetLastError())
+#endif
+
 #define ZBX_MODULE_FUNC_INIT			"zbx_module_init"
 #define ZBX_MODULE_FUNC_API_VERSION		"zbx_module_api_version"
 #define ZBX_MODULE_FUNC_ITEM_LIST		"zbx_module_item_list"
