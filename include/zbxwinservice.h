@@ -26,7 +26,8 @@
 #define ZBX_SERVICE_STARTUP_MANUAL	"manual"
 #define ZBX_SERVICE_STARTUP_DISABLED	"disabled"
 
-typedef void	(*zbx_on_exit_t)(int);
+/* kept identical to the declaration in zbxnix.h: the proxy includes both */
+typedef void	(*zbx_on_exit_t)(int, void *);
 
 void	zbx_service_init(zbx_get_config_str_f get_zbx_service_name_f, zbx_get_config_str_f get_zbx_event_source_f);
 void	zbx_service_start(int flags);

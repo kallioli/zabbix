@@ -12,18 +12,69 @@
 ** If not, see <https://www.gnu.org/licenses/>.
 **/
 
-#include "zbxcommon.h"
-
-/* Runtime control for the Windows build.
+/* Windows counterpart of src/libs/zbxnix/control.c.
  *
- * zbxnix/control.c reaches other workers by signalling their PIDs. Here every
- * worker lives in the same process, so runtime control messages travel over
- * the IPC service directly.
+ * Runtime control reaches a worker over the IPC service; rtc_service.c only
+ * falls back to these functions for a worker that has no IPC subscription,
+ * which on Unix it reaches by signalling its PID.
  *
- * Implements: zbx_signal_process_by_type, zbx_signal_process_by_pid,
- * zbx_sigusr_send, zbx_set_sigusr_handler, zbx_parse_rtc_options.
+ * That fallback has no equivalent here. The workers are threads of one
+ * process, so there is no per-worker process to signal, and Windows offers no
+ * way to interrupt one thread with a request the way a signal does. Rather
+ * than pretend the request was delivered, these report that it was not, so an
+ * operator sees why the option had no effect.
  */
 
-/* placeholder until the platform layer lands - keeps the translation unit
-   from being empty, which MSVC reports as LNK4221 */
-const int	zbx_win_control_win_placeholder = 0;
+#include "zbxcommon.h"
+
+#include "zbxnix.h"
+#include "zbxstr.h"
+
+static void	(*sigusr_handler_cb)(int flags) = NULL;
+
+static const char	*control_unsupported =
+		"Cannot deliver the request: on Windows the workers are threads of a single process,"
+		" so only workers connected to the runtime control service can be addressed.\n";
+
+void	zbx_signal_process_by_type(int proc_type, int proc_num, int flags, char **out)
+{
+	ZBX_UNUSED(proc_type);
+	ZBX_UNUSED(proc_num);
+	ZBX_UNUSED(flags);
+
+	if (NULL != out)
+		*out = zbx_strdup(*out, control_unsupported);
+}
+
+void	zbx_signal_process_by_pid(int pid, int flags, char **out)
+{
+	ZBX_UNUSED(pid);
+	ZBX_UNUSED(flags);
+
+	if (NULL != out)
+		*out = zbx_strdup(*out, control_unsupported);
+}
+
+void	zbx_set_sigusr_handler(void (*handler)(int flags))
+{
+	sigusr_handler_cb = handler;
+}
+
+/******************************************************************************
+ *                                                                            *
+ * Purpose: forwards a runtime control request to a running instance          *
+ *                                                                            *
+ * Comments: the Unix implementation reads a PID file and signals the daemon. *
+ *           The Windows proxy is reached over the runtime control service    *
+ *           instead, which the caller uses before falling back here.         *
+ *                                                                            *
+ ******************************************************************************/
+int	zbx_sigusr_send(int flags, const char *pid_file_pathname)
+{
+	ZBX_UNUSED(flags);
+	ZBX_UNUSED(pid_file_pathname);
+
+	zbx_error("cannot send the runtime control request: not supported on Windows");
+
+	return FAIL;
+}

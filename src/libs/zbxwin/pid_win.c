@@ -12,17 +12,38 @@
 ** If not, see <https://www.gnu.org/licenses/>.
 **/
 
-#include "zbxcommon.h"
-
-/* Single-instance guard for the Windows build.
+/* Windows counterpart of src/libs/zbxnix/coredump.c and the backtrace helper.
  *
- * A PID file has no meaning for a Windows service; a named mutex gives the
- * same "only one proxy per configuration" guarantee.
- *
- * Implements: zbx_create_pid_file, zbx_drop_pid_file, zbx_coredump_disable,
- * zbx_backtrace.
+ * Crash reporting is already handled for Windows by src/libs/zbxwin32/fatal.c,
+ * which writes a minidump through an unhandled exception filter. There is no
+ * core dump resource limit to lower, and no equivalent of walking the stack
+ * from arbitrary code the way zbx_backtrace() does on Unix.
  */
 
-/* placeholder until the platform layer lands - keeps the translation unit
-   from being empty, which MSVC reports as LNK4221 */
-const int	zbx_win_pid_win_placeholder = 0;
+#include "zbxcommon.h"
+
+#include "zbxnix.h"
+#include "zbxlog.h"
+
+#if defined(HAVE_GNUTLS) || defined(HAVE_OPENSSL)
+/******************************************************************************
+ *                                                                            *
+ * Purpose: prevents a core dump from leaking private keys                    *
+ *                                                                            *
+ * Comments: on Unix this lowers RLIMIT_CORE, so that a crash after the TLS   *
+ *           material is loaded cannot write it to disk. Windows writes a     *
+ *           minidump, which does not carry the full address space, so there  *
+ *           is nothing to disable.                                           *
+ *                                                                            *
+ ******************************************************************************/
+int	zbx_coredump_disable(void)
+{
+	return SUCCEED;
+}
+#endif
+
+void	zbx_backtrace(void)
+{
+	zabbix_log(LOG_LEVEL_DEBUG, "backtrace is not available on Windows;"
+			" a minidump is written on an unhandled exception");
+}
