@@ -18,7 +18,10 @@
 #include "zbxdbschema.h"
 #include "zbxtypes.h"
 
-static zbx_dbconn_t	*dbconn;
+/* Each worker owns its database connection. They are separate processes on
+   Unix, so a plain global was per-worker there; here they are threads of one
+   process and would otherwise share a single SQLite handle. */
+static ZBX_THREAD_LOCAL zbx_dbconn_t	*dbconn;
 static int		db_autoincrement;
 
 void	zbx_db_init_autoincrement_options(void)
