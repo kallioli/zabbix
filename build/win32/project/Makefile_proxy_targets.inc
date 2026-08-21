@@ -252,6 +252,10 @@ $(RESOURCE_RES): $(RESOURCE_RC) $(RESOURCE_H) $(DESC_H)
 {..\..\..\src\libs\zbxsysinfo\win32}.c{..\..\..\src\libs\zbxsysinfo\win32}.o:
 	$(CC) $? /Fo"$@" $(CFLAGS)
 
+# wmi.cpp is the only C++ source in this build; CPPFLAGS is the /TP variant.
+{..\..\..\src\libs\zbxsysinfo\win32}.cpp{..\..\..\src\libs\zbxsysinfo\win32}.o:
+	$(CC) $? /Fo"$@" $(CPPFLAGS)
+
 {..\..\..\src\libs\zbxtagfilter}.c{..\..\..\src\libs\zbxtagfilter}.o:
 	$(CC) $? /Fo"$@" $(CFLAGS)
 

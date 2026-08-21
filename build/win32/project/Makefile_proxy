@@ -414,6 +414,9 @@ OBJS = \
 	..\..\..\src\libs\zbxwin\pthread_win.o \
 	..\..\..\src\libs\zbxwin\posix_win.o \
 	..\..\..\src\libs\zbxsysinfo\win32\cpu.o \
+	..\..\..\src\libs\zbxsysinfo\win32\system.o \
+	..\..\..\src\libs\zbxsysinfo\win32\pdhmon.o \
+	..\..\..\src\libs\zbxsysinfo\win32\wmi.o \
 	..\..\..\src\libs\zbxsysinfo\win32\perfstat\perfstat.o
 
 LIBS = ws2_32.lib psapi.lib pdh.lib Wldap32.lib advapi32.lib uuid.lib Iphlpapi.lib delayimp.lib \
