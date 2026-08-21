@@ -1361,6 +1361,21 @@ int	main(int argc, char **argv)
 	if (NULL == config_file)
 		config_file = zbx_strdup(NULL, DEFAULT_CONFIG_FILE);
 
+#ifdef _WINDOWS
+	/* Winsock has to be up before anything opens a socket, and on Windows the
+	   runtime control service is the first thing to do so. */
+	if (ZBX_TASK_TEST_CONFIG != t.task)
+	{
+		char	*wsa_error = NULL;
+
+		if (SUCCEED != zbx_socket_start(&wsa_error))
+		{
+			zbx_error("%s", wsa_error);
+			zbx_free(wsa_error);
+			exit(EXIT_FAILURE);
+		}
+	}
+#endif
 	/* required for simple checks */
 	zbx_init_metrics();
 	zbx_init_library_cfg(zbx_program_type, config_file);
