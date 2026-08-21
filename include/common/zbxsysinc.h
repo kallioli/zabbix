@@ -444,6 +444,10 @@
 #		define _MODE_T_DEFINED
 typedef int	mode_t;
 #	endif
+
+/* the worker pools of the discoverer, the asynchronous pollers and the
+ * preprocessing manager synchronise with POSIX threads directly */
+#	include "zbxwinpthread.h"
 #endif
 
 #endif

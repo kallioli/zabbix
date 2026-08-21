@@ -12,11 +12,16 @@ RESOURCE_RES = $(PROJECTNAME).res
 
 INCS = $(ADD_INCS) /I $(PROJECTDIR) /I .\ /I ..\include  /I ..\include\common /I ..\..\..\include /I ..\..\..\include\common
 
+# a target may raise this; the proxy needs Vista for condition variables
+!IF "$(WIN32_WINNT)" == ""
+WIN32_WINNT = 0x0502
+!ENDIF
+
 !IF "$(CPU)" == "i386" || "$(CPU)" == "x86"
-COMMON_FLAGS = /D _WIN32_WINNT=0x0502
+COMMON_FLAGS = /D _WIN32_WINNT=$(WIN32_WINNT)
 ADD_LFLAGS = $(ADD_LFLAGS) /SUBSYSTEM:"CONSOLE,5.01"
 !ELSEIF "$(CPU)" == "AMD64"
-COMMON_FLAGS = /D _WIN32_WINNT=0x0502
+COMMON_FLAGS = /D _WIN32_WINNT=$(WIN32_WINNT)
 ADD_LFLAGS = $(ADD_LFLAGS) /SUBSYSTEM:"CONSOLE,5.02"
 !ENDIF
 

@@ -23,6 +23,9 @@ PDBS = $(TARGETDIR)\$(TARGETNAME).pdb $(TARGETNAME).$(TARGETEXT).pdb
 # configuration wins over the agent one - both are named config.h.
 ADD_INCS = /I ..\include\proxy
 
+# CONDITION_VARIABLE and SRWLOCK, which the worker pools need, are Vista and later
+WIN32_WINNT = 0x0600
+
 # The proxy links the "proxy" flavour of the sysinfo library, which automake
 # builds with this metric set (see src/libs/zbxsysinfo/Makefile.am).
 ADD_CFLAGS = $(ADD_CFLAGS) /D WITH_COMMON_METRICS /D WITH_HTTP_METRICS \
@@ -393,7 +396,8 @@ OBJS = \
 	..\..\..\src\libs\zbxwin\sighandler_win.o \
 	..\..\..\src\libs\zbxwin\control_win.o \
 	..\..\..\src\libs\zbxwin\shm_win.o \
-	..\..\..\src\libs\zbxwin\pid_win.o
+	..\..\..\src\libs\zbxwin\pid_win.o \
+	..\..\..\src\libs\zbxwin\pthread_win.o
 
 LIBS = ws2_32.lib psapi.lib pdh.lib Wldap32.lib advapi32.lib uuid.lib Iphlpapi.lib delayimp.lib \
 	wevtapi.lib shlwapi.lib bcrypt.lib $(LIBS)
