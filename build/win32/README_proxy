@@ -1,0 +1,57 @@
+Building the Zabbix proxy on Windows
+====================================
+
+The proxy is 64-bit only and links a database engine and an event loop that the
+agent does not need. It is therefore not part of the default `nmake all` target;
+build it explicitly.
+
+Scope of this build
+-------------------
+
+Active and passive proxy, SQLite3 buffer, Zabbix agent checks, simple checks,
+trapper, preprocessing (including JavaScript), data sender and housekeeper.
+
+Not included: SNMP, IPMI, VMware, ODBC database monitor and ICMP ping. The
+corresponding sources are still compiled and linked, but their internal HAVE_*
+guards leave them reporting the check as unsupported.
+
+Prerequisites
+-------------
+
+  * Visual Studio Build Tools with the C++ toolset and a Windows SDK
+  * vcpkg, used with the `x64-windows-static` triplet so the result matches the
+    /MT runtime the Zabbix Windows build uses
+
+Install the third-party libraries from the manifest in this directory:
+
+    vcpkg install --triplet x64-windows-static
+
+That provides zlib, OpenSSL, PCRE2, libevent, SQLite3 and libcurl.
+
+Building
+--------
+
+From a "x64 Native Tools Command Prompt", in build\win32\project:
+
+    set VCPKG=<vcpkg root>\installed\x64-windows-static
+
+    nmake /f Makefile_proxy ^
+        TLS=openssl ^
+        TLSINCDIR=%VCPKG%\include TLSLIBDIR=%VCPKG%\lib ^
+        PCRE2INCDIR=%VCPKG%\include PCRE2LIBDIR=%VCPKG%\lib ^
+        SQLITE3INCDIR=%VCPKG%\include SQLITE3LIBDIR=%VCPKG%\lib ^
+        LIBEVENTINCDIR=%VCPKG%\include LIBEVENTLIBDIR=%VCPKG%\lib ^
+        CURLINCDIR=%VCPKG%\include CURLLIBDIR=%VCPKG%\lib ^
+        ZLIBINCDIR=%VCPKG%\include ZLIBLIBDIR=%VCPKG%\lib
+
+The binary is written to bin\win64\zabbix_proxy.exe.
+
+Notes
+-----
+
+The proxy build selects build\win32\include\proxy\config.h ahead of the agent's
+config.h through ADD_INCS; both files are named config.h on purpose, so that the
+platform-independent sources include the right one without modification.
+
+Linking goes through a response file because the proxy links over 350 objects,
+which does not fit on a command line.

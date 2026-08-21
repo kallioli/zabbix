@@ -1,0 +1,406 @@
+# detect target architecture
+!IF "$(CPU)" == ""
+CPU=$(PROCESSOR_ARCHITECTURE)
+!ENDIF
+
+!IF "$(CPU)" == "AMD64"
+TARGETDIR = ..\..\..\bin\win64
+ADD_LFLAGS = /MACHINE:X64
+
+!ELSE
+!ERROR Unsupported CPU architecture: $(CPU) (the proxy is 64-bit only)
+!ENDIF
+
+PROJECTNAME = zabbix_proxy
+PROJECTDIR = ..\..\..\src\$(PROJECTNAME)
+TARGETNAME = zabbix_proxy
+TARGETEXT = exe
+PROGNAME = $(TARGETDIR)\$(TARGETNAME).$(TARGETEXT)
+
+PDBS = $(TARGETDIR)\$(TARGETNAME).pdb $(TARGETNAME).$(TARGETEXT).pdb
+
+# ..\include\proxy must precede ..\include\common so that the proxy build
+# configuration wins over the agent one - both are named config.h.
+ADD_INCS = /I ..\include\proxy
+
+# The proxy links the "proxy" flavour of the sysinfo library, which automake
+# builds with this metric set (see src/libs/zbxsysinfo/Makefile.am).
+ADD_CFLAGS = $(ADD_CFLAGS) /D WITH_COMMON_METRICS /D WITH_HTTP_METRICS \
+	/D WITH_SIMPLE_METRICS /D WITH_HOSTNAME_METRIC \
+	/D ZABBIX_PROXY \
+	/Zi \
+	/D DEFAULT_CONFIG_FILE="\"C:\\zabbix_proxy.conf\"" \
+	/D DEFAULT_EXTERNAL_SCRIPTS_PATH="\"C:\\zabbix\\externalscripts\"" \
+	/D DEFAULT_LOAD_MODULE_PATH="\"C:\\zabbix\\modules\"" \
+	/D DEFAULT_SSL_CERT_LOCATION="\"C:\\zabbix\\ssl\\certs\"" \
+	/D DEFAULT_SSL_KEY_LOCATION="\"C:\\zabbix\\ssl\\keys\"" \
+	/Fd$(TARGETNAME).$(TARGETEXT).pdb
+
+ADD_LFLAGS = $(ADD_LFLAGS) /DEBUG /OPT:REF /DELAYLOAD:wevtapi.dll
+
+ADD_RFLAGS = /d "ZABBIX_PROXY"
+
+!INCLUDE Makefile_common.inc
+
+OBJS = \
+	..\..\..\src\libs\zbxagentget\agent_get.o \
+	..\..\..\src\libs\zbxalgo\algodefs.o \
+	..\..\..\src\libs\zbxalgo\binaryheap.o \
+	..\..\..\src\libs\zbxalgo\hashmap.o \
+	..\..\..\src\libs\zbxalgo\hashset.o \
+	..\..\..\src\libs\zbxalgo\int128.o \
+	..\..\..\src\libs\zbxalgo\linked_list.o \
+	..\..\..\src\libs\zbxalgo\prediction.o \
+	..\..\..\src\libs\zbxalgo\queue.o \
+	..\..\..\src\libs\zbxalgo\vector.o \
+	..\..\..\src\libs\zbxasynchttppoller\asynchttppoller.o \
+	..\..\..\src\libs\zbxasyncpoller\asyncpoller.o \
+	..\..\..\src\libs\zbxaudit\audit.o \
+	..\..\..\src\libs\zbxaudit\audit_graph.o \
+	..\..\..\src\libs\zbxaudit\audit_ha.o \
+	..\..\..\src\libs\zbxaudit\audit_host.o \
+	..\..\..\src\libs\zbxaudit\audit_httptest.o \
+	..\..\..\src\libs\zbxaudit\audit_item.o \
+	..\..\..\src\libs\zbxaudit\audit_trigger.o \
+	..\..\..\src\libs\zbxautoreg\autoreg.o \
+	..\..\..\src\libs\zbxavailability\avail_manager.o \
+	..\..\..\src\libs\zbxavailability\avail_protocol.o \
+	..\..\..\src\libs\zbxavailability\availability.o \
+	..\..\..\src\libs\zbxbincommon\bincommon.o \
+	..\..\..\src\libs\zbxcacheconfig\dbconfig.o \
+	..\..\..\src\libs\zbxcacheconfig\dbconfig_dump.o \
+	..\..\..\src\libs\zbxcacheconfig\dbconfig_maintenance.o \
+	..\..\..\src\libs\zbxcacheconfig\dbhistoryconfig.o \
+	..\..\..\src\libs\zbxcacheconfig\dbsettings.o \
+	..\..\..\src\libs\zbxcacheconfig\dbsync.o \
+	..\..\..\src\libs\zbxcacheconfig\inventory.o \
+	..\..\..\src\libs\zbxcacheconfig\item.o \
+	..\..\..\src\libs\zbxcacheconfig\macro_ctx.o \
+	..\..\..\src\libs\zbxcacheconfig\proxy_group.o \
+	..\..\..\src\libs\zbxcacheconfig\trigger.o \
+	..\..\..\src\libs\zbxcacheconfig\user_macro.o \
+	..\..\..\src\libs\zbxcacheconfig\vps_monitor.o \
+	..\..\..\src\libs\zbxcachehistory\cachehistory.o \
+	..\..\..\src\libs\zbxcachevalue\valuecache.o \
+	..\..\..\src\libs\zbxcfg\cfg.o \
+	..\..\..\src\libs\zbxcommon\common_log.o \
+	..\..\..\src\libs\zbxcommon\common_str.o \
+	..\..\..\src\libs\zbxcommon\components_strings_representations.o \
+	..\..\..\src\libs\zbxcommon\cuid.o \
+	..\..\..\src\libs\zbxcommon\libc_wrappers.o \
+	..\..\..\src\libs\zbxcommon\misc.o \
+	..\..\..\src\libs\zbxcommon\setproctitle.o \
+	..\..\..\src\libs\zbxcomms\comms.o \
+	..\..\..\src\libs\zbxcomms\telnet.o \
+	..\..\..\src\libs\zbxcomms\tls_validate.o \
+	..\..\..\src\libs\zbxcomms\tls_version.o \
+	..\..\..\src\libs\zbxcommshigh\commshigh.o \
+	..\..\..\src\libs\zbxcompress\compress.o \
+	..\..\..\src\libs\zbxconnector\connector.o \
+	..\..\..\src\libs\zbxconnector\connector_protocol.o \
+	..\..\..\src\libs\zbxcrypto\aes.o \
+	..\..\..\src\libs\zbxcrypto\base64.o \
+	..\..\..\src\libs\zbxcrypto\crypto.o \
+	..\..\..\src\libs\zbxcrypto\endian.o \
+	..\..\..\src\libs\zbxcrypto\hmac.o \
+	..\..\..\src\libs\zbxcrypto\rsa.o \
+	..\..\..\src\libs\zbxcurl\curl.o \
+	..\..\..\src\libs\zbxdb\dbconn.o \
+	..\..\..\src\libs\zbxdb\dbconn_compat.o \
+	..\..\..\src\libs\zbxdb\dbinsert.o \
+	..\..\..\src\libs\zbxdb\dbmisc.o \
+	..\..\..\src\libs\zbxdb\dbversion.o \
+	..\..\..\src\libs\zbxdbhigh\db.o \
+	..\..\..\src\libs\zbxdbhigh\db_settings.o \
+	..\..\..\src\libs\zbxdbhigh\item.o \
+	..\..\..\src\libs\zbxdbhigh\item_param.o \
+	..\..\..\src\libs\zbxdbhigh\lld_override.o \
+	..\..\..\src\libs\zbxdbhigh\maintenance.o \
+	..\..\..\src\libs\zbxdbhigh\mediatype.o \
+	..\..\..\src\libs\zbxdbhigh\proxy.o \
+	..\..\..\src\libs\zbxdbhigh\sync.o \
+	..\..\..\src\libs\zbxdbhigh\tag.o \
+	..\..\..\src\libs\zbxdbhigh\trigger.o \
+	..\..\..\src\libs\zbxdbschema\dbschema.o \
+	..\..\..\src\libs\zbxdbsyncer\dbsyncer.o \
+	..\..\..\src\libs\zbxdbupgrade\dbupgrade.o \
+	..\..\..\src\libs\zbxdbupgrade\dbupgrade_2010.o \
+	..\..\..\src\libs\zbxdbupgrade\dbupgrade_2020.o \
+	..\..\..\src\libs\zbxdbupgrade\dbupgrade_2030.o \
+	..\..\..\src\libs\zbxdbupgrade\dbupgrade_2040.o \
+	..\..\..\src\libs\zbxdbupgrade\dbupgrade_2050.o \
+	..\..\..\src\libs\zbxdbupgrade\dbupgrade_3000.o \
+	..\..\..\src\libs\zbxdbupgrade\dbupgrade_3010.o \
+	..\..\..\src\libs\zbxdbupgrade\dbupgrade_3020.o \
+	..\..\..\src\libs\zbxdbupgrade\dbupgrade_3030.o \
+	..\..\..\src\libs\zbxdbupgrade\dbupgrade_3040.o \
+	..\..\..\src\libs\zbxdbupgrade\dbupgrade_3050.o \
+	..\..\..\src\libs\zbxdbupgrade\dbupgrade_4000.o \
+	..\..\..\src\libs\zbxdbupgrade\dbupgrade_4010.o \
+	..\..\..\src\libs\zbxdbupgrade\dbupgrade_4020.o \
+	..\..\..\src\libs\zbxdbupgrade\dbupgrade_4030.o \
+	..\..\..\src\libs\zbxdbupgrade\dbupgrade_4040.o \
+	..\..\..\src\libs\zbxdbupgrade\dbupgrade_4050.o \
+	..\..\..\src\libs\zbxdbupgrade\dbupgrade_5000.o \
+	..\..\..\src\libs\zbxdbupgrade\dbupgrade_5010.o \
+	..\..\..\src\libs\zbxdbupgrade\dbupgrade_5020.o \
+	..\..\..\src\libs\zbxdbupgrade\dbupgrade_5030.o \
+	..\..\..\src\libs\zbxdbupgrade\dbupgrade_5040.o \
+	..\..\..\src\libs\zbxdbupgrade\dbupgrade_5050.o \
+	..\..\..\src\libs\zbxdbupgrade\dbupgrade_6000.o \
+	..\..\..\src\libs\zbxdbupgrade\dbupgrade_6010.o \
+	..\..\..\src\libs\zbxdbupgrade\dbupgrade_6020.o \
+	..\..\..\src\libs\zbxdbupgrade\dbupgrade_6030.o \
+	..\..\..\src\libs\zbxdbupgrade\dbupgrade_6040.o \
+	..\..\..\src\libs\zbxdbupgrade\dbupgrade_6050.o \
+	..\..\..\src\libs\zbxdbupgrade\dbupgrade_7000.o \
+	..\..\..\src\libs\zbxdbupgrade\dbupgrade_7010.o \
+	..\..\..\src\libs\zbxdbupgrade\dbupgrade_7020.o \
+	..\..\..\src\libs\zbxdbupgrade\dbupgrade_7030.o \
+	..\..\..\src\libs\zbxdbupgrade\dbupgrade_7040.o \
+	..\..\..\src\libs\zbxdbupgrade\dbupgrade_common.o \
+	..\..\..\src\libs\zbxdbupgrade\dbupgrade_macros.o \
+	..\..\..\src\libs\zbxdbwrap\event.o \
+	..\..\..\src\libs\zbxdbwrap\graph_linking.o \
+	..\..\..\src\libs\zbxdbwrap\host.o \
+	..\..\..\src\libs\zbxdbwrap\item.o \
+	..\..\..\src\libs\zbxdbwrap\macro_ctx_trigger.o \
+	..\..\..\src\libs\zbxdbwrap\permission.o \
+	..\..\..\src\libs\zbxdbwrap\proxy.o \
+	..\..\..\src\libs\zbxdbwrap\template_item.o \
+	..\..\..\src\libs\zbxdbwrap\template_item_audit.o \
+	..\..\..\src\libs\zbxdbwrap\trigger.o \
+	..\..\..\src\libs\zbxdbwrap\trigger_dep_linking.o \
+	..\..\..\src\libs\zbxdbwrap\trigger_linking.o \
+	..\..\..\src\libs\zbxdbwrap\user.o \
+	..\..\..\src\libs\zbxdiag\diag.o \
+	..\..\..\src\libs\zbxdiscoverer\async_http.o \
+	..\..\..\src\libs\zbxdiscoverer\async_tcpsvc.o \
+	..\..\..\src\libs\zbxdiscoverer\async_telnet.o \
+	..\..\..\src\libs\zbxdiscoverer\discoverer.o \
+	..\..\..\src\libs\zbxdiscoverer\discoverer_async.o \
+	..\..\..\src\libs\zbxdiscoverer\discoverer_job.o \
+	..\..\..\src\libs\zbxdiscoverer\discoverer_queue.o \
+	..\..\..\src\libs\zbxdiscoverer\discoverer_taskprep.o \
+	..\..\..\src\libs\zbxdiscovery\discovery.o \
+	..\..\..\src\libs\zbxembed\browser.o \
+	..\..\..\src\libs\zbxembed\browser_alert.o \
+	..\..\..\src\libs\zbxembed\browser_element.o \
+	..\..\..\src\libs\zbxembed\browser_error.o \
+	..\..\..\src\libs\zbxembed\browser_perf.o \
+	..\..\..\src\libs\zbxembed\console.o \
+	..\..\..\src\libs\zbxembed\duktape.o \
+	..\..\..\src\libs\zbxembed\embed.o \
+	..\..\..\src\libs\zbxembed\embed_xml.o \
+	..\..\..\src\libs\zbxembed\global.o \
+	..\..\..\src\libs\zbxembed\httprequest.o \
+	..\..\..\src\libs\zbxembed\webdriver.o \
+	..\..\..\src\libs\zbxembed\zabbix.o \
+	..\..\..\src\libs\zbxescalations\escalations.o \
+	..\..\..\src\libs\zbxeval\calc.o \
+	..\..\..\src\libs\zbxeval\count_pattern.o \
+	..\..\..\src\libs\zbxeval\execute.o \
+	..\..\..\src\libs\zbxeval\misc.o \
+	..\..\..\src\libs\zbxeval\parse.o \
+	..\..\..\src\libs\zbxeval\query.o \
+	..\..\..\src\libs\zbxevent\event.o \
+	..\..\..\src\libs\zbxevent\event_db.o \
+	..\..\..\src\libs\zbxexec\execute.o \
+	..\..\..\src\libs\zbxexport\export.o \
+	..\..\..\src\libs\zbxexpr\expr.o \
+	..\..\..\src\libs\zbxexpr\function.o \
+	..\..\..\src\libs\zbxexpr\host.o \
+	..\..\..\src\libs\zbxexpr\interval.o \
+	..\..\..\src\libs\zbxexpr\key.o \
+	..\..\..\src\libs\zbxexpr\macro.o \
+	..\..\..\src\libs\zbxexpr\macrofunc.o \
+	..\..\..\src\libs\zbxexpr\substitute.o \
+	..\..\..\src\libs\zbxexpr\token.o \
+	..\..\..\src\libs\zbxexpr\urlencode.o \
+	..\..\..\src\libs\zbxexpression\anomalystl.o \
+	..\..\..\src\libs\zbxexpression\datafunc.o \
+	..\..\..\src\libs\zbxexpression\evalfunc.o \
+	..\..\..\src\libs\zbxexpression\evalsimple.o \
+	..\..\..\src\libs\zbxexpression\expr_eval.o \
+	..\..\..\src\libs\zbxexpression\expression.o \
+	..\..\..\src\libs\zbxexpression\expression_names.o \
+	..\..\..\src\libs\zbxexpression\funcparam.o \
+	..\..\..\src\libs\zbxexpression\triggerfunc.o \
+	..\..\..\src\libs\zbxfile\file.o \
+	..\..\..\src\libs\zbxgetopt\getopt.o \
+	..\..\..\src\libs\zbxhash\md5.o \
+	..\..\..\src\libs\zbxhash\sha256crypt.o \
+	..\..\..\src\libs\zbxhash\sha512crypt.o \
+	..\..\..\src\libs\zbxhash\zbxhash.o \
+	..\..\..\src\libs\zbxhistory\history.o \
+	..\..\..\src\libs\zbxhistory\history_elastic.o \
+	..\..\..\src\libs\zbxhistory\history_sql.o \
+	..\..\..\src\libs\zbxhttp\charset.o \
+	..\..\..\src\libs\zbxhttp\http.o \
+	..\..\..\src\libs\zbxhttp\punycode.o \
+	..\..\..\src\libs\zbxhttppoller\httpmacro.o \
+	..\..\..\src\libs\zbxhttppoller\httppoller.o \
+	..\..\..\src\libs\zbxhttppoller\httptest.o \
+	..\..\..\src\libs\zbxicmpping\icmpping.o \
+	..\..\..\src\libs\zbxinterface\interface.o \
+	..\..\..\src\libs\zbxip\ip.o \
+	..\..\..\src\libs\zbxip\iprange.o \
+	..\..\..\src\libs\zbxipcservice\ipcservice.o \
+	..\..\..\src\libs\zbxjson\json.o \
+	..\..\..\src\libs\zbxjson\json_parser.o \
+	..\..\..\src\libs\zbxjson\jsonobj.o \
+	..\..\..\src\libs\zbxjson\jsonpath.o \
+	..\..\..\src\libs\zbxkvs\kvs.o \
+	..\..\..\src\libs\zbxlog\log.o \
+	..\..\..\src\libs\zbxmodules\modules.o \
+	..\..\..\src\libs\zbxmutexs\mutexs.o \
+	..\..\..\src\libs\zbxnum\num.o \
+	..\..\..\src\libs\zbxodbc\odbc.o \
+	..\..\..\src\libs\zbxparam\param.o \
+	..\..\..\src\libs\zbxpgservice\pgservice.o \
+	..\..\..\src\libs\zbxpinger\pinger.o \
+	..\..\..\src\libs\zbxpoller\async_agent.o \
+	..\..\..\src\libs\zbxpoller\async_httpagent.o \
+	..\..\..\src\libs\zbxpoller\async_manager.o \
+	..\..\..\src\libs\zbxpoller\async_poller.o \
+	..\..\..\src\libs\zbxpoller\async_queue.o \
+	..\..\..\src\libs\zbxpoller\async_worker.o \
+	..\..\..\src\libs\zbxpoller\checks_agent.o \
+	..\..\..\src\libs\zbxpoller\checks_browser.o \
+	..\..\..\src\libs\zbxpoller\checks_calculated.o \
+	..\..\..\src\libs\zbxpoller\checks_db.o \
+	..\..\..\src\libs\zbxpoller\checks_external.o \
+	..\..\..\src\libs\zbxpoller\checks_http.o \
+	..\..\..\src\libs\zbxpoller\checks_internal.o \
+	..\..\..\src\libs\zbxpoller\checks_java.o \
+	..\..\..\src\libs\zbxpoller\checks_script.o \
+	..\..\..\src\libs\zbxpoller\checks_simple.o \
+	..\..\..\src\libs\zbxpoller\checks_simple_vmware.o \
+	..\..\..\src\libs\zbxpoller\checks_snmp.o \
+	..\..\..\src\libs\zbxpoller\checks_ssh.o \
+	..\..\..\src\libs\zbxpoller\checks_telnet.o \
+	..\..\..\src\libs\zbxpoller\poller.o \
+	..\..\..\src\libs\zbxpoller\poller_thread.o \
+	..\..\..\src\libs\zbxpoller\telnet_run.o \
+	..\..\..\src\libs\zbxpreproc\item_preproc.o \
+	..\..\..\src\libs\zbxpreproc\pp_cache.o \
+	..\..\..\src\libs\zbxpreproc\pp_diag.o \
+	..\..\..\src\libs\zbxpreproc\pp_error.o \
+	..\..\..\src\libs\zbxpreproc\pp_execute.o \
+	..\..\..\src\libs\zbxpreproc\pp_manager.o \
+	..\..\..\src\libs\zbxpreproc\pp_protocol.o \
+	..\..\..\src\libs\zbxpreproc\pp_queue.o \
+	..\..\..\src\libs\zbxpreproc\pp_stats.o \
+	..\..\..\src\libs\zbxpreproc\pp_task.o \
+	..\..\..\src\libs\zbxpreproc\pp_worker.o \
+	..\..\..\src\libs\zbxpreproc\preproc_snmp.o \
+	..\..\..\src\libs\zbxpreprocbase\pp_history.o \
+	..\..\..\src\libs\zbxpreprocbase\pp_item.o \
+	..\..\..\src\libs\zbxprof\prof.o \
+	..\..\..\src\libs\zbxprometheus\zbxprometheus.o \
+	..\..\..\src\libs\zbxproxybuffer\pb_autoreg.o \
+	..\..\..\src\libs\zbxproxybuffer\pb_discovery.o \
+	..\..\..\src\libs\zbxproxybuffer\pb_history.o \
+	..\..\..\src\libs\zbxproxybuffer\proxybuffer.o \
+	..\..\..\src\libs\zbxregexp\zbxregexp.o \
+	..\..\..\src\libs\zbxrtc\rtc.o \
+	..\..\..\src\libs\zbxrtc\rtc_client.o \
+	..\..\..\src\libs\zbxrtc\rtc_service.o \
+	..\..\..\src\libs\zbxscripts\scripts.o \
+	..\..\..\src\libs\zbxself\selfmon.o \
+	..\..\..\src\libs\zbxserialize\serialize.o \
+	..\..\..\src\libs\zbxshmem\memalloc.o \
+	..\..\..\src\libs\zbxsnmptrapper\snmptrapper.o \
+	..\..\..\src\libs\zbxstats\stats.o \
+	..\..\..\src\libs\zbxstr\str.o \
+	..\..\..\src\libs\zbxsysinfo\alias\alias.o \
+	..\..\..\src\libs\zbxsysinfo\common\cpu.o \
+	..\..\..\src\libs\zbxsysinfo\common\cpustat.o \
+	..\..\..\src\libs\zbxsysinfo\common\dir.o \
+	..\..\..\src\libs\zbxsysinfo\common\diskdevices.o \
+	..\..\..\src\libs\zbxsysinfo\common\dns.o \
+	..\..\..\src\libs\zbxsysinfo\common\http.o \
+	..\..\..\src\libs\zbxsysinfo\common\http_metrics.o \
+	..\..\..\src\libs\zbxsysinfo\common\ip_reverse.o \
+	..\..\..\src\libs\zbxsysinfo\common\net.o \
+	..\..\..\src\libs\zbxsysinfo\common\procstat.o \
+	..\..\..\src\libs\zbxsysinfo\common\stats.o \
+	..\..\..\src\libs\zbxsysinfo\common\system.o \
+	..\..\..\src\libs\zbxsysinfo\common\vfs_file.o \
+	..\..\..\src\libs\zbxsysinfo\common\zabbix_stats.o \
+	..\..\..\src\libs\zbxsysinfo\common\zbxkstat.o \
+	..\..\..\src\libs\zbxsysinfo\common\zbxsysinfo_common.o \
+	..\..\..\src\libs\zbxsysinfo\simple\ntp.o \
+	..\..\..\src\libs\zbxsysinfo\simple\simple.o \
+	..\..\..\src\libs\zbxsysinfo\sysinfo.o \
+	..\..\..\src\libs\zbxtagfilter\tagfilter.o \
+	..\..\..\src\libs\zbxtasks\task.o \
+	..\..\..\src\libs\zbxthreads\threads.o \
+	..\..\..\src\libs\zbxtime\time.o \
+	..\..\..\src\libs\zbxtimekeeper\timekeeper.o \
+	..\..\..\src\libs\zbxtrapper\active.o \
+	..\..\..\src\libs\zbxtrapper\nodecommand.o \
+	..\..\..\src\libs\zbxtrapper\trapper.o \
+	..\..\..\src\libs\zbxtrapper\trapper_auth.o \
+	..\..\..\src\libs\zbxtrapper\trapper_expressions_evaluate.o \
+	..\..\..\src\libs\zbxtrapper\trapper_item_test.o \
+	..\..\..\src\libs\zbxtrapper\trapper_preproc.o \
+	..\..\..\src\libs\zbxtrends\baseline.o \
+	..\..\..\src\libs\zbxtrends\cache.o \
+	..\..\..\src\libs\zbxtrends\trends.o \
+	..\..\..\src\libs\zbxvariant\variant.o \
+	..\..\..\src\libs\zbxvariant\variant_misc.o \
+	..\..\..\src\libs\zbxvault\cyberark.o \
+	..\..\..\src\libs\zbxvault\hashicorp.o \
+	..\..\..\src\libs\zbxvault\vault.o \
+	..\..\..\src\libs\zbxversion\version.o \
+	..\..\..\src\libs\zbxvmware\vmware.o \
+	..\..\..\src\libs\zbxvmware\vmware_ds.o \
+	..\..\..\src\libs\zbxvmware\vmware_event.o \
+	..\..\..\src\libs\zbxvmware\vmware_hv.o \
+	..\..\..\src\libs\zbxvmware\vmware_manager.o \
+	..\..\..\src\libs\zbxvmware\vmware_perfcntr.o \
+	..\..\..\src\libs\zbxvmware\vmware_rest.o \
+	..\..\..\src\libs\zbxvmware\vmware_service_cfglists.o \
+	..\..\..\src\libs\zbxvmware\vmware_shmem.o \
+	..\..\..\src\libs\zbxvmware\vmware_stats.o \
+	..\..\..\src\libs\zbxvmware\vmware_vm.o \
+	..\..\..\src\libs\zbxxml\traverse.o \
+	..\..\..\src\libs\zbxxml\xml.o \
+	..\..\..\src\zabbix_proxy\autoreg\autoreg_proxy.o \
+	..\..\..\src\zabbix_proxy\cachehistory\cachehistory_proxy.o \
+	..\..\..\src\zabbix_proxy\datasender\datasender.o \
+	..\..\..\src\zabbix_proxy\diag\diag_proxy.o \
+	..\..\..\src\zabbix_proxy\discovery\discovery_proxy.o \
+	..\..\..\src\zabbix_proxy\housekeeper\housekeeper_proxy.o \
+	..\..\..\src\zabbix_proxy\poller\checks_internal_proxy.o \
+	..\..\..\src\zabbix_proxy\preproc\preproc_proxy.o \
+	..\..\..\src\zabbix_proxy\proxyconfig\proxyconfig.o \
+	..\..\..\src\zabbix_proxy\proxyconfigwrite\proxyconfigwrite.o \
+	..\..\..\src\zabbix_proxy\rtc\rtc_proxy.o \
+	..\..\..\src\zabbix_proxy\stats\stats_proxy.o \
+	..\..\..\src\zabbix_proxy\taskmanager\server_tasks.o \
+	..\..\..\src\zabbix_proxy\taskmanager\taskmanager_proxy.o \
+	..\..\..\src\zabbix_proxy\trapper\trapper_proxy.o \
+	..\..\..\src\libs\zbxfile\win32\win32_file.o \
+	..\..\..\src\libs\zbxsysinfo\win32\hostname.o \
+	..\..\..\src\libs\zbxwin32\fatal.o \
+	..\..\..\src\libs\zbxwin32\disk.o \
+	..\..\..\src\libs\zbxwin32\symbols.o \
+	..\..\..\src\libs\zbxwin32\perfmon.o \
+	..\..\..\src\libs\zbxwinservice\service.o \
+	..\..\..\src\libs\zbxwin\daemon_win.o \
+	..\..\..\src\libs\zbxwin\sighandler_win.o \
+	..\..\..\src\libs\zbxwin\control_win.o \
+	..\..\..\src\libs\zbxwin\shm_win.o \
+	..\..\..\src\libs\zbxwin\pid_win.o
+
+LIBS = ws2_32.lib psapi.lib pdh.lib Wldap32.lib advapi32.lib uuid.lib Iphlpapi.lib delayimp.lib \
+	wevtapi.lib shlwapi.lib bcrypt.lib $(LIBS)
+
+!INCLUDE Makefile_pcre.inc
+!INCLUDE Makefile_tls.inc
+!INCLUDE Makefile_sqlite.inc
+!INCLUDE Makefile_libevent.inc
+!INCLUDE Makefile_curl.inc
+!INCLUDE Makefile_proxy_targets.inc
