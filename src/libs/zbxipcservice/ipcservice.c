@@ -1293,22 +1293,8 @@ int	zbx_ipc_socket_open(zbx_ipc_socket_t *csocket, const char *service_name, int
 		goto out;
 
 #ifdef _WINDOWS
-	if (0 == (port = ipc_endpoint_find(socket_path)))
-	{
-		*error = zbx_dsprintf(*error, "Cannot connect to service \"%s\": it is not running.", service_name);
-		goto out;
-	}
-
-	if (-1 == (csocket->fd = (int)socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)))
-	{
-		*error = zbx_dsprintf(*error, "Cannot create client socket: %s.",
-				zbx_strerror_from_system(WSAGetLastError()));
-		goto out;
-	}
-
 	memset(&addr, 0, sizeof(addr));
 	addr.sin_family = AF_INET;
-	addr.sin_port = htons(port);
 	addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
 #else
 	if (-1 == (csocket->fd = socket(AF_UNIX, SOCK_STREAM, 0)))
@@ -1324,13 +1310,46 @@ int	zbx_ipc_socket_open(zbx_ipc_socket_t *csocket, const char *service_name, int
 
 	start = time(NULL);
 
-	while (0 != connect(csocket->fd, (struct sockaddr*)&addr, sizeof(addr)))
+	while (1)
 	{
+#ifdef _WINDOWS
+		/* Winsock refuses a second connect() on a socket whose first attempt
+		   failed, so every attempt starts from a fresh one. */
+		if (-1 == (csocket->fd = (int)socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)))
+		{
+			*error = zbx_dsprintf(*error, "Cannot create client socket: %s.",
+					zbx_strerror_from_system(WSAGetLastError()));
+			goto out;
+		}
+
+		/* A service publishes its port once it is listening. Until then there is
+		   nothing to connect to, which is the state the POSIX build sees as a
+		   socket file that has not been created yet - so wait, rather than
+		   deciding the service will never arrive. */
+		if (0 != (port = ipc_endpoint_find(socket_path)))
+		{
+			addr.sin_port = htons(port);
+
+			if (0 == connect(csocket->fd, (struct sockaddr *)&addr, sizeof(addr)))
+				break;
+		}
+
+		ipc_socket_close_fd(csocket->fd);
+		csocket->fd = -1;
+#else
+		if (0 == connect(csocket->fd, (struct sockaddr *)&addr, sizeof(addr)))
+			break;
+#endif
 		if (0 == timeout || time(NULL) - start > timeout)
 		{
+#ifdef _WINDOWS
+			*error = zbx_dsprintf(*error, "Cannot connect to service \"%s\": it did not start"
+					" listening within %d seconds.", service_name, timeout);
+#else
 			*error = zbx_dsprintf(*error, "Cannot connect to service \"%s\": %s.", service_name,
 					zbx_strerror(errno));
 			ipc_socket_close_fd(csocket->fd);
+#endif
 			goto out;
 		}
 
