@@ -1,0 +1,69 @@
+name: Windows proxy build
+
+on:
+  push:
+    branches:
+      - "feature/windows-proxy"
+  pull_request:
+    branches:
+      - "feature/windows-proxy"
+  workflow_dispatch:
+
+jobs:
+
+  build:
+    name: zabbix_proxy.exe (x64, MSVC)
+    runs-on: windows-latest
+
+    env:
+      VCPKG_TRIPLET: x64-windows-static
+      # Cache built ports in the Actions cache, otherwise OpenSSL and curl are
+      # rebuilt from source on every run.
+      VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Export GitHub Actions cache credentials for vcpkg
+        uses: actions/github-script@v7
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+
+      - name: Install third-party libraries
+        shell: cmd
+        run: |
+          "%VCPKG_INSTALLATION_ROOT%\vcpkg" install ^
+            --triplet %VCPKG_TRIPLET% ^
+            --x-manifest-root=build/win32 ^
+            --x-install-root=%GITHUB_WORKSPACE%\vcpkg_installed
+          if errorlevel 1 exit /b 1
+
+      - name: Build
+        shell: cmd
+        run: |
+          for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set VSPATH=%%i
+          call "%VSPATH%\VC\Auxiliary\Build\vcvars64.bat"
+          set VCPKG=%GITHUB_WORKSPACE%\vcpkg_installed\%VCPKG_TRIPLET%
+          cd build\win32\project
+          rem /K keeps going after a failed source file, so one run reports every
+          rem compilation error instead of stopping at the first.
+          nmake /K /f Makefile_proxy ^
+            TLS=openssl ^
+            TLSINCDIR=%VCPKG%\include TLSLIBDIR=%VCPKG%\lib ^
+            PCRE2INCDIR=%VCPKG%\include PCRE2LIBDIR=%VCPKG%\lib ^
+            SQLITE3INCDIR=%VCPKG%\include SQLITE3LIBDIR=%VCPKG%\lib ^
+            LIBEVENTINCDIR=%VCPKG%\include LIBEVENTLIBDIR=%VCPKG%\lib ^
+            CURLINCDIR=%VCPKG%\include CURLLIBDIR=%VCPKG%\lib ^
+            ZLIBINCDIR=%VCPKG%\include ZLIBLIBDIR=%VCPKG%\lib
+
+      - name: Upload binary
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zabbix_proxy-x64
+          path: |
+            bin/win64/zabbix_proxy.exe
+            bin/win64/zabbix_proxy.pdb
+          if-no-files-found: error
