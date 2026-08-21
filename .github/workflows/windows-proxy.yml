@@ -25,7 +25,7 @@ jobs:
       # the whole run. Cache the installed tree on the manifest instead.
       - name: Restore third-party libraries
         id: cache-vcpkg
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: vcpkg_installed
           key: vcpkg-${{ env.VCPKG_TRIPLET }}-${{ hashFiles('build/win32/vcpkg.json') }}
@@ -39,6 +39,16 @@ jobs:
             --x-manifest-root=build/win32 ^
             --x-install-root=%GITHUB_WORKSPACE%\vcpkg_installed
           if errorlevel 1 exit /b 1
+
+      # Save before building. The combined cache action skips its save step
+      # when the job fails, and a failing build is exactly the case where the
+      # ten minutes spent on dependencies must not be paid again.
+      - name: Save third-party libraries
+        if: steps.cache-vcpkg.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: vcpkg_installed
+          key: vcpkg-${{ env.VCPKG_TRIPLET }}-${{ hashFiles('build/win32/vcpkg.json') }}
 
       - name: List installed libraries
         shell: cmd

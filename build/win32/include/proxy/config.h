@@ -102,6 +102,13 @@
 /* Define to 1 if you have the <stdint.h> header file. */
 #define HAVE_STDINT_H 1
 
+/* Define to 1 if you have the <float.h> header file. Trend prediction needs
+   DBL_MAX from it. */
+#define HAVE_FLOAT_H 1
+
+/* MSVC only declares M_PI and friends when this is set before <math.h>. */
+#define _USE_MATH_DEFINES 1
+
 /* --- proxy-specific --------------------------------------------------------*/
 
 /* The proxy stores its buffer in an embedded SQLite database. MySQL and       */
