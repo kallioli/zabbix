@@ -22,7 +22,7 @@
 
 #define ZBX_SELFMON_DELAY		1
 
-#ifndef _WINDOWS
+/* the implementation is plain C over shared memory and a mutex */
 #include "zbxthreads.h"
 #include "zbxstats.h"
 
@@ -35,6 +35,5 @@ void	zbx_get_selfmon_stats(unsigned char proc_type, unsigned char aggr_func, int
 		double *value);
 int	zbx_get_all_process_stats(zbx_process_info_t *stats);
 void	zbx_sleep_loop(const zbx_thread_info_t *info, int sleeptime);
-#endif
 
 #endif	/* ZABBIX_ZBXSELF_H */

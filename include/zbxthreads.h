@@ -17,6 +17,13 @@
 
 #include "zbxcommon.h"
 
+/* the order workers are asked to stop in, on either platform */
+#define ZBX_THREAD_PRIORITY_NONE	0
+#define ZBX_THREAD_PRIORITY_COLLECTOR	1
+#define ZBX_THREAD_PRIORITY_SYNCER	2
+#define ZBX_THREAD_PRIORITY_WORKER	3
+#define ZBX_THREAD_PRIORITY_COUNT	4
+
 #if defined(_WINDOWS) || defined(__MINGW32__)
 	/* the ZBXEndThread function is implemented in service.c file */
 	void	CALLBACK ZBXEndThread(ULONG_PTR dwParam);
@@ -25,8 +32,6 @@
 
 	#define ZBX_THREAD_HANDLE		HANDLE
 	#define ZBX_THREAD_HANDLE_NULL		NULL
-
-	#define ZBX_THREAD_PRIORITY_NONE	0
 
 	#define ZBX_THREAD_ENTRY_POINTER(pointer_name)		\
 		unsigned (__stdcall *pointer_name)(void *)
@@ -53,11 +58,6 @@
 	#define ZBX_THREAD_HANDLE		pid_t
 	#define ZBX_THREAD_HANDLE_NULL		0
 
-	#define ZBX_THREAD_PRIORITY_NONE	0
-	#define ZBX_THREAD_PRIORITY_COLLECTOR	1
-	#define ZBX_THREAD_PRIORITY_SYNCER	2
-	#define ZBX_THREAD_PRIORITY_WORKER	3
-	#define ZBX_THREAD_PRIORITY_COUNT	4
 
 	#define ZBX_THREAD_ENTRY_POINTER(pointer_name)	\
 		unsigned (* pointer_name)(void *)
