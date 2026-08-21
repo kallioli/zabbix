@@ -445,6 +445,13 @@
 typedef int	mode_t;
 #	endif
 
+/* runtime control identifies a target by process id; the guard is the one the
+   MSVC headers use, so whichever declaration comes first wins */
+#	ifndef _PID_T_
+#		define _PID_T_
+typedef int	pid_t;
+#	endif
+
 /* the worker pools of the discoverer, the asynchronous pollers and the
  * preprocessing manager synchronise with POSIX threads directly */
 #	include "zbxwinpthread.h"
