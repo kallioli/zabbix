@@ -29,6 +29,62 @@ typedef HANDLE zbx_mutex_t;
 
 #	define zbx_mutex_lock(mutex)		__zbx_mutex_lock(__FILE__, __LINE__, mutex)
 #	define zbx_mutex_unlock(mutex)		__zbx_mutex_unlock(__FILE__, __LINE__, mutex)
+
+/* Read-write locks, which the configuration and value caches of the proxy
+ * need. Elsewhere these are process-shared pthread locks; here every Zabbix
+ * worker is a thread of one process, so a slim reader/writer lock covers the
+ * same ground. The handle stays a pointer, so ZBX_RWLOCK_NULL keeps meaning
+ * "no lock" for the callers that test it. */
+typedef enum
+{
+	ZBX_RWLOCK_CONFIG = 0,
+	ZBX_RWLOCK_CONFIG_HISTORY,
+	ZBX_RWLOCK_VALUECACHE,
+	ZBX_RWLOCK_COUNT,
+}
+zbx_rwlock_name_t;
+
+#	define ZBX_RWLOCK_NULL			NULL
+
+typedef struct zbx_win_rwlock	*zbx_rwlock_t;
+
+#	define zbx_rwlock_wrlock(rwlock)				\
+									\
+	do								\
+	{								\
+		zbx_prof_start(__func__, ZBX_PROF_RWLOCK);		\
+		__zbx_rwlock_wrlock(__FILE__, __LINE__, rwlock);	\
+		zbx_prof_end_wait();					\
+	}								\
+	while (0)
+
+#	define zbx_rwlock_rdlock(rwlock)				\
+									\
+	do								\
+	{								\
+		zbx_prof_start(__func__, ZBX_PROF_RWLOCK);		\
+		__zbx_rwlock_rdlock(__FILE__, __LINE__, rwlock);	\
+		zbx_prof_end_wait();					\
+	}								\
+	while (0)
+
+#	define zbx_rwlock_unlock(rwlock)				\
+									\
+	do								\
+	{								\
+		__zbx_rwlock_unlock(__FILE__, __LINE__, rwlock);	\
+		zbx_prof_end();						\
+	}								\
+	while (0)
+
+void		__zbx_rwlock_wrlock(const char *filename, int line, zbx_rwlock_t rwlock);
+void		__zbx_rwlock_rdlock(const char *filename, int line, zbx_rwlock_t rwlock);
+void		__zbx_rwlock_unlock(const char *filename, int line, zbx_rwlock_t rwlock);
+void		zbx_rwlock_destroy(zbx_rwlock_t *rwlock);
+int		zbx_rwlock_create(zbx_rwlock_t *rwlock, zbx_rwlock_name_t name, char **error);
+zbx_rwlock_t	zbx_rwlock_addr_get(zbx_rwlock_name_t rwlock_name);
+void		zbx_locks_disable(void);
+void		zbx_locks_enable(void);
 #else	/* not _WINDOWS */
 typedef enum
 {

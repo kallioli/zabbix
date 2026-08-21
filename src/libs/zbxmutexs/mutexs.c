@@ -581,3 +581,104 @@ zbx_mutex_name_t	zbx_mutex_create_per_process_name(const zbx_mutex_name_t prefix
 	return name;
 }
 #endif
+
+#ifdef _WINDOWS
+/* Read-write locks.
+ *
+ * Elsewhere these are process-shared pthread locks living in a shared memory
+ * segment. On Windows every Zabbix worker is a thread of one process, so a
+ * plain slim reader/writer lock in static storage covers the same ground.
+ * SRWLOCK_INIT is all zeroes, which static storage already is, so the table
+ * needs no initialisation.
+ *
+ * SRWLOCK is used directly rather than through the POSIX subset in
+ * src/libs/zbxwin, because this translation unit is also linked into the
+ * agent, which does not build that library.
+ */
+
+struct zbx_win_rwlock
+{
+	SRWLOCK		lock;
+	/* Windows releases the shared and the exclusive mode with different
+	   calls and cannot be asked which is held, so the mode is recorded.
+	   One flag is enough: an exclusive holder excludes every other. */
+	volatile LONG	exclusive;
+};
+
+static struct zbx_win_rwlock	rwlocks[ZBX_RWLOCK_COUNT];
+
+int	zbx_rwlock_create(zbx_rwlock_t *rwlock, zbx_rwlock_name_t name, char **error)
+{
+	ZBX_UNUSED(error);
+
+	*rwlock = &rwlocks[name];
+
+	return SUCCEED;
+}
+
+zbx_rwlock_t	zbx_rwlock_addr_get(zbx_rwlock_name_t rwlock_name)
+{
+	return &rwlocks[rwlock_name];
+}
+
+void	__zbx_rwlock_wrlock(const char *filename, int line, zbx_rwlock_t rwlock)
+{
+	ZBX_UNUSED(filename);
+	ZBX_UNUSED(line);
+
+	if (ZBX_RWLOCK_NULL == rwlock)
+		return;
+
+	AcquireSRWLockExclusive(&rwlock->lock);
+	InterlockedExchange(&rwlock->exclusive, 1);
+}
+
+void	__zbx_rwlock_rdlock(const char *filename, int line, zbx_rwlock_t rwlock)
+{
+	ZBX_UNUSED(filename);
+	ZBX_UNUSED(line);
+
+	if (ZBX_RWLOCK_NULL == rwlock)
+		return;
+
+	AcquireSRWLockShared(&rwlock->lock);
+}
+
+void	__zbx_rwlock_unlock(const char *filename, int line, zbx_rwlock_t rwlock)
+{
+	ZBX_UNUSED(filename);
+	ZBX_UNUSED(line);
+
+	if (ZBX_RWLOCK_NULL == rwlock)
+		return;
+
+	/* clear the flag while the exclusive hold still keeps everyone else out */
+	if (0 != InterlockedCompareExchange(&rwlock->exclusive, 0, 1))
+		ReleaseSRWLockExclusive(&rwlock->lock);
+	else
+		ReleaseSRWLockShared(&rwlock->lock);
+}
+
+void	zbx_rwlock_destroy(zbx_rwlock_t *rwlock)
+{
+	/* a slim reader/writer lock holds no resource to release */
+	*rwlock = ZBX_RWLOCK_NULL;
+}
+
+/******************************************************************************
+ *                                                                            *
+ * Purpose: suspend and resume locking                                        *
+ *                                                                            *
+ * Comments: the Unix implementation uses this after fork(), where a child     *
+ *           may inherit a lock held by another thread of the parent. There    *
+ *           is no fork here, so there is nothing to suspend.                  *
+ *                                                                            *
+ ******************************************************************************/
+void	zbx_locks_disable(void)
+{
+}
+
+void	zbx_locks_enable(void)
+{
+}
+#endif	/* _WINDOWS */
