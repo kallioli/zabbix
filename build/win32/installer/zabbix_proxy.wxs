@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Copyright (C) 2001-2026 Zabbix SIA
+
+  This program is free software: you can redistribute it and/or modify it under
+  the terms of the GNU Affero General Public License as published by the Free
+  Software Foundation, version 3.
+
+  Installer for the Windows Zabbix proxy. Build it with WiX v5:
+
+      wix build zabbix_proxy.wxs -ext WixToolset.Util.wixext ^
+          -d Version=7.4.13 -d BinDir=..\..\..\bin\win64 -d ConfDir=..\..\..\conf ^
+          -arch x64 -o zabbix_proxy-7.4.13-x64.msi
+
+  Silent install, with the proxy configured in one go:
+
+      msiexec /i zabbix_proxy-7.4.13-x64.msi /qn ^
+          SERVER=zabbix.example.com HOSTNAME=proxy-paris
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui"
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
+
+  <Package Name="Zabbix Proxy"
+           Manufacturer="Zabbix SIA"
+           Version="$(Version)"
+           UpgradeCode="7f3a1c46-0b52-4f8e-9a71-2d6c9e4b8a10"
+           Scope="perMachine"
+           Compressed="yes">
+
+    <MajorUpgrade DowngradeErrorMessage="A newer version of Zabbix Proxy is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <Icon Id="ProxyIcon" SourceFile="$(BinDir)\zabbix_proxy.exe" />
+    <Property Id="ARPPRODUCTICON" Value="ProxyIcon" />
+    <Property Id="ARPURLINFOABOUT" Value="https://www.zabbix.com" />
+
+    <!-- Answered at install time; see GenerateConfig below. -->
+    <Property Id="SERVER" Value="127.0.0.1" />
+    <Property Id="HOSTNAME" Value="[ComputerName]" />
+    <Property Id="LISTENPORT" Value="10051" />
+    <Property Id="SERVICESTART" Value="auto" />
+
+    <Launch Condition="VersionNT64" Message="The Zabbix proxy is 64-bit and needs a 64-bit edition of Windows." />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="Zabbix Proxy" />
+    </StandardDirectory>
+
+    <Feature Id="Main" Title="Zabbix Proxy" Level="1">
+      <ComponentGroupRef Id="ProxyFiles" />
+      <ComponentRef Id="ProxyService" />
+      <ComponentRef Id="DataFolders" />
+    </Feature>
+
+    <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
+    <WixVariable Id="WixUILicenseRtf" Value="license.rtf" />
+  </Package>
+
+  <Fragment>
+    <ComponentGroup Id="ProxyFiles" Directory="INSTALLFOLDER">
+      <Component Id="ProxyExe" Guid="1c2f5a90-84d7-4e63-9b2a-5f0e7c318d24">
+        <File Id="zabbix_proxy.exe" Source="$(BinDir)\zabbix_proxy.exe" KeyPath="yes" />
+      </Component>
+
+      <!-- The documented sample. It is reference material, so an upgrade
+           refreshes it; the live configuration next to it is left alone. -->
+      <Component Id="ProxyConfSample" Guid="4e91b7d3-2a08-4c15-8f6b-91d0c4a7e532">
+        <File Id="zabbix_proxy.conf.example" Name="zabbix_proxy.conf.example"
+              Source="$(ConfDir)\zabbix_proxy.win.conf" KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+
+    <!-- The log and the SQLite buffer live under ProgramData rather than in
+         Program Files, which a service account should not be writing to. -->
+    <StandardDirectory Id="CommonAppDataFolder">
+      <Directory Id="DataFolder" Name="Zabbix Proxy" />
+    </StandardDirectory>
+
+    <Component Id="DataFolders" Directory="DataFolder"
+               Guid="9d4c1e68-7b35-4a02-83f1-6c5e2b90af47">
+      <CreateFolder />
+      <RegistryValue Root="HKLM" Key="Software\Zabbix\Zabbix Proxy" Name="DataPath"
+                     Type="string" Value="[DataFolder]" KeyPath="yes" />
+      <RemoveFolder Id="RemoveDataFolder" On="uninstall" />
+    </Component>
+
+    <Component Id="ProxyService" Directory="INSTALLFOLDER"
+               Guid="b6021f4a-3c8d-4719-a05e-8f7d264c1b93">
+      <RegistryValue Root="HKLM" Key="Software\Zabbix\Zabbix Proxy" Name="Installed"
+                     Type="integer" Value="1" KeyPath="yes" />
+
+      <ServiceInstall Id="ProxyServiceInstall"
+                      Name="Zabbix Proxy"
+                      DisplayName="Zabbix Proxy"
+                      Description="Collects monitoring data and forwards it to a Zabbix server."
+                      Type="ownProcess"
+                      Start="auto"
+                      ErrorControl="normal"
+                      Account="NT AUTHORITY\LocalService"
+                      Arguments="-c &quot;[INSTALLFOLDER]zabbix_proxy.conf&quot;"
+                      Vital="yes">
+        <util:ServiceConfig FirstFailureActionType="restart"
+                            SecondFailureActionType="restart"
+                            ThirdFailureActionType="none"
+                            RestartServiceDelayInSeconds="60" />
+      </ServiceInstall>
+
+      <ServiceControl Id="ProxyServiceControl"
+                      Name="Zabbix Proxy"
+                      Start="install"
+                      Stop="both"
+                      Remove="uninstall"
+                      Wait="yes" />
+    </Component>
+  </Fragment>
+
+  <Fragment>
+    <!--
+      The configuration is written once, at first install, from the properties
+      above. Upgrades find the file present and leave it untouched, so local
+      edits survive. Everything else stays in the sample next to it.
+    -->
+    <SetProperty Id="GenerateConfig"
+                 Before="GenerateConfig"
+                 Sequence="execute"
+                 Value="&quot;[System64Folder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command &quot;$p='[INSTALLFOLDER]zabbix_proxy.conf'; if (-not (Test-Path -LiteralPath $p)) { @('# Written by the Zabbix Proxy installer. Edit freely: upgrades keep this file.','# The full list of options is in zabbix_proxy.conf.example next to it.','','ProxyMode=0','Server=[SERVER]','Hostname=[HOSTNAME]','ListenPort=[LISTENPORT]','DBName=[DataFolder]zabbix_proxy.db','LogType=file','LogFile=[DataFolder]zabbix_proxy.log','LogFileSize=10') | Set-Content -LiteralPath $p -Encoding ASCII }&quot;" />
+
+    <CustomAction Id="GenerateConfig"
+                  BinaryRef="Wix4UtilCA_X64"
+                  DllEntry="WixQuietExec64"
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="check" />
+
+    <InstallExecuteSequence>
+      <!-- After the files are laid down, before the service is started. -->
+      <Custom Action="GenerateConfig" After="InstallFiles" Condition="NOT REMOVE" />
+    </InstallExecuteSequence>
+  </Fragment>
+</Wix>

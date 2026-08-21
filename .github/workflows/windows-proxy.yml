@@ -17,6 +17,7 @@ jobs:
 
     env:
       VCPKG_TRIPLET: x64-windows-static
+      ZBX_VERSION: 7.4.13
 
     steps:
       - uses: actions/checkout@v4
@@ -81,6 +82,32 @@ jobs:
             LIBEVENTINCDIR=%VCPKG%\include LIBEVENTLIBDIR=%VCPKG%\lib ^
             CURLINCDIR=%VCPKG%\include CURLLIBDIR=%VCPKG%\lib ^
             ZLIBINCDIR=%VCPKG%\include ZLIBLIBDIR=%VCPKG%\lib
+
+      - name: Build the installer
+        shell: cmd
+        run: |
+          dotnet tool install --global wix --version 5.*
+          if errorlevel 1 exit /b 1
+          wix extension add -g WixToolset.Util.wixext/5.*
+          wix extension add -g WixToolset.UI.wixext/5.*
+          cd build\win32\installer
+          python make_license_rtf.py ..\..\..\COPYING license.rtf
+          wix build zabbix_proxy.wxs ^
+            -ext WixToolset.Util.wixext ^
+            -ext WixToolset.UI.wixext ^
+            -arch x64 ^
+            -d Version=%ZBX_VERSION% ^
+            -d BinDir=..\..\..\bin\win64 ^
+            -d ConfDir=..\..\..\conf ^
+            -o ..\..\..\bin\win64\zabbix_proxy-%ZBX_VERSION%-x64.msi
+
+      - name: Upload installer
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zabbix_proxy-msi
+          path: bin/win64/*.msi
+          if-no-files-found: error
 
       - name: Upload binary
         if: success()
