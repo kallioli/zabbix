@@ -455,6 +455,16 @@ typedef int	pid_t;
 /* the worker pools of the discoverer, the asynchronous pollers and the
  * preprocessing manager synchronise with POSIX threads directly */
 #	include "zbxwinpthread.h"
+
+/* MSVC spells the reentrant tokeniser differently, with the same signature */
+#	define strtok_r	strtok_s
+
+/* implemented in src/libs/zbxwin/posix_win.c */
+struct timeval;
+int		nanosleep(const struct timespec *req, struct timespec *rem);
+unsigned int	sleep(unsigned int seconds);
+int		gettimeofday(struct timeval *tv, void *tz);
+char		*strptime(const char *s, const char *format, struct tm *tm);
 #endif
 
 #endif

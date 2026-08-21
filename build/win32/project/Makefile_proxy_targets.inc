@@ -341,3 +341,7 @@ $(RESOURCE_RES): $(RESOURCE_RC) $(RESOURCE_H) $(DESC_H)
 
 {$(PROJECTDIR)}.c{$(PROJECTDIR)}.o:
 	$(CC) $? /Fo"$@" $(CFLAGS)
+
+{..\..\..\src\libs\zbxsysinfo\win32\perfstat}.c{..\..\..\src\libs\zbxsysinfo\win32\perfstat}.o:
+	$(CC) $? /Fo"$@" $(CFLAGS)
+

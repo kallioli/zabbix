@@ -42,8 +42,5 @@ int	zbx_coredump_disable(void)
 }
 #endif
 
-void	zbx_backtrace(void)
-{
-	zabbix_log(LOG_LEVEL_DEBUG, "backtrace is not available on Windows;"
-			" a minidump is written on an unhandled exception");
-}
+/* zbx_backtrace() is provided by src/libs/zbxwin32/fatal.c, which also
+   installs the unhandled exception filter that writes the minidump */

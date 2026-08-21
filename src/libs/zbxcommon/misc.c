@@ -415,7 +415,32 @@ void	zbx_alarm_flag_clear(void)
 	zbx_timed_out = 0;
 }
 
-#if !defined(_WINDOWS) && !defined(__MINGW32__)
+#if defined(_WINDOWS) || defined(__MINGW32__)
+/******************************************************************************
+ *                                                                            *
+ * Purpose: bound the time a blocking call may take                           *
+ *                                                                            *
+ * Comments: alarm() interrupts a blocking call with a signal, which Windows  *
+ *           has no counterpart for. Callers here fall back on the timeouts   *
+ *           set on the socket itself, so these report that no alarm is       *
+ *           pending rather than pretending one was armed.                    *
+ *                                                                            *
+ ******************************************************************************/
+unsigned int	zbx_alarm_on(unsigned int seconds)
+{
+	ZBX_UNUSED(seconds);
+	zbx_alarm_flag_clear();
+
+	return 0;
+}
+
+unsigned int	zbx_alarm_off(void)
+{
+	zbx_alarm_flag_clear();
+
+	return 0;
+}
+#else
 unsigned int	zbx_alarm_on(unsigned int seconds)
 {
 	zbx_alarm_flag_clear();

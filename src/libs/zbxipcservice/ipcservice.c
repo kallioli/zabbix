@@ -1600,7 +1600,11 @@ int	zbx_ipc_service_init_env(const char *path, char **error)
 
 	ipc_service_init_libevent();
 
+#ifdef _WINDOWS
+	if (0 != evthread_use_windows_threads())
+#else
 	if (0 != evthread_use_pthreads())
+#endif
 	{
 		*error = zbx_strdup(*error, "Cannot initialize libevent threading support");
 		goto out;

@@ -17,7 +17,8 @@
 #include "zbxtimekeeper.h"
 #include "zbxshmem.h"
 
-#ifndef _WINDOWS
+/* self-monitoring is plain C over shared memory and a mutex, both of
+ * which the Windows build now provides */
 #	include "zbxmutexs.h"
 #	include "zbxnix.h"
 #	include "zbxlog.h"
@@ -44,7 +45,6 @@ static zbx_mutex_t	sm_lock = ZBX_MUTEX_NULL;
 static zbx_shmem_info_t	*sm_mem = NULL;
 ZBX_SHMEM_FUNC_IMPL(__sm, sm_mem)
 
-#endif
 
 static void	sm_sync_lock(void *data)
 {
@@ -60,7 +60,8 @@ static void	sm_sync_unlock(void *data)
 	zbx_mutex_unlock(*mutex);
 }
 
-#ifndef _WINDOWS
+/* self-monitoring is plain C over shared memory and a mutex, both of
+ * which the Windows build now provides */
 
 static int	selfmon_is_process_monitored(unsigned char proc_type)
 {
@@ -365,4 +366,3 @@ ZBX_THREAD_ENTRY(zbx_selfmon_thread, args)
 	while (1)
 		zbx_sleep(SEC_PER_MIN);
 }
-#endif

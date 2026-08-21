@@ -674,7 +674,12 @@ int	zbx_shmem_create_min(zbx_shmem_info_t **info, zbx_uint64_t size, const char 
 
 void	zbx_shmem_destroy(zbx_shmem_info_t *info)
 {
+#ifdef _WINDOWS
+	/* the segment is heap here, allocated in zbx_shmem_create_ext() */
+	zbx_free(info->base);
+#else
 	(void)shmdt(info->base);
+#endif
 }
 
 void	*__zbx_shmem_malloc(const char *file, int line, zbx_shmem_info_t *info, const void *old, size_t size)

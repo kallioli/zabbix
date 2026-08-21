@@ -1150,6 +1150,29 @@ static void	zbx_free_config(void)
 	zbx_strarr_free(&config_load_module);
 }
 
+#ifdef _WINDOWS
+/******************************************************************************
+ *                                                                            *
+ * Purpose: releases what MAIN_ZABBIX_ENTRY() allocated                       *
+ *                                                                            *
+ * Comments: the service control handler calls this after ZBX_DO_EXIT(), so   *
+ *           that the workers finish before the service reports itself        *
+ *           stopped. The rest of the teardown happens in zbx_on_exit(), on   *
+ *           the way out of MAIN_ZABBIX_ENTRY().                              *
+ *                                                                            *
+ ******************************************************************************/
+void	zbx_free_service_resources(void)
+{
+	if (NULL != zbx_threads)
+	{
+		zbx_threads_kill_and_wait(zbx_threads, threads_flags, zbx_threads_num, SUCCEED);
+
+		zbx_free(zbx_threads);
+		zbx_free(threads_flags);
+	}
+}
+#endif
+
 static void	zbx_on_exit(int ret, void *on_exit_args)
 {
 	zabbix_log(LOG_LEVEL_DEBUG, "zbx_on_exit() called with ret:%d", ret);

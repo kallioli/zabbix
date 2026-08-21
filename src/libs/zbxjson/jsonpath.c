@@ -2945,7 +2945,7 @@ int	zbx_jsonobj_query(const zbx_jsonobj_t *obj, const char *path, char **output)
 	return zbx_jsonobj_query_ext(obj, NULL, path, output);
 }
 
-#if !defined(_WINDOWS) && !defined(__MINGW32__)
+/* the jsonpath index is guarded by an intra-process mutex */
 /* jsonobject index hashset support */
 
 static zbx_hash_t	jsonobj_index_el_hash(const void *v)
@@ -3190,4 +3190,3 @@ void	zbx_jsonpath_index_free(zbx_jsonpath_index_t *index)
 	zbx_free(index);
 }
 
-#endif

@@ -383,6 +383,7 @@ OBJS = \
 	..\..\..\src\libs\zbxvmware\vmware_vm.o \
 	..\..\..\src\libs\zbxxml\traverse.o \
 	..\..\..\src\libs\zbxxml\xml.o \
+	..\..\..\src\zabbix_proxy\proxy.o \
 	..\..\..\src\zabbix_proxy\autoreg\autoreg_proxy.o \
 	..\..\..\src\zabbix_proxy\cachehistory\cachehistory_proxy.o \
 	..\..\..\src\zabbix_proxy\datasender\datasender.o \
@@ -410,10 +411,14 @@ OBJS = \
 	..\..\..\src\libs\zbxwin\control_win.o \
 	..\..\..\src\libs\zbxwin\shm_win.o \
 	..\..\..\src\libs\zbxwin\pid_win.o \
-	..\..\..\src\libs\zbxwin\pthread_win.o
+	..\..\..\src\libs\zbxwin\pthread_win.o \
+	..\..\..\src\libs\zbxwin\posix_win.o \
+	..\..\..\src\libs\zbxsysinfo\win32\system.o \
+	..\..\..\src\libs\zbxsysinfo\win32\cpu.o \
+	..\..\..\src\libs\zbxsysinfo\win32\perfstat\perfstat.o
 
 LIBS = ws2_32.lib psapi.lib pdh.lib Wldap32.lib advapi32.lib uuid.lib Iphlpapi.lib delayimp.lib \
-	wevtapi.lib shlwapi.lib bcrypt.lib $(LIBS)
+	wevtapi.lib shlwapi.lib bcrypt.lib shell32.lib $(LIBS)
 
 !INCLUDE Makefile_pcre.inc
 !INCLUDE Makefile_tls.inc
