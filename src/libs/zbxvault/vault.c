@@ -189,7 +189,7 @@ int	zbx_vault_token_from_env_get(char **token, char **error)
 	*token = zbx_strdup(NULL, ptr);
 	unsetenv("VAULT_TOKEN");
 #else
-	ZBX_UNUSED(token)
+	ZBX_UNUSED(token);
 	ZBX_UNUSED(error);
 #endif
 	return SUCCEED;

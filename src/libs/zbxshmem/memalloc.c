@@ -551,6 +551,18 @@ int	zbx_shmem_create(zbx_shmem_info_t **info, zbx_uint64_t size, const char *des
 		goto out;
 	}
 
+#ifdef _WINDOWS
+	/* every Zabbix worker is a thread of one process here, so a segment that
+	   has to be visible from all of them is ordinary heap */
+	if (NULL == (base = zbx_malloc(NULL, size)))
+	{
+		*error = zbx_dsprintf(*error, "cannot allocate shared memory of size " ZBX_FS_SIZE_T " for %s",
+				(zbx_fs_size_t)size, descr);
+		goto out;
+	}
+
+	memset(base, 0, size);
+#else
 	if (-1 == (shm_id = shmget(IPC_PRIVATE, size, 0600)))
 	{
 		*error = zbx_dsprintf(*error, "cannot get private shared memory of size " ZBX_FS_SIZE_T " for %s: %s",
@@ -566,6 +578,7 @@ int	zbx_shmem_create(zbx_shmem_info_t **info, zbx_uint64_t size, const char *des
 
 	if (-1 == shmctl(shm_id, IPC_RMID, NULL))
 		zbx_error("cannot mark shared memory %d for destruction: %s", shm_id, zbx_strerror(errno));
+#endif
 
 	ret = SUCCEED;
 

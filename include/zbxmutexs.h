@@ -24,6 +24,21 @@
 #	define ZBX_MUTEX_LOG		zbx_mutex_create_per_process_name(L"ZBX_MUTEX_LOG")
 #	define ZBX_MUTEX_PERFSTAT	zbx_mutex_create_per_process_name(L"ZBX_MUTEX_PERFSTAT")
 
+/* the caches and buffers the proxy keeps; unlike the enum used elsewhere,
+   a Windows mutex is identified by a name scoped to this process */
+#	define ZBX_MUTEX_CACHE			zbx_mutex_create_per_process_name(L"ZBX_MUTEX_CACHE")
+#	define ZBX_MUTEX_TRENDS		zbx_mutex_create_per_process_name(L"ZBX_MUTEX_TRENDS")
+#	define ZBX_MUTEX_CACHE_IDS		zbx_mutex_create_per_process_name(L"ZBX_MUTEX_CACHE_IDS")
+#	define ZBX_MUTEX_SELFMON		zbx_mutex_create_per_process_name(L"ZBX_MUTEX_SELFMON")
+#	define ZBX_MUTEX_VALUECACHE		zbx_mutex_create_per_process_name(L"ZBX_MUTEX_VALUECACHE")
+#	define ZBX_MUTEX_VMWARE		zbx_mutex_create_per_process_name(L"ZBX_MUTEX_VMWARE")
+#	define ZBX_MUTEX_SQLITE3		zbx_mutex_create_per_process_name(L"ZBX_MUTEX_SQLITE3")
+#	define ZBX_MUTEX_PROXY_HISTORY		zbx_mutex_create_per_process_name(L"ZBX_MUTEX_PROXY_HISTORY")
+#	define ZBX_MUTEX_TREND_FUNC		zbx_mutex_create_per_process_name(L"ZBX_MUTEX_TREND_FUNC")
+#	define ZBX_MUTEX_REMOTE_COMMANDS	zbx_mutex_create_per_process_name(L"ZBX_MUTEX_REMOTE_COMMANDS")
+#	define ZBX_MUTEX_PROXY_BUFFER		zbx_mutex_create_per_process_name(L"ZBX_MUTEX_PROXY_BUFFER")
+#	define ZBX_MUTEX_VPS_MONITOR		zbx_mutex_create_per_process_name(L"ZBX_MUTEX_VPS_MONITOR")
+
 typedef wchar_t * zbx_mutex_name_t;
 typedef HANDLE zbx_mutex_t;
 

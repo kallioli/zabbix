@@ -103,7 +103,11 @@ struct zbx_timekeeper
 
 static clock_t	zbx_times(void)
 {
-#if !defined(TIMES_NULL_ARG)
+#if defined(_WINDOWS)
+	/* times() reports elapsed real time in ticks, not consumed CPU time;
+	   the millisecond tick count carries the same meaning */
+	return (clock_t)GetTickCount64();
+#elif !defined(TIMES_NULL_ARG)
 	struct tms	buf;
 
 	return times(&buf);
@@ -221,7 +225,11 @@ zbx_timekeeper_t	*zbx_timekeeper_create_ext(int units_num, zbx_timekeeper_sync_t
 	timekeeper->units_num = units_num;
 	timekeeper->first = 0;
 	timekeeper->count = 0;
+#ifdef _WINDOWS
+	timekeeper->ticks_per_sec = 1000;	/* zbx_times() counts milliseconds */
+#else
 	timekeeper->ticks_per_sec = sysconf(_SC_CLK_TCK);
+#endif
 	timekeeper->ticks_sync = 0;
 
 	if (NULL == sync)

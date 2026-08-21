@@ -9,6 +9,10 @@ Released into the Public Domain by Ulrich Drepper <drepper@redhat.com>.  */
 /* Nothing to do in HP-UX */
 #elif _AIX
 /* Nothing to do in AIX */
+#elif defined(_WINDOWS)
+/* every architecture Windows supports is little-endian */
+#	define __LITTLE_ENDIAN	1234
+#	define __BYTE_ORDER	__LITTLE_ENDIAN
 #else
 	#if defined(ZBX_OLD_SOLARIS)
 		#include <sys/isa_defs.h>

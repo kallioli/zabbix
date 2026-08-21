@@ -109,6 +109,11 @@
 /* MSVC only declares M_PI and friends when this is set before <math.h>. */
 #define _USE_MATH_DEFINES 1
 
+/* MSVC supports variadic macros; without this the fallback definition of
+   THIS_SHOULD_NEVER_HAPPEN_MSG expands into two statements and breaks the
+   if/else around its callers. */
+#define HAVE___VA_ARGS__ 1
+
 /* --- proxy-specific --------------------------------------------------------*/
 
 /* The proxy stores its buffer in an embedded SQLite database. MySQL and       */
