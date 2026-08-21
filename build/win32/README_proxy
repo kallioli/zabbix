@@ -71,3 +71,64 @@ platform-independent sources include the right one without modification.
 
 Linking goes through a response file because the proxy links over 350 objects,
 which does not fit on a command line.
+
+Packaging
+---------
+
+build\win32\installer builds an MSI with WiX v5:
+
+    dotnet tool install --global wix --version 5.0.2
+    wix extension add -g WixToolset.Util.wixext/5.0.2
+    wix extension add -g WixToolset.UI.wixext/5.0.2
+
+    cd build\win32\installer
+    python make_license_rtf.py ..\..\..\COPYING license.rtf
+    wix build zabbix_proxy.wxs ^
+        -ext WixToolset.Util.wixext -ext WixToolset.UI.wixext -arch x64 ^
+        -d Version=7.4.13 -d BinDir=..\..\..\bin\win64 -d ConfDir=..\..\..\conf ^
+        -o zabbix_proxy-7.4.13-x64.msi
+
+The extensions have to match the toolset version: an unqualified name resolves
+to the 7 series, which a v5 build cannot load.
+
+Installing
+----------
+
+    msiexec /i zabbix_proxy-7.4.13-x64.msi SERVER=zabbix.example.com HOSTNAME=proxy-paris
+
+Add /qn for an unattended install. The package lays the binary and the
+documented sample down in "%ProgramFiles%\Zabbix Proxy", registers the service
+under LocalService, and starts it.
+
+zabbix_proxy.conf is written on first install from SERVER, HOSTNAME and
+LISTENPORT. An upgrade leaves it alone, so local edits survive; only
+zabbix_proxy.conf.example beside it is refreshed. The log and the SQLite buffer
+go to "%ProgramData%\Zabbix Proxy", which the service account may write to.
+
+Running without the installer
+-----------------------------
+
+    zabbix_proxy.exe -c <config> -f          run in the console
+    zabbix_proxy.exe -c <config> -i          install the service
+    zabbix_proxy.exe -c <config> -s          start it
+    zabbix_proxy.exe -c <config> -x          stop it
+    zabbix_proxy.exe -c <config> -d          remove it
+
+Installing, starting or stopping the service needs an elevated prompt.
+
+Unlike the agent, -R works on Windows: runtime control travels over the IPC
+service rather than through signals.
+
+How the port works
+------------------
+
+Every Zabbix worker that forks on Unix is a thread here, which is what
+zbx_thread_start() already did for the agent. Two consequences shape the port:
+
+  * Shared memory is ordinary heap memory, since the workers share an address
+    space. src\libs\zbxwin replaces src\libs\zbxnix accordingly, behind the same
+    interface, so no caller changes.
+
+  * The IPC service cannot use AF_UNIX. It binds loopback sockets instead and
+    keeps a service-name-to-port table in the process, so nothing is exposed
+    outside it and no socket files are left behind.
