@@ -37,9 +37,8 @@
 
     <!-- Answered at install time; see GenerateConfig below. -->
     <Property Id="SERVER" Value="127.0.0.1" />
-    <Property Id="HOSTNAME" Value="[ComputerName]" />
+    <Property Id="HOSTNAME" />
     <Property Id="LISTENPORT" Value="10051" />
-    <Property Id="SERVICESTART" Value="auto" />
 
     <Launch Condition="VersionNT64" Message="The Zabbix proxy is 64-bit and needs a 64-bit edition of Windows." />
 
@@ -52,6 +51,31 @@
       <ComponentRef Id="ProxyService" />
       <ComponentRef Id="DataFolders" />
     </Feature>
+
+    <SetProperty Id="HOSTNAME" Value="[ComputerName]" Before="CostFinalize"
+                 Sequence="both" Condition="NOT HOSTNAME" />
+
+    <!--
+      The configuration is written once, at first install, from the properties
+      above. Upgrades find the file present and leave it untouched, so local
+      edits survive. Everything else stays in the sample next to it.
+    -->
+    <SetProperty Id="GenerateConfig"
+                 Before="GenerateConfig"
+                 Sequence="execute"
+                 Value="&quot;[System64Folder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command &quot;$p='[INSTALLFOLDER]zabbix_proxy.conf'; if (-not (Test-Path -LiteralPath $p)) { @('# Written by the Zabbix Proxy installer. Edit freely: upgrades keep this file.','# The full list of options is in zabbix_proxy.conf.example next to it.','','ProxyMode=0','Server=[SERVER]','Hostname=[HOSTNAME]','ListenPort=[LISTENPORT]','DBName=[DataFolder]zabbix_proxy.db','LogType=file','LogFile=[DataFolder]zabbix_proxy.log','LogFileSize=10') | Set-Content -LiteralPath $p -Encoding ASCII }&quot;" />
+
+    <CustomAction Id="GenerateConfig"
+                  BinaryRef="Wix4UtilCA_X64"
+                  DllEntry="WixQuietExec64"
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="check" />
+
+    <InstallExecuteSequence>
+      <!-- After the files are laid down, before the service is started. -->
+      <Custom Action="GenerateConfig" After="InstallFiles" Condition="NOT REMOVE" />
+    </InstallExecuteSequence>
 
     <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
     <WixVariable Id="WixUILicenseRtf" Value="license.rtf" />
@@ -115,27 +139,4 @@
     </Component>
   </Fragment>
 
-  <Fragment>
-    <!--
-      The configuration is written once, at first install, from the properties
-      above. Upgrades find the file present and leave it untouched, so local
-      edits survive. Everything else stays in the sample next to it.
-    -->
-    <SetProperty Id="GenerateConfig"
-                 Before="GenerateConfig"
-                 Sequence="execute"
-                 Value="&quot;[System64Folder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command &quot;$p='[INSTALLFOLDER]zabbix_proxy.conf'; if (-not (Test-Path -LiteralPath $p)) { @('# Written by the Zabbix Proxy installer. Edit freely: upgrades keep this file.','# The full list of options is in zabbix_proxy.conf.example next to it.','','ProxyMode=0','Server=[SERVER]','Hostname=[HOSTNAME]','ListenPort=[LISTENPORT]','DBName=[DataFolder]zabbix_proxy.db','LogType=file','LogFile=[DataFolder]zabbix_proxy.log','LogFileSize=10') | Set-Content -LiteralPath $p -Encoding ASCII }&quot;" />
-
-    <CustomAction Id="GenerateConfig"
-                  BinaryRef="Wix4UtilCA_X64"
-                  DllEntry="WixQuietExec64"
-                  Execute="deferred"
-                  Impersonate="no"
-                  Return="check" />
-
-    <InstallExecuteSequence>
-      <!-- After the files are laid down, before the service is started. -->
-      <Custom Action="GenerateConfig" After="InstallFiles" Condition="NOT REMOVE" />
-    </InstallExecuteSequence>
-  </Fragment>
 </Wix>
