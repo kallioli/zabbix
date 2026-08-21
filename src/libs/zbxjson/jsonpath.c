@@ -47,7 +47,7 @@ zbx_jsonobj_index_t;
 ZBX_PTR_VECTOR_DECL(jsonobj_index_ptr, zbx_jsonobj_index_t *)
 ZBX_PTR_VECTOR_IMPL(jsonobj_index_ptr, zbx_jsonobj_index_t *)
 
-#if !defined(_WINDOWS) && !defined(__MINGW32__)
+/* the index and its mutex are intra-process; see zbx_jsonpath_index_create() */
 struct zbx_jsonpath_index
 {
 	zbx_vector_jsonobj_index_ptr_t	indexes;
@@ -57,7 +57,6 @@ struct zbx_jsonpath_index
 static zbx_hashset_t	*jsonpath_index_get(zbx_jsonpath_index_t *index, const zbx_jsonobj_t *obj,
 		zbx_jsonpath_token_t *token);
 
-#endif
 
 static int	jsonpath_query_object(zbx_jsonpath_context_t *ctx, const zbx_jsonobj_t *obj, int path_depth);
 static int	jsonpath_query_array(zbx_jsonpath_context_t *ctx, const zbx_jsonobj_t *array, int path_depth);
