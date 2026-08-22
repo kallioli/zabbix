@@ -403,9 +403,20 @@ def main():
 
     log = workdir / "zabbix_proxy.log"
     if status and log.is_file():
-        print(f"\nlast lines of {log}:", flush=True)
-        for line in log.read_text(encoding="utf-8", errors="replace").splitlines()[-25:]:
-            print("  " + line[:200], flush=True)
+        lines = log.read_text(encoding="utf-8", errors="replace").splitlines()
+        # The tail is usually thread start-up noise. What matters is whatever
+        # the proxy complained about, wherever in the run that happened.
+        trouble = re.compile(r"cannot |failed|fatal|unsupported|not running|"
+                             r"unexpected|Assertion|SHOULD NEVER", re.I)
+        noise = re.compile(r"(In|End of) zbx|error_handler|_error|error=")
+        hits = [l for l in lines if trouble.search(l) and not noise.search(l)]
+        if hits:
+            print(f"\ncomplaints in {log.name}:", flush=True)
+            for line in list(dict.fromkeys(hits))[:20]:
+                print("  " + line[:220], flush=True)
+        print(f"\nlast lines of {log.name}:", flush=True)
+        for line in lines[-15:]:
+            print("  " + line[:220], flush=True)
 
     if args.keep:
         print(f"\nwork directory kept at {workdir}", flush=True)

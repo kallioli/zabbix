@@ -189,7 +189,7 @@ jobs:
           if-no-files-found: error
 
       - name: Upload binary
-        if: success()
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: zabbix_proxy-x64
