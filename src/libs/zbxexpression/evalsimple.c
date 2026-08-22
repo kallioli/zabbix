@@ -45,7 +45,7 @@
  ******************************************************************************/
 
 static const char	*ptr;		/* character being looked at */
-static int		level;		/* expression nesting level  */
+static ZBX_THREAD_LOCAL int	level;			/* expression nesting level  */
 
 /* The caller's error buffer, held across the recursive descent. Several
    workers evaluate at once and they are threads here, so each has to write
