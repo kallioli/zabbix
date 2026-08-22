@@ -42,7 +42,7 @@ HOSTS = {1: (10001, 20001, "win-proxy-selftest"),
          2: (10002, 20002, "win-proxy-selftest-2")}
 
 ITEM_TYPE_SIMPLE, ITEM_TYPE_INTERNAL, ITEM_TYPE_CALCULATED = 3, 5, 15
-ITEM_VALUE_TYPE_FLOAT, ITEM_VALUE_TYPE_UINT64 = 0, 3
+ITEM_VALUE_TYPE_FLOAT, ITEM_VALUE_TYPE_UINT64, ITEM_VALUE_TYPE_TEXT = 0, 3, 4
 ZBX_PREPROC_MULTIPLIER, ZBX_PREPROC_SCRIPT = 1, 21
 
 MACRO = "{$TRAPPER_PORT}"
@@ -103,6 +103,16 @@ CHECKS = [
         # The check reports 1, so seven is the only answer a working step gives.
         "preproc": [(ZBX_PREPROC_MULTIPLIER, "7")],
         "expect": equals(7),
+    },
+    {
+        "itemid": 30006,
+        "proves": "text values, which the history cache stores out of line",
+        "host": 2,
+        "type": ITEM_TYPE_SIMPLE,
+        "key": f"net.tcp.service.perf[tcp,127.0.0.1,{MACRO}]",
+        "value_type": ITEM_VALUE_TYPE_TEXT,
+        "needs_interface": True,
+        "expect": (is_number, "a number, as text"),
     },
     {
         "itemid": 30005,
@@ -347,7 +357,7 @@ DBName={workdir}/proxy.db
 LogType=file
 LogFile={workdir}/zabbix_proxy.log
 LogFileSize=0
-DebugLevel=3
+DebugLevel={debug_level}
 ProxyConfigFrequency=10
 DataSenderFrequency=1
 """
@@ -364,7 +374,8 @@ def main():
     p.add_argument("--server-port", type=int, default=10061)
     p.add_argument("--trapper-port", type=int, default=10051)
     p.add_argument("--keep", action="store_true", help="leave the work directory behind")
-    p.add_argument("--only", help="run only the checks whose description contains this")
+    p.add_argument("--debug-level", type=int, default=3, help="proxy DebugLevel")
+    p.add_argument("--only", help="comma separated; run only checks whose description contains one of these")
     args = p.parse_args()
 
     exe = Path(args.exe)
@@ -376,9 +387,12 @@ def main():
     conf = workdir / "zabbix_proxy.conf"
     conf.write_text(CONFIG.format(server_port=args.server_port,
                                   trapper_port=args.trapper_port,
+                                  debug_level=args.debug_level,
                                   workdir=workdir.as_posix()), encoding="ascii")
 
-    checks = [c for c in CHECKS if not args.only or args.only in c["proves"]]
+    wanted = [w.strip() for w in args.only.split(",")] if args.only else None
+    checks = [c for c in CHECKS
+              if not wanted or any(w in c["proves"] for w in wanted)]
     if not checks:
         print(f"nothing matches --only {args.only!r}", file=sys.stderr)
         return 2

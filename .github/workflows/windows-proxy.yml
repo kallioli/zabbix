@@ -40,6 +40,13 @@ jobs:
           test -x src/zabbix_agent/zabbix_agentd
           src/zabbix_proxy/zabbix_proxy -V | head -1
 
+      # The same harness against the Linux binary. It tells a defect this port
+      # introduced from one that was always there.
+      - name: Collect through a stand-in server
+        run: |
+          python3 build/win32/tests/proxy_selftest.py \
+            --exe src/zabbix_proxy/zabbix_proxy --timeout 120
+
   windows-agent:
     name: Windows agent is not regressed
     runs-on: windows-latest
