@@ -568,7 +568,9 @@ static void	__mem_free(zbx_shmem_info_t *info, void *ptr)
 int	zbx_shmem_create(zbx_shmem_info_t **info, zbx_uint64_t size, const char *descr, const char *param,
 		int allow_oom, char **error)
 {
-	int	shm_id, index, ret = FAIL;
+	/* Windows has no segment id; leaving it uninitialised puts noise in the
+	   start-up log and in the diagnostics that print it. */
+	int	shm_id = 0, index, ret = FAIL;
 	void	*base;
 
 	descr = ZBX_NULL2STR(descr);

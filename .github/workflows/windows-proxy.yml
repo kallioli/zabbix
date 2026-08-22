@@ -166,15 +166,7 @@ jobs:
       # Starting is not collecting. This drives a value the whole way:
       # configuration sync, scheduling, polling, preprocessing, the history
       # cache and the data sender.
-      #
-      # It reports rather than gates for now. The Windows proxy corrupts the
-      # history cache free list under any real item load - the allocator says
-      # so itself since memalloc started checking its links - and the same
-      # configuration is clean on Linux. Until that is fixed this step is
-      # expected to fail, and blocking every build on it would only hide the
-      # build and packaging results behind a known defect.
       - name: Collect through a stand-in server
-        continue-on-error: true
         run: python build/win32/tests/proxy_selftest.py --timeout 120
 
       - name: Build the installer
