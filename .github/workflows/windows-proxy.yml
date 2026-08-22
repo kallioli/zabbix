@@ -134,7 +134,7 @@ jobs:
           set VCPKG=%GITHUB_WORKSPACE%\vcpkg_installed\%VCPKG_TRIPLET%
           cd build\win32\project
           nmake /f Makefile_proxy ^
-            ADD_CFLAGS="/fsanitize=address" ^
+            EXTRA_CFLAGS="/fsanitize=address" ^
             ZBX_REVISION=%GITHUB_SHA:~0,11% ^
             TLS=openssl ^
             TLSINCDIR=%VCPKG%\include TLSLIBDIR=%VCPKG%\lib ^
