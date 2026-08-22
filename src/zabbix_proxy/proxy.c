@@ -232,7 +232,9 @@ static char	shortopts[] =
 /* end of COMMAND LINE OPTIONS */
 
 ZBX_GET_CONFIG_VAR(int, zbx_threads_num, 0)
-ZBX_GET_CONFIG_VAR(pid_t*, zbx_threads, NULL)
+/* Holds what zbx_thread_start() produces, which is a process id on Unix and
+   a handle here. Sized as pid_t it was half the width it needed. */
+ZBX_GET_CONFIG_VAR(ZBX_THREAD_HANDLE*, zbx_threads, NULL)
 
 static int	*threads_flags;
 
@@ -2024,7 +2026,8 @@ int	MAIN_ZABBIX_ENTRY(int flags)
 		zbx_threads_num += config_forks[i];
 	}
 
-	zbx_threads = (pid_t *)zbx_calloc(zbx_threads, (size_t)zbx_threads_num, sizeof(pid_t));
+	zbx_threads = (ZBX_THREAD_HANDLE *)zbx_calloc(zbx_threads, (size_t)zbx_threads_num,
+			sizeof(ZBX_THREAD_HANDLE));
 	threads_flags = (int *)zbx_calloc(threads_flags, (size_t)zbx_threads_num, sizeof(int));
 
 	if (0 != config_forks[ZBX_PROCESS_TYPE_TRAPPER])
