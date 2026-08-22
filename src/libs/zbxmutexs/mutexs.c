@@ -446,7 +446,13 @@ void	__zbx_mutex_lock(const char *filename, int line, zbx_mutex_t mutex)
 #endif
 
 	if (ZBX_MUTEX_NULL == mutex)
+	{
+		/* locking nothing: every caller past this point believes it has
+		   exclusive access and does not */
+		zabbix_log(LOG_LEVEL_CRIT, "[file:'%s',line:%d] lock on a mutex that was never created",
+				filename, line);
 		return;
+	}
 
 #ifdef _WINDOWS
 #ifdef ZABBIX_AGENT
