@@ -21,8 +21,8 @@ LIBS = $(LIBS) "$(CURLLIBDIR)\libcurl-d.lib"
 !		ERROR Please specify directory containing libcurl libraries (e. g. CURLLIBDIR="\somepath\lib").
 !	ENDIF
 
-# Statically linked libcurl pulls these in for SChannel/Winsock/LDAP support.
-LIBS = $(LIBS) crypt32.lib normaliz.lib
+# Statically linked libcurl needs this for its IDN support.
+LIBS = $(LIBS) normaliz.lib
 
 !	IF "$(ZLIBLIBDIR)" != ""
 # zlib 1.3.1 names its static library zs.lib on Windows, so that it does not
