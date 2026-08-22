@@ -210,6 +210,27 @@ static void	mem_link_chunk(zbx_shmem_info_t *info, void *chunk)
 	info->buckets[index] = chunk;
 }
 
+/******************************************************************************
+ *                                                                            *
+ * Purpose: reports a link that does not point inside the segment             *
+ *                                                                            *
+ * Comments: Following one faults with nothing to go on. Saying which segment *
+ *           it was, and what the pointer was, turns an access violation into  *
+ *           something that can be acted on.                                   *
+ *                                                                            *
+ ******************************************************************************/
+static void	mem_check_link(const zbx_shmem_info_t *info, const void *chunk, const void *link,
+		const char *what)
+{
+	if (NULL == link || (link >= info->lo_bound && link < info->hi_bound))
+		return;
+
+	zabbix_log(LOG_LEVEL_CRIT, "corrupted free list in \"%s\": the %s link of chunk %p is %p,"
+			" outside [%p, %p)", info->mem_descr, what, chunk, link, info->lo_bound, info->hi_bound);
+	zbx_backtrace();
+	exit(EXIT_FAILURE);
+}
+
 static void	mem_unlink_chunk(zbx_shmem_info_t *info, void *chunk)
 {
 	int	index;
@@ -220,6 +241,9 @@ static void	mem_unlink_chunk(zbx_shmem_info_t *info, void *chunk)
 
 	prev_chunk = mem_get_prev_chunk(chunk);
 	next_chunk = mem_get_next_chunk(chunk);
+
+	mem_check_link(info, chunk, prev_chunk, "previous");
+	mem_check_link(info, chunk, next_chunk, "next");
 
 	next_in_prev_chunk = mem_ptr_to_next_field(prev_chunk, &info->buckets[index]);
 	prev_in_next_chunk = mem_ptr_to_prev_field(next_chunk);
