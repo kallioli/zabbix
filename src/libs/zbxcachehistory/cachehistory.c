@@ -2922,6 +2922,8 @@ static int	hc_clone_history_data(zbx_hc_data_t **data, const dc_item_value_t *it
 
 		memset(*data, 0, sizeof(zbx_hc_data_t));
 
+		zabbix_log(LOG_LEVEL_TRACE, "hc_clone_history_data() allocated data:%p", (void *)*data);
+
 		(*data)->state = item_value->state;
 		(*data)->ts = item_value->ts;
 		(*data)->flags = item_value->flags;
