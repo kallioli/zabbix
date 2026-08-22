@@ -368,7 +368,11 @@ struct zbx_dc_um_handle_t
 	unsigned char		macro_env;
 };
 
-static zbx_dc_um_handle_t	*dc_um_handle = NULL;
+/* The open user macro handles form a per-worker stack, and the cache they hold
+   is released when the outermost one closes. Workers are threads here, so each
+   needs its own stack: otherwise one worker's close releases a cache another
+   worker is still reading through. */
+static ZBX_THREAD_LOCAL zbx_dc_um_handle_t	*dc_um_handle = NULL;
 
 /******************************************************************************
  *                                                                            *
@@ -16474,8 +16478,8 @@ int	zbx_dc_maintenance_has_tags(void)
  ******************************************************************************/
 static zbx_dc_um_handle_t	*dc_open_user_macros(unsigned char macro_env)
 {
-	zbx_dc_um_handle_t	*handle;
-	static zbx_um_cache_t	*um_cache = NULL;
+	zbx_dc_um_handle_t			*handle;
+	static ZBX_THREAD_LOCAL zbx_um_cache_t	*um_cache = NULL;
 
 	handle = (zbx_dc_um_handle_t *)zbx_malloc(NULL, sizeof(zbx_dc_um_handle_t));
 
