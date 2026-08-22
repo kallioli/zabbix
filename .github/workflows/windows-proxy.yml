@@ -150,7 +150,8 @@ jobs:
         shell: cmd
         run: |
           for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -property installationPath`) do set VSPATH=%%i
-          for /f "delims=" %%d in ('dir /b /s "%VSPATH%\VC\Tools\MSVC\*\bin\Hostx64\x64\clang_rt.asan_dynamic-x86_64.dll" 2^>nul') do copy /y "%%d" bin\win64\ >nul
+          for /f "delims=" %%d in ('dir /b /s "%VSPATH%\clang_rt.asan_dynamic-x86_64.dll" 2^>nul') do copy /y "%%d" bin\win64\ >nul
+          if not exist bin\win64\clang_rt.asan_dynamic-x86_64.dll for /f "delims=" %%d in ('dir /b /s "%ProgramFiles%\clang_rt.asan_dynamic-x86_64.dll" 2^>nul') do copy /y "%%d" bin\win64\ >nul
           dir /b bin\win64\*.dll
 
       - name: Collect through a stand-in server
