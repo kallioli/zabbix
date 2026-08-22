@@ -376,13 +376,6 @@ LogFileSize=0
 DebugLevel={debug_level}
 ProxyConfigFrequency=10
 DataSenderFrequency=1
-StartDBSyncers=1
-StartPreprocessors=1
-StartPollers=1
-StartTrappers=1
-StartDiscoverers=0
-StartHTTPPollers=0
-StartPingers=0
 """
 
 

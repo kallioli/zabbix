@@ -26,12 +26,25 @@
 #if defined(_WINDOWS)
 #	include <strsafe.h>
 
+/* These have to widen the constant, not just pass it through. Without the
+ * suffix the literal stays an int, and a shift such as the one that builds
+ * SHMEM_FLG_USED - (__UINT64_C(1)) << 63 - shifts past the width of its type
+ * and yields zero. The shared memory allocator then cannot tell a used chunk
+ * from a free one. The definitions below match the ones used everywhere else. */
 #	ifndef __UINT64_C
-#		define __UINT64_C(x)	x
+#		ifdef UINT64_C
+#			define __UINT64_C(c)	(UINT64_C(c))
+#		else
+#			define __UINT64_C(c)	(c ## ULL)
+#		endif
 #	endif
 
 #	ifndef __INT64_C
-#		define __INT64_C(x)	x
+#		ifdef INT64_C
+#			define __INT64_C(c)	(INT64_C(c))
+#		else
+#			define __INT64_C(c)	(c ## LL)
+#		endif
 #	endif
 
 #	define zbx_uint64_t	unsigned __int64
