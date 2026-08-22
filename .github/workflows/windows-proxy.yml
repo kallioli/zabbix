@@ -144,6 +144,15 @@ jobs:
             CURLINCDIR=%VCPKG%\include CURLLIBDIR=%VCPKG%\lib ^
             ZLIBINCDIR=%VCPKG%\include ZLIBLIBDIR=%VCPKG%\lib
 
+      # An instrumented binary loads the sanitizer runtime at start-up, and it
+      # does not sit anywhere the loader looks by default.
+      - name: Place the sanitizer runtime beside the binary
+        shell: cmd
+        run: |
+          for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installerswhere.exe" -latest -products * -property installationPath`) do set VSPATH=%%i
+          for /f "delims=" %%d in ('dir /b /s "%VSPATH%\VC\Tools\MSVC\*in\Hostx64d\clang_rt.asan_dynamic-x86_64.dll" 2^>nul') do copy /y "%%d" bin\win64\ >nul
+          dir /b bin\win64\*.dll
+
       - name: Collect through a stand-in server
         run: python build/win32/tests/proxy_selftest.py --timeout 240
 
