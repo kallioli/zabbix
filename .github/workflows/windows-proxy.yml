@@ -77,7 +77,7 @@ jobs:
           set VCPKG=%GITHUB_WORKSPACE%\vcpkg_installed\%VCPKG_TRIPLET%
           cd build\win32\project
           nmake /f Makefile_agent ^
-            ZBX_REVISION=%GITHUB_SHA:~0,11% ^
+            ZBX_REVISION=%GITHUB_SHA:~0,11% ZBX_RC_NUM=0 ^
             TLS=openssl ^
             TLSINCDIR=%VCPKG%\include TLSLIBDIR=%VCPKG%\lib ^
             PCRE2INCDIR=%VCPKG%\include PCRE2LIBDIR=%VCPKG%\lib
