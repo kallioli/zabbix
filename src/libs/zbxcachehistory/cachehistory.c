@@ -2679,6 +2679,9 @@ static int	hc_queue_elem_compare_func(const void *d1, const void *d2)
  ******************************************************************************/
 static void	hc_free_data(zbx_hc_data_t *data)
 {
+	zabbix_log(LOG_LEVEL_TRACE, "hc_free_data() data:%p state:%d value_type:%d flags:%x",
+			(void *)data, (int)data->state, (int)data->value_type, (unsigned int)data->flags);
+
 	if (ITEM_STATE_NOTSUPPORTED == data->state)
 	{
 		__hc_shmem_free_func(data->value.str);
