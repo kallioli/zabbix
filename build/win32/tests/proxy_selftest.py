@@ -453,8 +453,7 @@ def main():
 
     console = workdir / "console.log"
     if status and console.is_file() and console.stat().st_size:
-        print(f"
-what the proxy wrote to its console:", flush=True)
+        print("\nwhat the proxy wrote to its console:", flush=True)
         for line in console.read_text(encoding="utf-8", errors="replace").splitlines()[:60]:
             print("  " + line[:220], flush=True)
 
