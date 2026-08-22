@@ -114,15 +114,31 @@ CHECKS = [
         "needs_interface": True,
         "expect": (is_number, "a number, as text"),
     },
-    {
-        "itemid": 30005,
-        "proves": "the expression evaluator, on a calculated item",
-        "type": ITEM_TYPE_CALCULATED,
-        "key": "selftest.calculated",
-        "params": f"last(//net.tcp.service[tcp,127.0.0.1,{MACRO}]) * 41 + 1",
-        "value_type": ITEM_VALUE_TYPE_UINT64,
-        "expect": equals(42),
-    },
+    # A calculated item was tried here and taken out again. Proxies do not
+    # evaluate them - zbx_is_item_processed_by_server() claims the type for the
+    # server, so a real server never sends one to a proxy, and neither build
+    # produces a value for it.
+    #
+    # Feeding one anyway crashes the Windows proxy: a history syncer faults in
+    # mem_unlink_chunk while flushing another item's value, deterministically
+    # and with a single syncer. The Linux build takes the same configuration
+    # without complaint, so this is the port's own defect and not upstream
+    # behaviour. It needs a debugger rather than another guess, and it is not
+    # on any path a real server can drive. Reproduce with:
+    #
+    #     proxy_selftest.py --only "simple check,expression"
+    #
+    # after restoring the entry below.
+    #
+    # {
+    #     "itemid": 30005,
+    #     "proves": "the expression evaluator, on a calculated item",
+    #     "type": ITEM_TYPE_CALCULATED,
+    #     "key": "selftest.calculated",
+    #     "params": f"last(//net.tcp.service[tcp,127.0.0.1,{MACRO}]) * 41 + 1",
+    #     "value_type": ITEM_VALUE_TYPE_UINT64,
+    #     "expect": equals(42),
+    # },
 ]
 
 
