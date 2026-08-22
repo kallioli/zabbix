@@ -91,6 +91,63 @@ jobs:
           if errorlevel 1 exit /b 1
           ..\..\..\bin\win64\zabbix_agentd.exe -V
 
+  asan:
+    name: zabbix_proxy.exe under AddressSanitizer
+    runs-on: windows-latest
+
+    env:
+      VCPKG_TRIPLET: x64-windows-static
+      ZBX_VERSION: 7.4.13
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore third-party libraries
+        id: cache-vcpkg
+        uses: actions/cache/restore@v4
+        with:
+          path: vcpkg_installed
+          key: vcpkg-${{ env.VCPKG_TRIPLET }}-${{ hashFiles('build/win32/vcpkg.json') }}
+
+      - name: Install third-party libraries
+        if: steps.cache-vcpkg.outputs.cache-hit != 'true'
+        shell: cmd
+        run: |
+          "%VCPKG_INSTALLATION_ROOT%\vcpkg" install ^
+            --triplet %VCPKG_TRIPLET% ^
+            --x-manifest-root=build/win32 ^
+            --x-install-root=%GITHUB_WORKSPACE%\vcpkg_installed
+          if errorlevel 1 exit /b 1
+
+      - name: Generate the database schema source
+        shell: bash
+        run: perl create/bin/gen_schema.pl c > src/libs/zbxdbschema/dbschema.c
+
+      # /fsanitize=address instruments every heap access. The shared memory
+      # segments are plain allocations on this platform, so the caches the port
+      # has been corrupting are covered like anything else.
+      - name: Build
+        shell: cmd
+        run: |
+          for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set VSPATH=%%i
+          call "%VSPATH%\VC\Auxiliary\Build\vcvars64.bat"
+          set VCPKG=%GITHUB_WORKSPACE%\vcpkg_installed\%VCPKG_TRIPLET%
+          cd build\win32\project
+          nmake /f Makefile_proxy ^
+            ADD_CFLAGS="/fsanitize=address" ^
+            ZBX_REVISION=%GITHUB_SHA:~0,11% ^
+            TLS=openssl ^
+            TLSINCDIR=%VCPKG%\include TLSLIBDIR=%VCPKG%\lib ^
+            PCRE2INCDIR=%VCPKG%\include PCRE2LIBDIR=%VCPKG%\lib ^
+            SQLITE3INCDIR=%VCPKG%\include SQLITE3LIBDIR=%VCPKG%\lib ^
+            LIBEVENTINCDIR=%VCPKG%\include LIBEVENTLIBDIR=%VCPKG%\lib ^
+            CURLINCDIR=%VCPKG%\include CURLLIBDIR=%VCPKG%\lib ^
+            ZLIBINCDIR=%VCPKG%\include ZLIBLIBDIR=%VCPKG%\lib
+
+      - name: Collect through a stand-in server
+        run: python build/win32/tests/proxy_selftest.py --timeout 240
+
+
   build:
     name: zabbix_proxy.exe (x64, MSVC)
     runs-on: windows-latest
