@@ -460,6 +460,16 @@ def main():
     log = workdir / "zabbix_proxy.log"
     if status and log.is_file():
         lines = log.read_text(encoding="utf-8", errors="replace").splitlines()
+
+        # An instrumented build reports through stderr, which Zabbix folds into
+        # its log. The report is the whole answer, so print it entire rather
+        # than letting the tail cut its head off.
+        for i, line in enumerate(lines):
+            if "ERROR: AddressSanitizer" in line or "ERROR: LeakSanitizer" in line:
+                print("\nsanitizer report:", flush=True)
+                for l in lines[i:i + 45]:
+                    print("  " + l[:220], flush=True)
+                break
         # The tail is usually thread start-up noise. What matters is whatever
         # the proxy complained about, wherever in the run that happened.
         trouble = re.compile(r"cannot |failed|fatal|unsupported|not running|"
