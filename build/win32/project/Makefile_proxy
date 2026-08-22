@@ -26,16 +26,6 @@ ADD_INCS = /I ..\include\proxy
 # CONDITION_VARIABLE and SRWLOCK, which the worker pools need, are Vista and later
 WIN32_WINNT = 0x0600
 
-# include/version.h carries release-tooling placeholders for these when the tree
-# comes from git rather than from a release tarball, and the version resource
-# does not compile without them. Override on the command line to stamp a build.
-!IF "$(ZBX_REVISION)" == ""
-ZBX_REVISION = 0
-!ENDIF
-!IF "$(ZBX_RC_NUM)" == ""
-ZBX_RC_NUM = 0
-!ENDIF
-
 # The proxy links the "proxy" flavour of the sysinfo library, which automake
 # builds with this metric set (see src/libs/zbxsysinfo/Makefile.am).
 ADD_CFLAGS = $(ADD_CFLAGS) /D WITH_COMMON_METRICS /D WITH_HTTP_METRICS \
@@ -47,14 +37,12 @@ ADD_CFLAGS = $(ADD_CFLAGS) /D WITH_COMMON_METRICS /D WITH_HTTP_METRICS \
 	/D DEFAULT_LOAD_MODULE_PATH="\"C:\\zabbix\\modules\"" \
 	/D DEFAULT_SSL_CERT_LOCATION="\"C:\\zabbix\\ssl\\certs\"" \
 	/D DEFAULT_SSL_KEY_LOCATION="\"C:\\zabbix\\ssl\\keys\"" \
-	/D ZABBIX_VERSION_REVISION=$(ZBX_REVISION) /D ZABBIX_VERSION_RC_NUM=$(ZBX_RC_NUM) \
 	/Fd$(TARGETNAME).$(TARGETEXT).pdb
 
 ADD_LFLAGS = $(ADD_LFLAGS) /DEBUG /OPT:REF /DELAYLOAD:wevtapi.dll
 
 
-ADD_RFLAGS = /d "ZABBIX_PROXY" /d ZABBIX_VERSION_REVISION=$(ZBX_REVISION) \
-	/d ZABBIX_VERSION_RC_NUM=$(ZBX_RC_NUM)
+ADD_RFLAGS = /d "ZABBIX_PROXY"
 
 !INCLUDE Makefile_common.inc
 
