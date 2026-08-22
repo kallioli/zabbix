@@ -156,6 +156,12 @@ jobs:
             CURLINCDIR=%VCPKG%\include CURLLIBDIR=%VCPKG%\lib ^
             ZLIBINCDIR=%VCPKG%\include ZLIBLIBDIR=%VCPKG%\lib
 
+      # Starting is not collecting. This drives a value the whole way:
+      # configuration sync, scheduling, polling, preprocessing, the history
+      # cache and the data sender.
+      - name: Collect through a stand-in server
+        run: python build/win32/tests/proxy_selftest.py --timeout 120
+
       - name: Build the installer
         shell: cmd
         run: |
