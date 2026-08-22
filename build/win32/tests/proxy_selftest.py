@@ -423,8 +423,12 @@ def main():
             threading.Thread(target=srv.serve_forever, daemon=True).start()
             print(f"stand-in server on 127.0.0.1:{args.server_port}", flush=True)
 
+            # Anything the proxy writes to its console - a sanitizer report, a
+            # runtime message, an assertion - is not in its log file, and is
+            # exactly what explains an early exit.
+            console = open(workdir / "console.log", "wb")
             proxy = subprocess.Popen([str(exe), "-f", "-c", str(conf)],
-                                     stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+                                     stdout=console, stderr=subprocess.STDOUT)
             print(f"proxy started, pid {proxy.pid}", flush=True)
 
             deadline = time.monotonic() + args.timeout
@@ -446,6 +450,13 @@ def main():
                 proxy.kill()
 
     status = session.report()
+
+    console = workdir / "console.log"
+    if status and console.is_file() and console.stat().st_size:
+        print(f"
+what the proxy wrote to its console:", flush=True)
+        for line in console.read_text(encoding="utf-8", errors="replace").splitlines()[:60]:
+            print("  " + line[:220], flush=True)
 
     log = workdir / "zabbix_proxy.log"
     if status and log.is_file():
