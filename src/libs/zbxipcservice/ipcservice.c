@@ -1702,6 +1702,7 @@ int	zbx_ipc_service_start(zbx_ipc_service_t *service, const char *service_name, 
 #ifdef _WINDOWS
 	struct sockaddr_in	addr;
 	int			addrlen = (int)sizeof(addr);
+	unsigned short		port;
 #else
 	struct sockaddr_un	addr;
 	mode_t			mode;
@@ -1772,12 +1773,7 @@ int	zbx_ipc_service_start(zbx_ipc_service_t *service, const char *service_name, 
 		goto out;
 	}
 
-	if (SUCCEED != ipc_endpoint_register(socket_path, ntohs(addr.sin_port)))
-	{
-		*error = zbx_dsprintf(*error, "Cannot register service \"%s\": the limit of %d is reached.",
-				service_name, ZBX_IPC_ENDPOINTS_MAX);
-		goto out;
-	}
+	port = ntohs(addr.sin_port);
 #else
 	if (-1 == (service->fd = socket(AF_UNIX, SOCK_STREAM, 0)))
 	{
@@ -1801,6 +1797,18 @@ int	zbx_ipc_service_start(zbx_ipc_service_t *service, const char *service_name, 
 		*error = zbx_dsprintf(*error, "Cannot listen socket: %s.", zbx_strerror(errno));
 		goto out;
 	}
+
+#ifdef _WINDOWS
+	/* Only now: a bound socket that is not listening yet still answers on
+	   loopback, and a client that connected in that window would hold
+	   something that is not a connection. */
+	if (SUCCEED != ipc_endpoint_register(socket_path, port))
+	{
+		*error = zbx_dsprintf(*error, "Cannot register service \"%s\": the limit of %d is reached.",
+				service_name, ZBX_IPC_ENDPOINTS_MAX);
+		goto out;
+	}
+#endif
 
 	service->path = zbx_strdup(NULL, socket_path);
 	zbx_vector_ipc_client_ptr_create(&service->clients);

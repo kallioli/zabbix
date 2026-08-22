@@ -37,9 +37,77 @@ from pathlib import Path
 PROTOCOL, COMPRESS, LARGE = 0x01, 0x02, 0x04
 
 HOSTID, INTERFACEID = 10001, 20001
-ITEM_INTERNAL, ITEM_SIMPLE = 30001, 30002
-ITEM_TYPE_SIMPLE, ITEM_TYPE_INTERNAL = 3, 5
-ITEM_VALUE_TYPE_UINT64 = 3
+
+ITEM_TYPE_SIMPLE, ITEM_TYPE_INTERNAL, ITEM_TYPE_CALCULATED = 3, 5, 15
+ITEM_VALUE_TYPE_FLOAT, ITEM_VALUE_TYPE_UINT64 = 0, 3
+ZBX_PREPROC_MULTIPLIER, ZBX_PREPROC_SCRIPT = 1, 21
+
+MACRO = "{$TRAPPER_PORT}"
+
+
+def is_number(v):
+    try:
+        float(v)
+        return True
+    except (TypeError, ValueError):
+        return False
+
+
+def equals(expected):
+    return (lambda v: is_number(v) and float(v) == expected,
+            f"exactly {expected}")
+
+
+# What the proxy is asked to do, and what each answer would prove. The keys use
+# a user macro so that resolving it is part of what gets tested.
+CHECKS = [
+    {
+        "itemid": 30001,
+        "proves": "internal poller",
+        "type": ITEM_TYPE_INTERNAL,
+        "key": "zabbix[wcache,values]",
+        "value_type": ITEM_VALUE_TYPE_UINT64,
+        "expect": (is_number, "a number"),
+    },
+    {
+        "itemid": 30002,
+        "proves": "simple check poller, and user macro resolution",
+        "type": ITEM_TYPE_SIMPLE,
+        "key": f"net.tcp.service[tcp,127.0.0.1,{MACRO}]",
+        "value_type": ITEM_VALUE_TYPE_UINT64,
+        "needs_interface": True,
+        "expect": equals(1),
+    },
+    {
+        "itemid": 30003,
+        "proves": "JavaScript preprocessing, so the embedded engine works",
+        "type": ITEM_TYPE_SIMPLE,
+        "key": f"net.tcp.service.perf[tcp,127.0.0.1,{MACRO}]",
+        "value_type": ITEM_VALUE_TYPE_UINT64,
+        "needs_interface": True,
+        # Reads the polled value, so a step that never ran cannot pass by luck.
+        "preproc": [(ZBX_PREPROC_SCRIPT, "return value >= 0 ? 42 : -1;")],
+        "expect": equals(42),
+    },
+    {
+        "itemid": 30004,
+        "proves": "multiplier preprocessing",
+        "type": ITEM_TYPE_INTERNAL,
+        "key": "zabbix[wcache,values,pfree]",
+        "value_type": ITEM_VALUE_TYPE_FLOAT,
+        "preproc": [(ZBX_PREPROC_MULTIPLIER, "0")],
+        "expect": equals(0),
+    },
+    {
+        "itemid": 30005,
+        "proves": "the expression evaluator, on a calculated item",
+        "type": ITEM_TYPE_CALCULATED,
+        "key": "selftest.calculated",
+        "params": f"last(//net.tcp.service[tcp,127.0.0.1,{MACRO}]) * 41 + 1",
+        "value_type": ITEM_VALUE_TYPE_UINT64,
+        "expect": equals(42),
+    },
+]
 
 
 # --------------------------------------------------------------- the schema
@@ -93,14 +161,14 @@ def build_config(schema, trapper_port):
     s = schema
     # Sending hosts commits to sending its companions: the proxy refuses the
     # whole payload if one is absent, even empty. It fills in the httptest
-    # family itself.
+    # family itself. hostmacro drags hosts_templates along the same way.
     config = {name: s.table(name, []) for name in
-              ("host_inventory", "interface_snmp", "item_preproc", "item_parameter")}
+              ("host_inventory", "interface_snmp", "item_parameter", "hosts_templates")}
 
     # Each item carries a runtime-data row on the server side. Without one the
     # proxy stores the item but never schedules it.
     config["item_rtdata"] = s.table("item_rtdata",
-                                    [{"itemid": ITEM_INTERNAL}, {"itemid": ITEM_SIMPLE}])
+                                    [{"itemid": c["itemid"]} for c in CHECKS])
 
     config["hosts"] = s.table("hosts", [
         {"hostid": HOSTID, "host": "win-proxy-selftest",
@@ -111,14 +179,28 @@ def build_config(schema, trapper_port):
          "useip": 1, "ip": "127.0.0.1", "dns": "", "port": str(trapper_port),
          "available": 1}])
 
+    # The port reaches the item keys through this, so resolving it is part of
+    # what the run proves.
+    config["hostmacro"] = s.table("hostmacro", [
+        {"hostmacroid": 40001, "hostid": HOSTID, "macro": MACRO,
+         "value": str(trapper_port), "type": 0, "automatic": 0}])
+
     config["items"] = s.table("items", [
-        {"itemid": ITEM_INTERNAL, "hostid": HOSTID, "type": ITEM_TYPE_INTERNAL,
-         "key_": "zabbix[wcache,values]", "delay": "5s", "status": 0,
-         "value_type": ITEM_VALUE_TYPE_UINT64, "history": "1d", "timeout": "3s"},
-        {"itemid": ITEM_SIMPLE, "hostid": HOSTID, "type": ITEM_TYPE_SIMPLE,
-         "key_": f"net.tcp.service[tcp,127.0.0.1,{trapper_port}]", "delay": "5s",
-         "status": 0, "value_type": ITEM_VALUE_TYPE_UINT64, "history": "1d",
-         "interfaceid": INTERFACEID, "timeout": "3s"}])
+        {"itemid": c["itemid"], "hostid": HOSTID, "type": c["type"],
+         "key_": c["key"], "params": c.get("params", ""), "delay": "5s",
+         "status": 0, "value_type": c["value_type"], "history": "1d",
+         "timeout": "3s",
+         "interfaceid": INTERFACEID if c.get("needs_interface") else None}
+        for c in CHECKS])
+
+    preproc = []
+    for c in CHECKS:
+        for step, (ptype, params) in enumerate(c.get("preproc", []), start=1):
+            preproc.append({"item_preprocid": c["itemid"] * 10 + step,
+                            "itemid": c["itemid"], "step": step, "type": ptype,
+                            "params": params, "error_handler": 0,
+                            "error_handler_params": ""})
+    config["item_preproc"] = s.table("item_preproc", preproc)
 
     return config
 
@@ -160,11 +242,12 @@ def send_frame(conn, obj):
 # ---------------------------------------------------------------- the state
 
 class Session:
-    def __init__(self, config, keys):
+    def __init__(self, config, checks):
         self.config = config
-        self.keys = keys
+        self.checks = {c["itemid"]: c for c in checks}
+        self.keys = {c["itemid"]: c["key"] for c in checks}
         self.revision = 1
-        self.values = {itemid: [] for itemid in keys}
+        self.values = {itemid: [] for itemid in self.keys}
         self.configs = 0
         self.datas = 0
         self.lock = threading.Lock()
@@ -195,13 +278,25 @@ class Session:
             return all(self.values[i] for i in self.keys)
 
     def report(self):
-        print(f"\nconfig requests: {self.configs}   data requests: {self.datas}", flush=True)
-        missing = [self.keys[i] for i in self.keys if not self.values[i]]
-        for itemid, key in self.keys.items():
+        print(f"\nconfig requests: {self.configs}   data requests: {self.datas}\n", flush=True)
+        failures = 0
+        for itemid, check in self.checks.items():
             got = self.values[itemid]
-            state = f"{len(got)} value(s), last = {got[-1]}" if got else "nothing collected"
-            print(f"  {'ok  ' if got else 'FAIL'}  {key:42s} {state}", flush=True)
-        return 1 if missing else 0
+            predicate, described = check["expect"]
+            if not got:
+                verdict, detail = "FAIL", f"nothing collected, wanted {described}"
+            elif not predicate(got[-1]):
+                verdict, detail = "FAIL", f"got {got[-1]!r}, wanted {described}"
+            else:
+                verdict, detail = "ok", f"= {got[-1]}"
+            if verdict == "FAIL":
+                failures += 1
+            print(f"  {verdict:4s}  {check['proves']:52s} {detail}", flush=True)
+        if failures:
+            print(f"\n{failures} of {len(self.checks)} checks failed", flush=True)
+        else:
+            print(f"\nall {len(self.checks)} checks passed", flush=True)
+        return 1 if failures else 0
 
 
 class Handler(socketserver.BaseRequestHandler):
@@ -272,12 +367,8 @@ def main():
                                   trapper_port=args.trapper_port,
                                   workdir=workdir.as_posix()), encoding="ascii")
 
-    keys = {
-        ITEM_INTERNAL: "zabbix[wcache,values]",
-        ITEM_SIMPLE: f"net.tcp.service[tcp,127.0.0.1,{args.trapper_port}]",
-    }
     config = build_config(Schema(args.schema), args.trapper_port)
-    session = Session(config, keys)
+    session = Session(config, CHECKS)
 
     proxy = None
     try:
