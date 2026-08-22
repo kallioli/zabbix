@@ -196,4 +196,5 @@ jobs:
           path: |
             bin/win64/zabbix_proxy.exe
             bin/win64/zabbix_proxy.pdb
+            bin/win64/zabbix_proxy.map
           if-no-files-found: error

@@ -36,7 +36,10 @@ from pathlib import Path
 
 PROTOCOL, COMPRESS, LARGE = 0x01, 0x02, 0x04
 
-HOSTID, INTERFACEID = 10001, 20001
+# A second host costs almost nothing here and covers the case of more than
+# one, which the configuration write path treats differently.
+HOSTS = {1: (10001, 20001, "win-proxy-selftest"),
+         2: (10002, 20002, "win-proxy-selftest-2")}
 
 ITEM_TYPE_SIMPLE, ITEM_TYPE_INTERNAL, ITEM_TYPE_CALCULATED = 3, 5, 15
 ITEM_VALUE_TYPE_FLOAT, ITEM_VALUE_TYPE_UINT64 = 0, 3
@@ -91,12 +94,15 @@ CHECKS = [
     },
     {
         "itemid": 30004,
-        "proves": "multiplier preprocessing",
-        "type": ITEM_TYPE_INTERNAL,
-        "key": "zabbix[wcache,values,pfree]",
-        "value_type": ITEM_VALUE_TYPE_FLOAT,
-        "preproc": [(ZBX_PREPROC_MULTIPLIER, "0")],
-        "expect": equals(0),
+        "proves": "multiplier preprocessing, on a second host",
+        "host": 2,
+        "type": ITEM_TYPE_SIMPLE,
+        "key": f"net.tcp.service[tcp,127.0.0.1,{MACRO}]",
+        "value_type": ITEM_VALUE_TYPE_UINT64,
+        "needs_interface": True,
+        # The check reports 1, so seven is the only answer a working step gives.
+        "preproc": [(ZBX_PREPROC_MULTIPLIER, "7")],
+        "expect": equals(7),
     },
     {
         "itemid": 30005,
@@ -157,7 +163,7 @@ class Schema:
                 "data": [[r.get(f, self._default(name, f)) for f in fields] for r in rows]}
 
 
-def build_config(schema, trapper_port):
+def build_config(schema, trapper_port, checks):
     s = schema
     # Sending hosts commits to sending its companions: the proxy refuses the
     # whole payload if one is absent, even empty. It fills in the httptest
@@ -168,33 +174,37 @@ def build_config(schema, trapper_port):
     # Each item carries a runtime-data row on the server side. Without one the
     # proxy stores the item but never schedules it.
     config["item_rtdata"] = s.table("item_rtdata",
-                                    [{"itemid": c["itemid"]} for c in CHECKS])
+                                    [{"itemid": c["itemid"]} for c in checks])
+
+    used = sorted({c.get("host", 1) for c in checks})
 
     config["hosts"] = s.table("hosts", [
-        {"hostid": HOSTID, "host": "win-proxy-selftest",
-         "name": "win-proxy-selftest", "status": 0}])
+        {"hostid": HOSTS[h][0], "host": HOSTS[h][2], "name": HOSTS[h][2], "status": 0}
+        for h in used])
 
     config["interface"] = s.table("interface", [
-        {"interfaceid": INTERFACEID, "hostid": HOSTID, "main": 1, "type": 1,
+        {"interfaceid": HOSTS[h][1], "hostid": HOSTS[h][0], "main": 1, "type": 1,
          "useip": 1, "ip": "127.0.0.1", "dns": "", "port": str(trapper_port),
-         "available": 1}])
+         "available": 1}
+        for h in used])
 
     # The port reaches the item keys through this, so resolving it is part of
     # what the run proves.
     config["hostmacro"] = s.table("hostmacro", [
-        {"hostmacroid": 40001, "hostid": HOSTID, "macro": MACRO,
-         "value": str(trapper_port), "type": 0, "automatic": 0}])
+        {"hostmacroid": 40000 + h, "hostid": HOSTS[h][0], "macro": MACRO,
+         "value": str(trapper_port), "type": 0, "automatic": 0}
+        for h in used])
 
     config["items"] = s.table("items", [
-        {"itemid": c["itemid"], "hostid": HOSTID, "type": c["type"],
+        {"itemid": c["itemid"], "hostid": HOSTS[c.get("host", 1)][0], "type": c["type"],
          "key_": c["key"], "params": c.get("params", ""), "delay": "5s",
          "status": 0, "value_type": c["value_type"], "history": "1d",
          "timeout": "3s",
-         "interfaceid": INTERFACEID if c.get("needs_interface") else None}
-        for c in CHECKS])
+         "interfaceid": HOSTS[c.get("host", 1)][1] if c.get("needs_interface") else None}
+        for c in checks])
 
     preproc = []
-    for c in CHECKS:
+    for c in checks:
         for step, (ptype, params) in enumerate(c.get("preproc", []), start=1):
             preproc.append({"item_preprocid": c["itemid"] * 10 + step,
                             "itemid": c["itemid"], "step": step, "type": ptype,
@@ -354,6 +364,7 @@ def main():
     p.add_argument("--server-port", type=int, default=10061)
     p.add_argument("--trapper-port", type=int, default=10051)
     p.add_argument("--keep", action="store_true", help="leave the work directory behind")
+    p.add_argument("--only", help="run only the checks whose description contains this")
     args = p.parse_args()
 
     exe = Path(args.exe)
@@ -367,8 +378,13 @@ def main():
                                   trapper_port=args.trapper_port,
                                   workdir=workdir.as_posix()), encoding="ascii")
 
-    config = build_config(Schema(args.schema), args.trapper_port)
-    session = Session(config, CHECKS)
+    checks = [c for c in CHECKS if not args.only or args.only in c["proves"]]
+    if not checks:
+        print(f"nothing matches --only {args.only!r}", file=sys.stderr)
+        return 2
+
+    config = build_config(Schema(args.schema), args.trapper_port, checks)
+    session = Session(config, checks)
 
     proxy = None
     try:
