@@ -213,8 +213,10 @@ void	zbx_dc_get_stats_all(zbx_wcache_info_t *wcache_info)
  ******************************************************************************/
 void	*zbx_dc_get_stats(int request)
 {
-	static zbx_uint64_t	value_uint;
-	static double		value_double;
+	/* Returned to the caller by address, so two workers asking at once must
+	   not share them. */
+	static ZBX_THREAD_LOCAL zbx_uint64_t	value_uint;
+	static ZBX_THREAD_LOCAL double		value_double;
 	void			*ret;
 
 	LOCK_CACHE;

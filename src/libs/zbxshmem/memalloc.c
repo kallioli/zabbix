@@ -484,6 +484,24 @@ static void	__mem_free(zbx_shmem_info_t *info, void *ptr)
 	int		prev_free, next_free;
 
 	chunk = (void *)((char *)ptr - SHMEM_SIZE_FIELD);
+
+	/* Both of these leave a free list holding something that is not a link,
+	   which is only noticed much later and somewhere else. Saying so here
+	   names the caller that did it. */
+	if (chunk < info->lo_bound || chunk >= info->hi_bound)
+	{
+		zabbix_log(LOG_LEVEL_CRIT, "freeing %p in \"%s\", which lies outside [%p, %p)",
+				ptr, info->mem_descr, info->lo_bound, info->hi_bound);
+		zbx_backtrace();
+		exit(EXIT_FAILURE);
+	}
+
+	if (FREE_CHUNK(chunk))
+	{
+		zabbix_log(LOG_LEVEL_CRIT, "freeing %p in \"%s\" a second time", ptr, info->mem_descr);
+		zbx_backtrace();
+		exit(EXIT_FAILURE);
+	}
 	chunk_size = CHUNK_SIZE(chunk);
 
 	info->used_size -= chunk_size;
