@@ -165,13 +165,42 @@ if (Test-Path -LiteralPath $conf) {
 	Note $false 'configuration generated' "$conf is absent"
 }
 
-# The service is started by the installer. It has no server to reach here, which
-# it must tolerate; what matters is that it stays up and writes where it should.
+# The installer registers the service without starting it, so start it here. It
+# has no server to reach, which it must tolerate; what matters is that it comes
+# up, stays up, and writes where it was told to.
+try {
+	Start-Service -Name $name -ErrorAction Stop
+	Note $true 'service starts'
+} catch {
+	Note $false 'service starts' $_.Exception.Message
+}
+
 Start-Sleep -Seconds 10
 $svc = Get-Service -Name $name -ErrorAction SilentlyContinue
 Note ($svc -and $svc.Status -eq 'Running') 'service still running' $(if ($svc) { $svc.Status })
 Note (Test-Path (Join-Path $data 'zabbix_proxy.log')) 'writes its log under ProgramData'
 Note (Test-Path (Join-Path $data 'zabbix_proxy.db'))  'writes its database under ProgramData'
+
+# When it did not come up, its own log is where the reason is - and nothing
+# rolls back now, so the log is still there to read.
+if (-not ($svc -and $svc.Status -eq 'Running')) {
+	$proxylog = Join-Path $data 'zabbix_proxy.log'
+	if (Test-Path -LiteralPath $proxylog) {
+		Write-Host '  --- what the proxy logged:'
+		Get-Content -LiteralPath $proxylog -Tail 20 |
+			ForEach-Object { Write-Host "      $($_.Trim())" }
+	}
+	Write-Host '  --- what the service manager recorded:'
+	Get-WinEvent -FilterHashtable @{
+		LogName = 'System'; ProviderName = 'Service Control Manager'
+		StartTime = (Get-Date).AddMinutes(-5); Id = 7000, 7009, 7024, 7031, 7034
+	} -ErrorAction SilentlyContinue |
+		Where-Object { $_.Message -match 'Zabbix Proxy' } |
+		Select-Object -First 3 |
+		ForEach-Object { Write-Host "      [$($_.Id)] $(($_.Message -replace '\s+', ' ').Trim())" }
+}
+
+Stop-Service -Name $name -ErrorAction SilentlyContinue
 
 # ---------------------------------------------------------------- uninstall
 $p = Start-Process msiexec.exe -Wait -PassThru -ArgumentList @('/x', "`"$Msi`"", '/qn')

@@ -237,9 +237,17 @@
                       Arguments="-c &quot;[INSTALLFOLDER]zabbix_proxy.conf&quot;"
                       Vital="yes" />
 
+      <!--
+        The installer registers the service but does not start it. Starting a
+        proxy on a configuration nobody has read yet is the wrong default: the
+        server address and the proxy name are guesses until an operator confirms
+        them. It is also what made a service that fails to start take the whole
+        install down with it, rolling back the very files needed to find out why.
+
+        Startup type is automatic, so it comes up on its own from the next boot.
+      -->
       <ServiceControl Id="ProxyServiceControl"
                       Name="Zabbix Proxy"
-                      Start="install"
                       Stop="both"
                       Remove="uninstall"
                       Wait="yes" />
