@@ -1817,8 +1817,16 @@ int	zbx_ipc_service_start(zbx_ipc_service_t *service, const char *service_name, 
 #ifdef _WINDOWS
 	if (0 != ipc_endpoint_find(socket_path))
 	{
-		*error = zbx_dsprintf(*error, "\"%s\" service is already running.", service_name);
-		goto out;
+		if (SUCCEED == ipc_check_running_service(service_name))
+		{
+			*error = zbx_dsprintf(*error, "\"%s\" service is already running.", service_name);
+			goto out;
+		}
+
+		/* A published port nobody answers on is what the Unix build finds when a  */
+		/* killed process leaves its socket file behind: take the name rather than */
+		/* refusing to start until someone deletes the file by hand.               */
+		ipc_endpoint_remove(socket_path);
 	}
 
 	if (-1 == (service->fd = (int)socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)))

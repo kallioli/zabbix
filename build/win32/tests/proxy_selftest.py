@@ -501,6 +501,15 @@ def main():
 
     bad_config_failures = check_invalid_config(exe, workdir)
 
+    # The proxy is about to start on a directory holding the rendezvous files a
+    # killed instance leaves behind, naming a port nobody answers on. It has to
+    # take those names, the way the Unix build takes over a socket file it cannot
+    # connect to - otherwise a proxy never starts again after a crash. If it
+    # refuses, everything below fails and the log says why.
+    for service in ("rtc", "preprocessing"):
+        (workdir / f"zabbix_proxy_{service}.sock").write_text("1\n", encoding="ascii")
+    print("\nstale rendezvous files planted, as an unclean exit would leave them", flush=True)
+
     proxy, rtc_failures = None, []
     try:
         with Server(("127.0.0.1", args.server_port), Handler) as srv:
