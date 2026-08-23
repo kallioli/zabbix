@@ -148,6 +148,16 @@ Note $true 'install'
 $svc = Get-Service -Name $name -ErrorAction SilentlyContinue
 Note ($null -ne $svc) 'service registered'
 
+if ($null -eq $svc) {
+	Write-Host '  --- services whose name mentions zabbix:'
+	$found = & sc.exe query type= service state= all | Select-String -Pattern 'zabbix' -SimpleMatch
+	if ($found) { $found | ForEach-Object { Write-Host "      $($_.Line.Trim())" } }
+	else { Write-Host '      none' }
+	Write-Host '  --- what was laid down:'
+	Get-ChildItem 'C:\Program Files\Zabbix Proxy' -ErrorAction SilentlyContinue |
+		ForEach-Object { Write-Host "      $($_.Name)  $($_.Length)" }
+}
+
 if ($svc) {
 	$account = (Get-CimInstance Win32_Service -Filter "Name='$name'").StartName
 	Note ($account -eq 'LocalSystem') 'runs as LocalSystem' $account
@@ -158,9 +168,19 @@ if ($svc) {
 if (Test-Path -LiteralPath $conf) {
 	Note $true 'configuration generated'
 	$text = Get-Content -LiteralPath $conf -Raw
-	Note ($text -match "(?m)^Server=$([regex]::Escape($server))$")     'Server carried through'
-	Note ($text -match "(?m)^Hostname=$([regex]::Escape($hostname))$") 'Hostname carried through'
-	Note ($text -match "(?m)^ListenPort=$([regex]::Escape($port))$")   'ListenPort carried through'
+	$carried = @(
+		($text -match "(?m)^Server=$([regex]::Escape($server))$")
+		($text -match "(?m)^Hostname=$([regex]::Escape($hostname))$")
+		($text -match "(?m)^ListenPort=$([regex]::Escape($port))$"))
+	Note $carried[0] 'Server carried through'
+	Note $carried[1] 'Hostname carried through'
+	Note $carried[2] 'ListenPort carried through'
+
+	if ($carried -contains $false) {
+		Write-Host '  --- what was written instead:'
+		$text -split "`r?`n" | Where-Object { $_ -and $_ -notmatch '^#' } |
+			ForEach-Object { Write-Host "      $_" }
+	}
 } else {
 	Note $false 'configuration generated' "$conf is absent"
 }
