@@ -195,6 +195,20 @@
       <RemoveFolder Id="RemoveDataFolder" On="uninstall" />
     </Component>
 
+    <!--
+      No failure actions here, deliberately. Both ways of asking for them are
+      broken: the Util extension does it through a custom action that returned
+      1603 and rolled every install back, and the built-in element carries a
+      WiX warning that the Windows Installer SDK documents it as not working as
+      expected. An operator gets the same result in one command, which
+      OPERATING_proxy gives:
+
+          sc failure "Zabbix Proxy" reset= 86400 ^
+              actions= restart/60000/restart/60000
+
+      Trading an install that always fails for a command an operator runs once
+      is the better bargain.
+    -->
     <Component Id="ProxyService" Directory="INSTALLFOLDER"
                Guid="b6021f4a-3c8d-4719-a05e-8f7d264c1b93">
       <RegistryValue Root="HKLM" Key="Software\Zabbix\Zabbix Proxy" Name="Installed"
@@ -209,13 +223,7 @@
                       ErrorControl="normal"
                       Account="NT AUTHORITY\LocalService"
                       Arguments="-c &quot;[INSTALLFOLDER]zabbix_proxy.conf&quot;"
-                      Vital="yes">
-        <!-- Windows Installer carries failure actions itself. The Util
-             extension's version of this does the same through a custom action,
-             which returned 1603 and rolled the whole install back. -->
-        <ServiceConfigFailureActions First="restart" Second="restart" Third="none"
-                                     ResetPeriod="86400" RestartServiceDelay="60" />
-      </ServiceInstall>
+                      Vital="yes" />
 
       <ServiceControl Id="ProxyServiceControl"
                       Name="Zabbix Proxy"

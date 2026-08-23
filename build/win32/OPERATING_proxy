@@ -64,11 +64,15 @@ By hand, when you build from source or want several instances:
 All four need an elevated prompt. `-i` records the configuration path in the
 service command line, so moving the file afterwards breaks the service.
 
-A service registered this way runs as LocalSystem and has **no recovery
-actions**: Windows will not restart it after a crash. The installer configures
-two restarts sixty seconds apart. If you install by hand and want the same:
+Neither route configures recovery actions, so Windows will not restart the
+proxy after a crash. Both ways of asking the installer to do it are broken -
+one through a custom action that fails the whole install, the other documented
+by Microsoft as not working as expected - so it is left to one command, worth
+running whichever way you installed:
 
     sc failure "Zabbix Proxy" reset= 86400 actions= restart/60000/restart/60000
+
+That restarts the service twice, a minute apart, before giving up.
 
 
 Where things live
