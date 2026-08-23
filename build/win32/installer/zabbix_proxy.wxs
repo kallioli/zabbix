@@ -210,10 +210,11 @@
                       Account="NT AUTHORITY\LocalService"
                       Arguments="-c &quot;[INSTALLFOLDER]zabbix_proxy.conf&quot;"
                       Vital="yes">
-        <util:ServiceConfig FirstFailureActionType="restart"
-                            SecondFailureActionType="restart"
-                            ThirdFailureActionType="none"
-                            RestartServiceDelayInSeconds="60" />
+        <!-- Windows Installer carries failure actions itself. The Util
+             extension's version of this does the same through a custom action,
+             which returned 1603 and rolled the whole install back. -->
+        <ServiceConfigFailureActions First="restart" Second="restart" Third="none"
+                                     ResetPeriod="86400" RestartServiceDelay="60" />
       </ServiceInstall>
 
       <ServiceControl Id="ProxyServiceControl"
