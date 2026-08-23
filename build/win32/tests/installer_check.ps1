@@ -78,6 +78,24 @@ if (0 -ne $p.ExitCode) {
 	# A rollback removes the folders and files the install had made, the proxy's
 	# log among them, so the evidence is gone by the time we look. Run it once
 	# more with rollback disabled, purely to keep what it leaves behind.
+	# The service manager records why it gave up, and the event log survives the
+	# rollback that takes everything else away. 7000 carries the error, 7009 a
+	# timeout, 7024 the exit code the service itself returned.
+	Write-Host '  --- what the service manager recorded:'
+	try {
+		Get-WinEvent -FilterHashtable @{
+			LogName = 'System'; ProviderName = 'Service Control Manager'
+			StartTime = (Get-Date).AddMinutes(-10)
+		} -ErrorAction Stop |
+			Where-Object { $_.Message -match 'Zabbix Proxy' } |
+			Select-Object -First 4 |
+			ForEach-Object {
+				Write-Host "      [$($_.Id)] $(($_.Message -replace '\s+', ' ').Trim())"
+			}
+	} catch {
+		Write-Host '      nothing recorded'
+	}
+
 	Write-Host '  --- retrying with rollback disabled, to keep the evidence'
 	Start-Process msiexec.exe -Wait -ArgumentList @(
 		'/i', "`"$Msi`"", '/qn', "SERVER=$server", "HOSTNAME=$hostname",
