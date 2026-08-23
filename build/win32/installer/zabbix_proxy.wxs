@@ -68,11 +68,16 @@
       The configuration is written once, at first install, from the properties
       above. Upgrades find the file present and leave it untouched, so local
       edits survive. Everything else stays in the sample next to it.
+
+      MSI formats this value before running it, and braces delimit a conditional
+      block there, so it strips them. The PowerShell block braces therefore have
+      to be written [\{] and [\}]; written plainly, the command reaches the shell
+      as an if with no body, the action fails and the install rolls back.
     -->
     <SetProperty Id="GenerateConfig"
                  Before="GenerateConfig"
                  Sequence="execute"
-                 Value="&quot;[System64Folder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command &quot;$p='[INSTALLFOLDER]zabbix_proxy.conf'; if (-not (Test-Path -LiteralPath $p)) { @('# Written by the Zabbix Proxy installer. Edit freely: upgrades keep this file.','# The full list of options is in zabbix_proxy.conf.example next to it.','','ProxyMode=0','Server=[SERVER]','Hostname=[HOSTNAME]','ListenPort=[LISTENPORT]','DBName=[DataFolder]zabbix_proxy.db','SocketDir=[DataFolder]','LogType=file','LogFile=[DataFolder]zabbix_proxy.log','LogFileSize=10') | Set-Content -LiteralPath $p -Encoding ASCII }&quot;" />
+                 Value="&quot;[System64Folder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command &quot;$p='[INSTALLFOLDER]zabbix_proxy.conf'; if (-not (Test-Path -LiteralPath $p)) [\{] @('# Written by the Zabbix Proxy installer. Edit freely: upgrades keep this file.','# The full list of options is in zabbix_proxy.conf.example next to it.','','ProxyMode=0','Server=[SERVER]','Hostname=[HOSTNAME]','ListenPort=[LISTENPORT]','DBName=[DataFolder]zabbix_proxy.db','SocketDir=[DataFolder]','LogType=file','LogFile=[DataFolder]zabbix_proxy.log','LogFileSize=10') | Set-Content -LiteralPath $p -Encoding ASCII [\}]&quot;" />
 
     <CustomAction Id="GenerateConfig"
                   BinaryRef="Wix4UtilCA_X64"
