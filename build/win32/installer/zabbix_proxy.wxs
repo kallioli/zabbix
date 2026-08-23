@@ -79,6 +79,71 @@
 
     <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
     <WixVariable Id="WixUILicenseRtf" Value="license.rtf" />
+
+    <!--
+      The agent's installer asks for these, and an operator expects the same
+      here. Without the dialog a double-click produces a proxy pointed at
+      127.0.0.1 under the computer's name, which is almost never right and
+      leaves the file to edit inside Program Files.
+
+      HOSTNAME is filled in by the SetProperty above, which runs before
+      CostFinalize and therefore before this dialog, so the field opens on the
+      computer name rather than empty.
+    -->
+    <UI>
+      <Dialog Id="ProxyConfigDlg" Width="370" Height="270" Title="[ProductName] Setup">
+        <Control Id="BannerBitmap" Type="Bitmap" X="0" Y="0" Width="370" Height="44"
+                 TabSkip="no" Text="!(loc.InstallDirDlgBannerBitmap)" />
+        <Control Id="Title" Type="Text" X="15" Y="6" Width="200" Height="15"
+                 Transparent="yes" NoPrefix="yes"
+                 Text="{\WixUI_Font_Title}Proxy configuration" />
+        <Control Id="Description" Type="Text" X="25" Y="23" Width="330" Height="15"
+                 Transparent="yes" NoPrefix="yes"
+                 Text="These are written to zabbix_proxy.conf and can be changed there later." />
+        <Control Id="BannerLine" Type="Line" X="0" Y="44" Width="370" Height="0" />
+        <Control Id="BottomLine" Type="Line" X="0" Y="234" Width="370" Height="0" />
+
+        <Control Id="ServerLabel" Type="Text" X="20" Y="62" Width="320" Height="12"
+                 NoPrefix="yes" Text="&amp;Zabbix server, as host or host:port" />
+        <Control Id="ServerEdit" Type="Edit" X="20" Y="75" Width="320" Height="18"
+                 Property="SERVER" Indirect="no" />
+
+        <Control Id="HostnameLabel" Type="Text" X="20" Y="103" Width="320" Height="12"
+                 NoPrefix="yes" Text="Proxy &amp;name, exactly as declared on the server" />
+        <Control Id="HostnameEdit" Type="Edit" X="20" Y="116" Width="320" Height="18"
+                 Property="HOSTNAME" Indirect="no" />
+
+        <Control Id="PortLabel" Type="Text" X="20" Y="144" Width="320" Height="12"
+                 NoPrefix="yes" Text="&amp;Port this proxy listens on" />
+        <Control Id="PortEdit" Type="Edit" X="20" Y="157" Width="80" Height="18"
+                 Property="LISTENPORT" Indirect="no" />
+        <Control Id="PortNote" Type="Text" X="106" Y="160" Width="234" Height="24"
+                 NoPrefix="yes"
+                 Text="An active proxy listens too, for the trapper and active agents." />
+
+        <Control Id="Back" Type="PushButton" X="180" Y="243" Width="56" Height="17"
+                 Text="!(loc.WixUIBack)" />
+        <Control Id="Next" Type="PushButton" X="236" Y="243" Width="56" Height="17"
+                 Default="yes" Text="!(loc.WixUINext)" />
+        <Control Id="Cancel" Type="PushButton" X="304" Y="243" Width="56" Height="17"
+                 Cancel="yes" Text="!(loc.WixUICancel)">
+          <Publish Event="SpawnDialog" Value="CancelDlg" />
+        </Control>
+      </Dialog>
+
+      <!-- Slot it between the install directory and the confirmation page. The
+           higher Order wins over the dialog set's own Next, which goes straight
+           to VerifyReadyDlg. -->
+      <Publish Dialog="InstallDirDlg" Control="Next" Event="NewDialog"
+               Value="ProxyConfigDlg" Order="3"
+               Condition="WIXUI_DONTVALIDATEPATH OR WIXUI_INSTALLDIR_VALID=&quot;1&quot;" />
+      <Publish Dialog="ProxyConfigDlg" Control="Back" Event="NewDialog"
+               Value="InstallDirDlg" />
+      <Publish Dialog="ProxyConfigDlg" Control="Next" Event="NewDialog"
+               Value="VerifyReadyDlg" />
+      <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog"
+               Value="ProxyConfigDlg" Order="3" Condition="NOT Installed" />
+    </UI>
   </Package>
 
   <Fragment>
