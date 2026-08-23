@@ -35,10 +35,19 @@
     <Property Id="ARPPRODUCTICON" Value="ProxyIcon" />
     <Property Id="ARPURLINFOABOUT" Value="https://www.zabbix.com" />
 
-    <!-- Answered at install time; see GenerateConfig below. -->
-    <Property Id="SERVER" Value="127.0.0.1" />
-    <Property Id="HOSTNAME" />
-    <Property Id="LISTENPORT" Value="10051" />
+    <!--
+      Answered at install time, on the command line or in ProxyConfigDlg; see
+      GenerateConfig below.
+
+      Secure="yes" is what carries them across. The action that writes the
+      configuration is deferred and runs elevated, in a separate process from
+      the one that collected the answers, and a public property does not cross
+      that boundary unless it is marked secure. Without it the dialog would
+      gather three values and the installer would write the defaults.
+    -->
+    <Property Id="SERVER" Value="127.0.0.1" Secure="yes" />
+    <Property Id="HOSTNAME" Secure="yes" />
+    <Property Id="LISTENPORT" Value="10051" Secure="yes" />
 
     <Launch Condition="VersionNT64" Message="The Zabbix proxy is 64-bit and needs a 64-bit edition of Windows." />
 
