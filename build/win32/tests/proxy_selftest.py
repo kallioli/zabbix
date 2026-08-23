@@ -432,8 +432,11 @@ def check_invalid_config(exe, workdir):
     # ProxyMemoryBufferSize means nothing unless ProxyBufferMode asks for a
     # memory buffer, and the proxy says so rather than starting.
     conf = workdir / "invalid.conf"
+    # LogType=console leaves the buffer parameter the only thing wrong, so a
+    # failure here can only be about the path this covers
     conf.write_text("Hostname=refused\n"
                     "Server=127.0.0.1\n"
+                    "LogType=console\n"
                     f"DBName={workdir.as_posix()}/invalid.db\n"
                     "ProxyMemoryBufferSize=256K\n", encoding="ascii")
 
