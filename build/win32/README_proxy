@@ -5,6 +5,9 @@ The proxy is 64-bit only and links a database engine and an event loop that the
 agent does not need. It is therefore not part of the default `nmake all` target;
 build it explicitly.
 
+Installing, configuring and running the result is a separate matter, covered in
+OPERATING_proxy next to this file.
+
 Scope of this build
 -------------------
 

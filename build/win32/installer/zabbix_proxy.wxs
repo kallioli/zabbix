@@ -93,6 +93,13 @@
         <File Id="zabbix_proxy.conf.example" Name="zabbix_proxy.conf.example"
               Source="$(ConfDir)\zabbix_proxy.win.conf" KeyPath="yes" />
       </Component>
+
+      <!-- The operator's guide, beside the thing it describes. Renamed so it
+           opens in Notepad rather than prompting for an application. -->
+      <Component Id="ProxyOperatingGuide" Guid="8a5d0c72-4f19-4b6e-a3c8-71e59d2b04f6">
+        <File Id="OPERATING.txt" Name="OPERATING.txt"
+              Source="..\OPERATING_proxy" KeyPath="yes" />
+      </Component>
     </ComponentGroup>
 
     <!-- The log and the SQLite buffer live under ProgramData rather than in
