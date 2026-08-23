@@ -75,6 +75,14 @@ if (0 -ne $p.ExitCode) {
 			ForEach-Object { Write-Host "      $($_.Trim())" }
 	}
 
+	# A rollback removes the folders and files the install had made, the proxy's
+	# log among them, so the evidence is gone by the time we look. Run it once
+	# more with rollback disabled, purely to keep what it leaves behind.
+	Write-Host '  --- retrying with rollback disabled, to keep the evidence'
+	Start-Process msiexec.exe -Wait -ArgumentList @(
+		'/i', "`"$Msi`"", '/qn', "SERVER=$server", "HOSTNAME=$hostname",
+		"LISTENPORT=$port", 'DISABLEROLLBACK=1') | Out-Null
+
 	# When the service is what failed, the installer only says so; the reason is
 	# in the proxy's own log, if it got far enough to open one.
 	$proxylog = Join-Path $data 'zabbix_proxy.log'
@@ -93,6 +101,26 @@ if (0 -ne $p.ExitCode) {
 			ForEach-Object { Write-Host "      $($_.Name)  $($_.Length)" }
 	}
 
+	# Starting it by hand says what the service manager only counted as a
+	# timeout, since a console run has somewhere to put an early error.
+	$exe = 'C:\Program Files\Zabbix Proxy\zabbix_proxy.exe'
+	if (Test-Path -LiteralPath $exe) {
+		Write-Host '  --- starting it by hand, in the foreground:'
+		$out = Join-Path ([IO.Path]::GetTempPath()) 'zbx_fg.txt'
+		$q = Start-Process $exe -Wait -PassThru -NoNewWindow `
+			-ArgumentList @('-f', '-c', "`"$conf`"") `
+			-RedirectStandardOutput $out -RedirectStandardError "$out.err"
+		foreach ($f in @($out, "$out.err")) {
+			if ((Test-Path $f) -and (Get-Item $f).Length -gt 0) {
+				Get-Content $f | Select-Object -First 10 |
+					ForEach-Object { Write-Host "      $($_.Trim())" }
+			}
+		}
+		Write-Host "      exit code $($q.ExitCode)"
+	}
+
+	Start-Process msiexec.exe -Wait -ArgumentList @('/x', "`"$Msi`"", '/qn') | Out-Null
+	Remove-Item -Recurse -Force $data -ErrorAction SilentlyContinue
 	exit 1
 }
 Note $true 'install'
