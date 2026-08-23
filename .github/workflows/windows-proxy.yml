@@ -236,6 +236,15 @@ jobs:
       - name: Collect through a stand-in server
         run: python build/win32/tests/proxy_selftest.py --timeout 120
 
+      # Registering a service needs an elevated prompt, which is why this went
+      # unchecked long enough for the proxy to install one the service manager
+      # refused to start. Runners are elevated, so it can be checked here.
+      - name: Register a service the service manager will start
+        shell: pwsh
+        run: >
+          build/win32/tests/service_check.ps1
+          -Exe (Resolve-Path bin/win64/zabbix_proxy.exe).Path
+
       - name: Build the installer
         shell: cmd
         run: |

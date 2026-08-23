@@ -1384,6 +1384,12 @@ int	main(int argc, char **argv)
 	zbx_init_library_preproc(preproc_prepare_value_proxy, preproc_flush_value_proxy, get_zbx_progname);
 	zbx_init_library_eval(zbx_dc_get_expressions_by_name);
 
+#ifdef _WINDOWS
+	/* the startup type a service is created with, unless -S says otherwise; without */
+	/* these the service manager is asked for SERVICE_DISABLED and refuses to start it */
+	t.flags |= ZBX_TASK_FLAG_SERVICE_ENABLED | ZBX_TASK_FLAG_SERVICE_AUTOSTART;
+#endif
+
 	/* parse the command-line */
 	while ((char)EOF != (ch = (char)zbx_getopt_long(argc, argv, shortopts, longopts, NULL, &zbx_optarg,
 			&zbx_optind)))
