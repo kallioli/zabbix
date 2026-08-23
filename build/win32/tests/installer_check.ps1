@@ -1,0 +1,120 @@
+<#
+.SYNOPSIS
+Install the package, check what it produced, uninstall it.
+
+.DESCRIPTION
+Building an MSI proves it compiles. It says nothing about whether it installs,
+whether the answers given on the command line reach the configuration it
+generates, or whether the service it registers can start - and those are the
+parts that broke first when the package was finally run by hand.
+
+Installing needs an elevated prompt. GitHub's Windows runners are elevated.
+#>
+param(
+	[Parameter(Mandatory = $true)][string] $Msi
+)
+
+$ErrorActionPreference = 'Stop'
+
+$name = 'Zabbix Proxy'
+$server = 'zabbix.example.invalid'
+$hostname = 'installer-check'
+$port = '10077'
+$conf = 'C:\Program Files\Zabbix Proxy\zabbix_proxy.conf'
+$data = 'C:\ProgramData\Zabbix Proxy'
+
+$elevated = ([Security.Principal.WindowsPrincipal] `
+	[Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(
+	[Security.Principal.WindowsBuiltinRole]::Administrator)
+
+if (-not $elevated) {
+	Write-Host 'installer check: needs an elevated prompt'
+	exit 2
+}
+
+if (Get-Service -Name $name -ErrorAction SilentlyContinue) {
+	Write-Host "installer check: '$name' already exists, refusing to touch it"
+	exit 2
+}
+
+$log = Join-Path ([IO.Path]::GetTempPath()) 'zbx_msi.log'
+$failures = @()
+
+function Note($ok, $what, $detail = '') {
+	if ($ok) {
+		Write-Host "  ok    $what"
+	} else {
+		Write-Host "  FAIL  $what$(if ($detail) { ": $detail" })"
+		$script:failures += "$what$(if ($detail) { ": $detail" })"
+	}
+}
+
+Write-Host ''
+Write-Host 'installer:'
+
+# ---------------------------------------------------------------- install
+$p = Start-Process msiexec.exe -Wait -PassThru -ArgumentList @(
+	'/i', "`"$Msi`"", '/qn', "SERVER=$server", "HOSTNAME=$hostname",
+	"LISTENPORT=$port", '/l*v', "`"$log`"")
+
+if (0 -ne $p.ExitCode) {
+	Note $false 'install' "msiexec returned $($p.ExitCode)"
+	# the log names the action that failed; the tail is where it says so
+	if (Test-Path $log) {
+		Write-Host '  --- from the installer log:'
+		Get-Content $log -Tail 40 |
+			Where-Object { $_ -match 'Error|error code|Return value 3|WixQuietExec' } |
+			Select-Object -Last 12 |
+			ForEach-Object { Write-Host "      $($_.Trim())" }
+	}
+	exit 1
+}
+Note $true 'install'
+
+# ------------------------------------------------- what it should have made
+$svc = Get-Service -Name $name -ErrorAction SilentlyContinue
+Note ($null -ne $svc) 'service registered'
+
+if ($svc) {
+	$account = (Get-CimInstance Win32_Service -Filter "Name='$name'").StartName
+	Note ($account -eq 'NT AUTHORITY\LocalService') 'runs as LocalService' $account
+}
+
+# The answers have to survive the trip into the elevated half of the install.
+# When they do not, the generated file quietly carries the defaults instead.
+if (Test-Path -LiteralPath $conf) {
+	Note $true 'configuration generated'
+	$text = Get-Content -LiteralPath $conf -Raw
+	Note ($text -match "(?m)^Server=$([regex]::Escape($server))$")     'Server carried through'
+	Note ($text -match "(?m)^Hostname=$([regex]::Escape($hostname))$") 'Hostname carried through'
+	Note ($text -match "(?m)^ListenPort=$([regex]::Escape($port))$")   'ListenPort carried through'
+} else {
+	Note $false 'configuration generated' "$conf is absent"
+}
+
+# The service is started by the installer. It has no server to reach here, which
+# it must tolerate; what matters is that it stays up and writes where it should.
+Start-Sleep -Seconds 10
+$svc = Get-Service -Name $name -ErrorAction SilentlyContinue
+Note ($svc -and $svc.Status -eq 'Running') 'service still running' $(if ($svc) { $svc.Status })
+Note (Test-Path (Join-Path $data 'zabbix_proxy.log')) 'writes its log under ProgramData'
+Note (Test-Path (Join-Path $data 'zabbix_proxy.db'))  'writes its database under ProgramData'
+
+# ---------------------------------------------------------------- uninstall
+$p = Start-Process msiexec.exe -Wait -PassThru -ArgumentList @('/x', "`"$Msi`"", '/qn')
+Note (0 -eq $p.ExitCode) 'uninstall' "msiexec returned $($p.ExitCode)"
+Note ($null -eq (Get-Service -Name $name -ErrorAction SilentlyContinue)) 'service removed'
+
+# The buffer and the log are the operator's; an uninstall must not take them.
+Note (Test-Path (Join-Path $data 'zabbix_proxy.db')) 'database left behind by uninstall'
+
+Remove-Item -Recurse -Force $data -ErrorAction SilentlyContinue
+Remove-Item -Force $log -ErrorAction SilentlyContinue
+
+if ($failures.Count -gt 0) {
+	Write-Host ''
+	Write-Host 'installer failures:'
+	$failures | ForEach-Object { Write-Host "  $_" }
+	exit 1
+}
+exit 0

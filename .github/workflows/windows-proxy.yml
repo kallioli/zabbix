@@ -263,6 +263,15 @@ jobs:
             -d ConfDir=..\..\..\conf ^
             -o ..\..\..\bin\win64\zabbix_proxy-%ZBX_VERSION%-x64.msi
 
+      # Building the package proves it compiles. The first time one was actually
+      # run, it rolled back on every install - so run one here, on a runner that
+      # is elevated, and take it apart again afterwards.
+      - name: Install the package and take it apart again
+        shell: pwsh
+        run: >
+          build/win32/tests/installer_check.ps1
+          -Msi (Resolve-Path bin/win64/zabbix_proxy-$env:ZBX_VERSION-x64.msi).Path
+
       - name: Upload installer
         if: success()
         uses: actions/upload-artifact@v4
