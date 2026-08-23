@@ -168,10 +168,13 @@ if ($svc) {
 if (Test-Path -LiteralPath $conf) {
 	Note $true 'configuration generated'
 	$text = Get-Content -LiteralPath $conf -Raw
+	# Compare whole lines rather than matching a pattern: the file is written
+	# with CRLF, and a regex anchored on $ leaves the carriage return in the way.
+	$lines = @($text -split "`r?`n" | ForEach-Object { $_.Trim() })
 	$carried = @(
-		($text -match "(?m)^Server=$([regex]::Escape($server))$")
-		($text -match "(?m)^Hostname=$([regex]::Escape($hostname))$")
-		($text -match "(?m)^ListenPort=$([regex]::Escape($port))$"))
+		($lines -contains "Server=$server")
+		($lines -contains "Hostname=$hostname")
+		($lines -contains "ListenPort=$port"))
 	Note $carried[0] 'Server carried through'
 	Note $carried[1] 'Hostname carried through'
 	Note $carried[2] 'ListenPort carried through'

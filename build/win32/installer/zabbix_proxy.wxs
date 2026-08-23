@@ -57,7 +57,6 @@
 
     <Feature Id="Main" Title="Zabbix Proxy" Level="1">
       <ComponentGroupRef Id="ProxyFiles" />
-      <ComponentRef Id="ProxyService" />
       <ComponentRef Id="DataFolders" />
     </Feature>
 
@@ -167,8 +166,61 @@
 
   <Fragment>
     <ComponentGroup Id="ProxyFiles" Directory="INSTALLFOLDER">
+      <!--
+        The service lives in the component whose key path is its executable.
+        Windows Installer derives the binary a service entry refers to from that
+        key path; hung on a component keyed to a registry value instead, the
+        install succeeded, laid the files down, and registered no service at all.
+      -->
       <Component Id="ProxyExe" Guid="1c2f5a90-84d7-4e63-9b2a-5f0e7c318d24">
         <File Id="zabbix_proxy.exe" Source="$(BinDir)\zabbix_proxy.exe" KeyPath="yes" />
+
+        <!--
+        The service runs as LocalSystem, which is what registering it by hand with
+        -i gives and what has been exercised. LocalService would be the better
+        choice and was tried: the service then failed to start, the installer
+        rolled back with error 1920, and the proxy never got as far as opening its
+        log to say why. The same configuration starts without complaint under an
+        ordinary account, so the account is what it turns on. Worth returning to,
+        with the reason found rather than guessed.
+
+        No failure actions here, deliberately. Both ways of asking for them are
+        broken: the Util extension does it through a custom action that returned
+        1603 and rolled every install back, and the built-in element carries a
+        WiX warning that the Windows Installer SDK documents it as not working as
+        expected. An operator gets the same result in one command, which
+        OPERATING_proxy gives:
+
+          sc failure "Zabbix Proxy" reset= 86400 ^
+              actions= restart/60000/restart/60000
+
+        Trading an install that always fails for a command an operator runs once
+        is the better bargain.
+        -->
+        <ServiceInstall Id="ProxyServiceInstall"
+                      Name="Zabbix Proxy"
+                      DisplayName="Zabbix Proxy"
+                      Description="Collects monitoring data and forwards it to a Zabbix server."
+                      Type="ownProcess"
+                      Start="auto"
+                      ErrorControl="normal"
+                      Arguments="-c &quot;[INSTALLFOLDER]zabbix_proxy.conf&quot;"
+                      Vital="yes" />
+
+        <!--
+        The installer registers the service but does not start it. Starting a
+        proxy on a configuration nobody has read yet is the wrong default: the
+        server address and the proxy name are guesses until an operator confirms
+        them. It is also what made a service that fails to start take the whole
+        install down with it, rolling back the very files needed to find out why.
+
+        Startup type is automatic, so it comes up on its own from the next boot.
+        -->
+        <ServiceControl Id="ProxyServiceControl"
+                      Name="Zabbix Proxy"
+                      Stop="both"
+                      Remove="uninstall"
+                      Wait="yes" />
       </Component>
 
       <!-- The documented sample. It is reference material, so an upgrade
@@ -200,58 +252,6 @@
       <RemoveFolder Id="RemoveDataFolder" On="uninstall" />
     </Component>
 
-    <!--
-      The service runs as LocalSystem, which is what registering it by hand with
-      -i gives and what has been exercised. LocalService would be the better
-      choice and was tried: the service then failed to start, the installer
-      rolled back with error 1920, and the proxy never got as far as opening its
-      log to say why. The same configuration starts without complaint under an
-      ordinary account, so the account is what it turns on. Worth returning to,
-      with the reason found rather than guessed.
-
-      No failure actions here, deliberately. Both ways of asking for them are
-      broken: the Util extension does it through a custom action that returned
-      1603 and rolled every install back, and the built-in element carries a
-      WiX warning that the Windows Installer SDK documents it as not working as
-      expected. An operator gets the same result in one command, which
-      OPERATING_proxy gives:
-
-          sc failure "Zabbix Proxy" reset= 86400 ^
-              actions= restart/60000/restart/60000
-
-      Trading an install that always fails for a command an operator runs once
-      is the better bargain.
-    -->
-    <Component Id="ProxyService" Directory="INSTALLFOLDER"
-               Guid="b6021f4a-3c8d-4719-a05e-8f7d264c1b93">
-      <RegistryValue Root="HKLM" Key="Software\Zabbix\Zabbix Proxy" Name="Installed"
-                     Type="integer" Value="1" KeyPath="yes" />
-
-      <ServiceInstall Id="ProxyServiceInstall"
-                      Name="Zabbix Proxy"
-                      DisplayName="Zabbix Proxy"
-                      Description="Collects monitoring data and forwards it to a Zabbix server."
-                      Type="ownProcess"
-                      Start="auto"
-                      ErrorControl="normal"
-                      Arguments="-c &quot;[INSTALLFOLDER]zabbix_proxy.conf&quot;"
-                      Vital="yes" />
-
-      <!--
-        The installer registers the service but does not start it. Starting a
-        proxy on a configuration nobody has read yet is the wrong default: the
-        server address and the proxy name are guesses until an operator confirms
-        them. It is also what made a service that fails to start take the whole
-        install down with it, rolling back the very files needed to find out why.
-
-        Startup type is automatic, so it comes up on its own from the next boot.
-      -->
-      <ServiceControl Id="ProxyServiceControl"
-                      Name="Zabbix Proxy"
-                      Stop="both"
-                      Remove="uninstall"
-                      Wait="yes" />
-    </Component>
   </Fragment>
 
 </Wix>
