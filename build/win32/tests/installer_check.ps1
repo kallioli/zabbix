@@ -74,6 +74,25 @@ if (0 -ne $p.ExitCode) {
 			Select-Object -Last 25 |
 			ForEach-Object { Write-Host "      $($_.Trim())" }
 	}
+
+	# When the service is what failed, the installer only says so; the reason is
+	# in the proxy's own log, if it got far enough to open one.
+	$proxylog = Join-Path $data 'zabbix_proxy.log'
+	if (Test-Path -LiteralPath $proxylog) {
+		Write-Host '  --- what the proxy logged:'
+		Get-Content -LiteralPath $proxylog -Tail 25 |
+			ForEach-Object { Write-Host "      $($_.Trim())" }
+	} else {
+		Write-Host "  --- no proxy log at $proxylog"
+		Write-Host '      it did not get as far as opening one'
+	}
+
+	if (Test-Path -LiteralPath $data) {
+		Write-Host '  --- what it did leave behind:'
+		Get-ChildItem -LiteralPath $data -Force |
+			ForEach-Object { Write-Host "      $($_.Name)  $($_.Length)" }
+	}
+
 	exit 1
 }
 Note $true 'install'
