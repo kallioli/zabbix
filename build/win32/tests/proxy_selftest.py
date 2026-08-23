@@ -420,6 +420,45 @@ def check_runtime_control(exe, conf):
     return failures
 
 
+def check_invalid_config(exe, workdir):
+    """A configuration the proxy must refuse, and refuse in words.
+
+    Validation failures are reported through zabbix_log() before the log file
+    exists, which is the one path where the logger has to work without any of
+    its own setup. Nothing else here exercises it.
+    """
+    print("\ninvalid configuration:", flush=True)
+
+    # ProxyMemoryBufferSize means nothing unless ProxyBufferMode asks for a
+    # memory buffer, and the proxy says so rather than starting.
+    conf = workdir / "invalid.conf"
+    conf.write_text("Hostname=refused\n"
+                    "Server=127.0.0.1\n"
+                    f"DBName={workdir.as_posix()}/invalid.db\n"
+                    "ProxyMemoryBufferSize=256K\n", encoding="ascii")
+
+    done = subprocess.run([str(exe), "-f", "-c", str(conf)],
+                          capture_output=True, text=True, timeout=60)
+    text = done.stdout + done.stderr
+    first = text.strip().splitlines()[0][:150] if text.strip() else ""
+
+    # a crash leaves an exit code no ordinary exit can produce
+    crashed = done.returncode < 0 or done.returncode > 255
+
+    if crashed:
+        print(f"  FAIL  died with 0x{done.returncode & 0xFFFFFFFF:08X} and said nothing"
+              if not text.strip() else
+              f"  FAIL  died with 0x{done.returncode & 0xFFFFFFFF:08X}: {first}", flush=True)
+        return ["invalid configuration: exit 0x%08X" % (done.returncode & 0xFFFFFFFF)]
+
+    if "ProxyMemoryBufferSize" not in text:
+        print(f"  FAIL  refused without naming the parameter: {first}", flush=True)
+        return ["invalid configuration: %s" % (first or "no message at all")]
+
+    print(f"  ok    refused, and said why: {first}", flush=True)
+    return []
+
+
 def main():
     here = Path(__file__).resolve()
     repo = here.parents[3]
@@ -456,6 +495,8 @@ def main():
 
     config = build_config(Schema(args.schema), args.trapper_port, checks)
     session = Session(config, checks)
+
+    bad_config_failures = check_invalid_config(exe, workdir)
 
     proxy, rtc_failures = None, []
     try:
@@ -496,11 +537,13 @@ def main():
 
     status = session.report()
 
-    if rtc_failures:
-        status = status or 1
-        print("\nruntime control:", flush=True)
-        for line in rtc_failures:
-            print("  " + line, flush=True)
+    for label, failures in (("runtime control", rtc_failures),
+                            ("invalid configuration", bad_config_failures)):
+        if failures:
+            status = status or 1
+            print(f"\n{label}:", flush=True)
+            for line in failures:
+                print("  " + line, flush=True)
 
     console = workdir / "console.log"
     if status and console.is_file() and console.stat().st_size:
