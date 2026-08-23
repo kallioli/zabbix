@@ -67,7 +67,7 @@ function Try-Install($label, $extra, $expected, $expectedName) {
 		Write-Host "  ok    $label : START_TYPE $type ($expectedName)"
 	} else {
 		$seen = switch ($type) { 2 {'AUTO_START'} 3 {'DEMAND_START'} 4 {'DISABLED'} default {'?'} }
-		Write-Host "  FAIL  $label : START_TYPE $type ($seen), attendu $expected ($expectedName)"
+		Write-Host "  FAIL  $label : START_TYPE $type ($seen), expected $expected ($expectedName)"
 		$script:failures += "$label : START_TYPE $type au lieu de $expected"
 	}
 }
