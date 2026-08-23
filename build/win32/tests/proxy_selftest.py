@@ -380,6 +380,14 @@ DataSenderFrequency=1
 """
 
 
+REFUSALS = (
+    "Unknown runtime control option",
+    "Invalid runtime control option",
+    "Invalid parameters",
+    "Cannot perform runtime control command",
+)
+
+
 def check_runtime_control(exe, conf):
     """Drive the proxy from a second process, the way an operator does.
 
@@ -395,10 +403,15 @@ def check_runtime_control(exe, conf):
                    "log_level_decrease"):
         done = subprocess.run([str(exe), "-c", str(conf), "-R", option],
                               capture_output=True, text=True, timeout=30)
-        output = (done.stdout + done.stderr).strip().splitlines()
+        text = done.stdout + done.stderr
+        output = text.strip().splitlines()
         first = output[0][:150] if output else ""
 
-        if 0 == done.returncode:
+        # A request that reached the service exits 0 whatever the service made
+        # of it, so the reply has to be read rather than counted.
+        refused = next((m for m in REFUSALS if m in text), None)
+
+        if 0 == done.returncode and refused is None:
             print(f"  ok    {option}", flush=True)
         else:
             print(f"  FAIL  {option}: {first}", flush=True)
