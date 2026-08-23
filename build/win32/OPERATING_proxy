@@ -48,9 +48,15 @@ With the installer, which is the supported path:
               computer name, which is rarely what the server expects.
   LISTENPORT  default 10051.
 
-The installer writes zabbix_proxy.conf once, from those properties, and starts
-the service. Later upgrades find the file present and leave it alone, so local
-edits survive.
+The installer writes zabbix_proxy.conf once, from those properties, registers
+the service, and stops there. It does not start it: the server address and the
+proxy name are guesses until you have read the file. Read it, then
+
+    Start-Service 'Zabbix Proxy'
+
+Startup type is automatic, so from the next boot it comes up on its own. Later
+upgrades find the configuration present and leave it alone, so local edits
+survive.
 
 By hand, when you build from source or want several instances:
 
