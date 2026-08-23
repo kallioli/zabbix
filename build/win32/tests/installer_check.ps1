@@ -86,6 +86,7 @@ if (0 -ne $p.ExitCode) {
 		Get-WinEvent -FilterHashtable @{
 			LogName = 'System'; ProviderName = 'Service Control Manager'
 			StartTime = (Get-Date).AddMinutes(-10)
+			Id = 7000, 7009, 7024, 7031, 7034
 		} -ErrorAction Stop |
 			Where-Object { $_.Message -match 'Zabbix Proxy' } |
 			Select-Object -First 4 |
@@ -149,7 +150,7 @@ Note ($null -ne $svc) 'service registered'
 
 if ($svc) {
 	$account = (Get-CimInstance Win32_Service -Filter "Name='$name'").StartName
-	Note ($account -eq 'NT AUTHORITY\LocalService') 'runs as LocalService' $account
+	Note ($account -eq 'LocalSystem') 'runs as LocalSystem' $account
 }
 
 # The answers have to survive the trip into the elevated half of the install.

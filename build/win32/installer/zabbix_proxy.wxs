@@ -196,6 +196,14 @@
     </Component>
 
     <!--
+      The service runs as LocalSystem, which is what registering it by hand with
+      -i gives and what has been exercised. LocalService would be the better
+      choice and was tried: the service then failed to start, the installer
+      rolled back with error 1920, and the proxy never got as far as opening its
+      log to say why. The same configuration starts without complaint under an
+      ordinary account, so the account is what it turns on. Worth returning to,
+      with the reason found rather than guessed.
+
       No failure actions here, deliberately. Both ways of asking for them are
       broken: the Util extension does it through a custom action that returned
       1603 and rolled every install back, and the built-in element carries a
@@ -221,7 +229,6 @@
                       Type="ownProcess"
                       Start="auto"
                       ErrorControl="normal"
-                      Account="NT AUTHORITY\LocalService"
                       Arguments="-c &quot;[INSTALLFOLDER]zabbix_proxy.conf&quot;"
                       Vital="yes" />
 
