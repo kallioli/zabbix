@@ -634,7 +634,22 @@ static void	zbx_set_defaults(void)
 		log_file_cfg.log_type_str = zbx_strdup(log_file_cfg.log_type_str, ZBX_OPTION_LOGTYPE_FILE);
 
 	if (NULL == config_socket_path)
+	{
+#ifdef _WINDOWS
+		/* the services publish their ports here and a runtime control request reads
+		   them back, so the location has to be the same for the account the proxy
+		   runs under and the one the operator uses - which rules out the per-user
+		   temporary directory */
+		const char	*programdata;
+
+		if (NULL != (programdata = getenv("ProgramData")))
+			config_socket_path = zbx_dsprintf(config_socket_path, "%s\\Zabbix Proxy", programdata);
+		else
+			config_socket_path = zbx_strdup(config_socket_path, "C:\\ProgramData\\Zabbix Proxy");
+#else
 		config_socket_path = zbx_strdup(config_socket_path, "/tmp");
+#endif
+	}
 
 	if (0 != config_forks[ZBX_PROCESS_TYPE_IPMIPOLLER])
 		config_forks[ZBX_PROCESS_TYPE_IPMIMANAGER] = 1;

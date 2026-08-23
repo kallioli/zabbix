@@ -370,6 +370,7 @@ Hostname=win-proxy-selftest
 ListenPort={trapper_port}
 ListenIP=127.0.0.1
 DBName={workdir}/proxy.db
+SocketDir={workdir}
 LogType=file
 LogFile={workdir}/zabbix_proxy.log
 LogFileSize=0
@@ -377,6 +378,33 @@ DebugLevel={debug_level}
 ProxyConfigFrequency=10
 DataSenderFrequency=1
 """
+
+
+def check_runtime_control(exe, conf):
+    """Drive the proxy from a second process, the way an operator does.
+
+    The workers share one process and find each other in memory, so nothing
+    here is exercised by the proxy talking to itself - only a separate
+    invocation shows whether a service can be reached from outside.
+    """
+    print("\nruntime control, from a separate process:", flush=True)
+    failures = []
+
+    for option in ("config_cache_reload", "housekeeper_execute",
+                   "diaginfo=historycache", "log_level_increase",
+                   "log_level_decrease"):
+        done = subprocess.run([str(exe), "-c", str(conf), "-R", option],
+                              capture_output=True, text=True, timeout=30)
+        output = (done.stdout + done.stderr).strip().splitlines()
+        first = output[0][:150] if output else ""
+
+        if 0 == done.returncode:
+            print(f"  ok    {option}", flush=True)
+        else:
+            print(f"  FAIL  {option}: {first}", flush=True)
+            failures.append(f"{option}: {first}")
+
+    return failures
 
 
 def main():
@@ -416,7 +444,7 @@ def main():
     config = build_config(Schema(args.schema), args.trapper_port, checks)
     session = Session(config, checks)
 
-    proxy = None
+    proxy, rtc_failures = None, []
     try:
         with Server(("127.0.0.1", args.server_port), Handler) as srv:
             srv.session = session
@@ -440,6 +468,10 @@ def main():
                     print("\nevery item reported", flush=True)
                     break
                 time.sleep(0.5)
+
+            if proxy.poll() is None:
+                rtc_failures = check_runtime_control(exe, conf)
+
             srv.shutdown()
     finally:
         if proxy is not None and proxy.poll() is None:
@@ -450,6 +482,12 @@ def main():
                 proxy.kill()
 
     status = session.report()
+
+    if rtc_failures:
+        status = status or 1
+        print("\nruntime control:", flush=True)
+        for line in rtc_failures:
+            print("  " + line, flush=True)
 
     console = workdir / "console.log"
     if status and console.is_file() and console.stat().st_size:

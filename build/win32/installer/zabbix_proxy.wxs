@@ -63,7 +63,7 @@
     <SetProperty Id="GenerateConfig"
                  Before="GenerateConfig"
                  Sequence="execute"
-                 Value="&quot;[System64Folder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command &quot;$p='[INSTALLFOLDER]zabbix_proxy.conf'; if (-not (Test-Path -LiteralPath $p)) { @('# Written by the Zabbix Proxy installer. Edit freely: upgrades keep this file.','# The full list of options is in zabbix_proxy.conf.example next to it.','','ProxyMode=0','Server=[SERVER]','Hostname=[HOSTNAME]','ListenPort=[LISTENPORT]','DBName=[DataFolder]zabbix_proxy.db','LogType=file','LogFile=[DataFolder]zabbix_proxy.log','LogFileSize=10') | Set-Content -LiteralPath $p -Encoding ASCII }&quot;" />
+                 Value="&quot;[System64Folder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command &quot;$p='[INSTALLFOLDER]zabbix_proxy.conf'; if (-not (Test-Path -LiteralPath $p)) { @('# Written by the Zabbix Proxy installer. Edit freely: upgrades keep this file.','# The full list of options is in zabbix_proxy.conf.example next to it.','','ProxyMode=0','Server=[SERVER]','Hostname=[HOSTNAME]','ListenPort=[LISTENPORT]','DBName=[DataFolder]zabbix_proxy.db','SocketDir=[DataFolder]','LogType=file','LogFile=[DataFolder]zabbix_proxy.log','LogFileSize=10') | Set-Content -LiteralPath $p -Encoding ASCII }&quot;" />
 
     <CustomAction Id="GenerateConfig"
                   BinaryRef="Wix4UtilCA_X64"

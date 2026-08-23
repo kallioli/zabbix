@@ -41,8 +41,18 @@ static size_t	ipc_path_root_len = 0;
  * loopback socket instead. Clients and services are threads of one process
  * here, which makes the rendezvous simpler than a filesystem path: a service
  * binds 127.0.0.1 on an ephemeral port and records it under its name, and a
- * client looks the name up. Nothing is written to disk and no fixed port is
- * held, so nothing outside the process can reach or squat the endpoint.
+ * client looks the name up.
+ *
+ * The name is the path the Unix build would put its socket at, and the port is
+ * published in a file there with the same lifetime a socket file has: written
+ * once the service listens, removed when it stops. Workers find each other
+ * through the in-process table without touching the disk; a separate process -
+ * a runtime control request - finds the service the same way it would on Unix,
+ * by its path.
+ *
+ * A local user who can read that file can reach the endpoint, where a unix
+ * domain socket would have carried the directory's permissions. The directory
+ * is the operator's to protect, as SocketDir is on Unix.
  *
  * Everything above the address - message framing, the receive and send queues,
  * the libevent callbacks - is transport agnostic and shared with Unix.
@@ -57,6 +67,8 @@ typedef struct
 zbx_ipc_endpoint_t;
 
 static zbx_ipc_endpoint_t	ipc_endpoints[ZBX_IPC_ENDPOINTS_MAX];
+
+static void	ipc_endpoint_remove(const char *name);
 static CRITICAL_SECTION		ipc_endpoints_lock;
 static volatile LONG		ipc_endpoints_ready;
 
@@ -81,6 +93,46 @@ static void	ipc_endpoints_leave(void)
 	LeaveCriticalSection(&ipc_endpoints_lock);
 }
 
+/******************************************************************************
+ *                                                                            *
+ * Purpose: publishes the port of a service so other processes can find it    *
+ *                                                                            *
+ * Comments: takes the place of the unix domain socket the Unix build binds,  *
+ *           and is removed at the same point in the service's life.          *
+ *                                                                            *
+ ******************************************************************************/
+static int	ipc_endpoint_publish(const char *name, unsigned short port)
+{
+	FILE	*f;
+
+	if (NULL == (f = fopen(name, "w")))
+		return FAIL;
+
+	if (0 > fprintf(f, "%hu\n", port))
+	{
+		fclose(f);
+		return FAIL;
+	}
+
+	return 0 == fclose(f) ? SUCCEED : FAIL;
+}
+
+static unsigned short	ipc_endpoint_published(const char *name)
+{
+	FILE		*f;
+	unsigned int	port = 0;
+
+	if (NULL == (f = fopen(name, "r")))
+		return 0;
+
+	if (1 != fscanf(f, "%u", &port) || 0 == port || 0xffff < port)
+		port = 0;
+
+	fclose(f);
+
+	return (unsigned short)port;
+}
+
 static int	ipc_endpoint_register(const char *name, unsigned short port)
 {
 	int	i, ret = FAIL;
@@ -100,12 +152,20 @@ static int	ipc_endpoint_register(const char *name, unsigned short port)
 
 	ipc_endpoints_leave();
 
+	if (SUCCEED == ret && SUCCEED != ipc_endpoint_publish(name, port))
+	{
+		ipc_endpoint_remove(name);
+		ret = FAIL;
+	}
+
 	return ret;
 }
 
 static void	ipc_endpoint_remove(const char *name)
 {
 	int	i;
+
+	remove(name);
 
 	ipc_endpoints_enter();
 
@@ -138,6 +198,10 @@ static unsigned short	ipc_endpoint_find(const char *name)
 	}
 
 	ipc_endpoints_leave();
+
+	/* a client outside this process has no table to look in */
+	if (0 == port)
+		port = ipc_endpoint_published(name);
 
 	return port;
 }
@@ -1621,9 +1685,21 @@ int	zbx_ipc_service_init_env(const char *path, char **error)
 		goto out;
 	}
 
-	/* the Windows transport keeps its endpoints in memory, so the path is only
-	   a naming prefix and does not have to exist */
-#ifndef _WINDOWS
+#ifdef _WINDOWS
+	/* the services publish their ports here, so the directory has to exist;
+	   create it rather than make an operator do it by hand */
+	if (0 == CreateDirectoryA(path, NULL))
+	{
+		DWORD	last_error = GetLastError();
+
+		if (ERROR_ALREADY_EXISTS != last_error)
+		{
+			*error = zbx_dsprintf(*error, "Cannot create the directory \"%s\": %s.", path,
+					zbx_strerror_from_system(last_error));
+			goto out;
+		}
+	}
+#else
 	if (0 != stat(path, &fs))
 	{
 		*error = zbx_dsprintf(*error, "Failed to stat the specified path \"%s\": %s.", path,
