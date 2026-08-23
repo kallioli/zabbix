@@ -59,12 +59,19 @@ $p = Start-Process msiexec.exe -Wait -PassThru -ArgumentList @(
 
 if (0 -ne $p.ExitCode) {
 	Note $false 'install' "msiexec returned $($p.ExitCode)"
-	# the log names the action that failed; the tail is where it says so
+
+	# The action that failed names itself somewhere in the middle of the log,
+	# not at its end, so read the whole thing. What matters: anything a custom
+	# action printed, the action that returned 3, and the service errors, which
+	# are the two ways this install can fail.
 	if (Test-Path $log) {
 		Write-Host '  --- from the installer log:'
-		Get-Content $log -Tail 40 |
-			Where-Object { $_ -match 'Error|error code|Return value 3|WixQuietExec' } |
-			Select-Object -Last 12 |
+		Get-Content $log |
+			Where-Object {
+				$_ -match 'WixQuietExec|returned actual error code|Return value 3|' +
+					'Error 19[0-9][0-9]|Product: .*Error|Failed to |cannot '
+			} |
+			Select-Object -Last 25 |
 			ForEach-Object { Write-Host "      $($_.Trim())" }
 	}
 	exit 1
