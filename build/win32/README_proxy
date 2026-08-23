@@ -119,6 +119,21 @@ Installing, starting or stopping the service needs an elevated prompt.
 Unlike the agent, -R works on Windows: runtime control travels over the IPC
 service rather than through signals.
 
+    zabbix_proxy.exe -c <config> -R config_cache_reload
+
+The request finds the running proxy through SocketDir, where each service
+publishes the port it listens on, the way the Unix build puts a socket there.
+It defaults to %ProgramData%\Zabbix Proxy, is created if missing, and has to
+be readable by whoever runs -R as well as by the account the proxy runs under
+- so not a per-user temporary directory. Anyone who can read that directory
+can reach the endpoints, which a unix domain socket would have guarded with
+its own permissions; protect it as you would SocketDir on Unix.
+
+log_level_increase and log_level_decrease reach every worker subscribed to the
+service, and say so for the rest: those are threads of one process and there
+is no signal to single one out. Targeting a specific process by PID has no
+meaning here for the same reason.
+
 How the port works
 ------------------
 

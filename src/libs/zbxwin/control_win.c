@@ -32,9 +32,12 @@
 
 static void	(*sigusr_handler_cb)(int flags) = NULL;
 
+/* The service has notified every worker subscribed to it by the time these are
+   reached, so what is left to report is the remainder, not an outright failure. */
 static const char	*control_unsupported =
-		"Cannot deliver the request: on Windows the workers are threads of a single process,"
-		" so only workers connected to the runtime control service can be addressed.\n";
+		"Workers subscribed to the runtime control service have been notified. The rest are"
+		" threads of this process and cannot be addressed individually, so they keep their"
+		" current setting.\n";
 
 void	zbx_signal_process_by_type(int proc_type, int proc_num, int flags, char **out)
 {
