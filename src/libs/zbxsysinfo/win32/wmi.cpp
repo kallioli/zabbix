@@ -14,8 +14,16 @@
 
 #include "zbxsysinc.h"
 
+/* zbxsysinc.h undefines 'interface', because Zabbix uses the word as an
+   identifier in about a thousand declarations. The COM headers below are the
+   one place that wants the Windows meaning of the keyword, so restore it here
+   and put it back the way the rest of the tree expects afterwards. */
+#define interface struct
+
 #include <comdef.h>
 #include <Wbemidl.h>
+
+#undef interface
 
 extern "C"
 {

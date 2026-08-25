@@ -408,7 +408,11 @@ static void	zbx_json_addhex(struct zbx_json *j, const char *name, zbx_uint64_t v
 void	zbx_diag_add_locks_info(struct zbx_json *json)
 {
 	int		i;
-#ifdef HAVE_VMINFO_T_UPDATES
+#ifdef _WINDOWS
+	/* Windows mutexes are named kernel objects rather than an indexed table, so there is no address list to */
+	/* report here */
+	ZBX_UNUSED(i);
+#elif defined(HAVE_VMINFO_T_UPDATES)
 	const char	*names[ZBX_MUTEX_COUNT] = {"ZBX_MUTEX_LOG", "ZBX_MUTEX_CACHE", "ZBX_MUTEX_TRENDS",
 				"ZBX_MUTEX_CACHE_IDS", "ZBX_MUTEX_SELFMON", "ZBX_MUTEX_CPUSTATS", "ZBX_MUTEX_DISKSTATS",
 				"ZBX_MUTEX_VALUECACHE", "ZBX_MUTEX_VMWARE", "ZBX_MUTEX_SQLITE3",
@@ -425,12 +429,14 @@ void	zbx_diag_add_locks_info(struct zbx_json *json)
 #endif
 	zbx_json_addarray(json, ZBX_DIAG_LOCKS);
 
+#ifndef _WINDOWS
 	for (i = 0; i < ZBX_MUTEX_COUNT; i++)
 	{
 		zbx_json_addobject(json, NULL);
 		zbx_json_addhex(json, names[i], (zbx_uint64_t)zbx_mutex_addr_get(i));
 		zbx_json_close(json);
 	}
+#endif
 
 	zbx_json_addobject(json, NULL);
 	zbx_json_addhex(json, "ZBX_RWLOCK_CONFIG", (zbx_uint64_t)zbx_rwlock_addr_get(ZBX_RWLOCK_CONFIG));
