@@ -1,0 +1,257 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Copyright (C) 2001-2026 Zabbix SIA
+
+  This program is free software: you can redistribute it and/or modify it under
+  the terms of the GNU Affero General Public License as published by the Free
+  Software Foundation, version 3.
+
+  Installer for the Windows Zabbix proxy. Build it with WiX v5:
+
+      wix build zabbix_proxy.wxs -ext WixToolset.Util.wixext ^
+          -d Version=7.4.13 -d BinDir=..\..\..\bin\win64 -d ConfDir=..\..\..\conf ^
+          -arch x64 -o zabbix_proxy-7.4.13-x64.msi
+
+  Silent install, with the proxy configured in one go:
+
+      msiexec /i zabbix_proxy-7.4.13-x64.msi /qn ^
+          SERVER=zabbix.example.com HOSTNAME=proxy-paris
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui"
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
+
+  <Package Name="Zabbix Proxy"
+           Manufacturer="Zabbix SIA"
+           Version="$(Version)"
+           UpgradeCode="7f3a1c46-0b52-4f8e-9a71-2d6c9e4b8a10"
+           Scope="perMachine"
+           Compressed="yes">
+
+    <MajorUpgrade DowngradeErrorMessage="A newer version of Zabbix Proxy is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <Icon Id="ProxyIcon" SourceFile="$(BinDir)\zabbix_proxy.exe" />
+    <Property Id="ARPPRODUCTICON" Value="ProxyIcon" />
+    <Property Id="ARPURLINFOABOUT" Value="https://www.zabbix.com" />
+
+    <!--
+      Answered at install time, on the command line or in ProxyConfigDlg; see
+      GenerateConfig below.
+
+      Secure="yes" is what carries them across. The action that writes the
+      configuration is deferred and runs elevated, in a separate process from
+      the one that collected the answers, and a public property does not cross
+      that boundary unless it is marked secure. Without it the dialog would
+      gather three values and the installer would write the defaults.
+    -->
+    <Property Id="SERVER" Value="127.0.0.1" Secure="yes" />
+    <Property Id="HOSTNAME" Secure="yes" />
+    <Property Id="LISTENPORT" Value="10051" Secure="yes" />
+
+    <Launch Condition="VersionNT64" Message="The Zabbix proxy is 64-bit and needs a 64-bit edition of Windows." />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="Zabbix Proxy" />
+    </StandardDirectory>
+
+    <Feature Id="Main" Title="Zabbix Proxy" Level="1">
+      <ComponentGroupRef Id="ProxyFiles" />
+      <ComponentRef Id="DataFolders" />
+    </Feature>
+
+    <SetProperty Id="HOSTNAME" Value="[ComputerName]" Before="CostFinalize"
+                 Sequence="both" Condition="NOT HOSTNAME" />
+
+    <!--
+      The configuration is written once, at first install, from the properties
+      above. Upgrades find the file present and leave it untouched, so local
+      edits survive. Everything else stays in the sample next to it.
+
+      $ErrorActionPreference='Stop' is not decoration. Set-Content failing
+      raises a non-terminating error, PowerShell still exits zero, the action
+      reports success and the service then starts against a configuration that
+      was never written - failing with nothing anywhere to say why.
+
+      MSI formats this value before running it, and braces delimit a conditional
+      block there, so it strips them. The PowerShell block braces therefore have
+      to be written [\{] and [\}]; written plainly, the command reaches the shell
+      as an if with no body, the action fails and the install rolls back.
+    -->
+    <SetProperty Id="GenerateConfig"
+                 Before="GenerateConfig"
+                 Sequence="execute"
+                 Value="&quot;[System64Folder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command &quot;$ErrorActionPreference='Stop'; $p='[INSTALLFOLDER]zabbix_proxy.conf'; if (-not (Test-Path -LiteralPath $p)) [\{] @('# Written by the Zabbix Proxy installer. Edit freely: upgrades keep this file.','# The full list of options is in zabbix_proxy.conf.example next to it.','','ProxyMode=0','Server=[SERVER]','Hostname=[HOSTNAME]','ListenPort=[LISTENPORT]','DBName=[DataFolder]zabbix_proxy.db','SocketDir=[DataFolder]','LogType=file','LogFile=[DataFolder]zabbix_proxy.log','LogFileSize=10') | Set-Content -LiteralPath $p -Encoding ASCII [\}]&quot;" />
+
+    <CustomAction Id="GenerateConfig"
+                  BinaryRef="Wix4UtilCA_X64"
+                  DllEntry="WixQuietExec64"
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="check" />
+
+    <InstallExecuteSequence>
+      <!-- After the files are laid down, before the service is started. -->
+      <Custom Action="GenerateConfig" After="InstallFiles" Condition="NOT REMOVE" />
+    </InstallExecuteSequence>
+
+    <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
+    <WixVariable Id="WixUILicenseRtf" Value="license.rtf" />
+
+    <!--
+      The agent's installer asks for these, and an operator expects the same
+      here. Without the dialog a double-click produces a proxy pointed at
+      127.0.0.1 under the computer's name, which is almost never right and
+      leaves the file to edit inside Program Files.
+
+      HOSTNAME is filled in by the SetProperty above, which runs before
+      CostFinalize and therefore before this dialog, so the field opens on the
+      computer name rather than empty.
+    -->
+    <UI>
+      <Dialog Id="ProxyConfigDlg" Width="370" Height="270" Title="[ProductName] Setup">
+        <Control Id="BannerBitmap" Type="Bitmap" X="0" Y="0" Width="370" Height="44"
+                 TabSkip="no" Text="!(loc.InstallDirDlgBannerBitmap)" />
+        <Control Id="Title" Type="Text" X="15" Y="6" Width="200" Height="15"
+                 Transparent="yes" NoPrefix="yes"
+                 Text="{\WixUI_Font_Title}Proxy configuration" />
+        <Control Id="Description" Type="Text" X="25" Y="23" Width="330" Height="15"
+                 Transparent="yes" NoPrefix="yes"
+                 Text="These are written to zabbix_proxy.conf and can be changed there later." />
+        <Control Id="BannerLine" Type="Line" X="0" Y="44" Width="370" Height="0" />
+        <Control Id="BottomLine" Type="Line" X="0" Y="234" Width="370" Height="0" />
+
+        <Control Id="ServerLabel" Type="Text" X="20" Y="62" Width="320" Height="12"
+                 NoPrefix="yes" Text="&amp;Zabbix server, as host or host:port" />
+        <Control Id="ServerEdit" Type="Edit" X="20" Y="75" Width="320" Height="18"
+                 Property="SERVER" Indirect="no" />
+
+        <Control Id="HostnameLabel" Type="Text" X="20" Y="103" Width="320" Height="12"
+                 NoPrefix="yes" Text="Proxy &amp;name, exactly as declared on the server" />
+        <Control Id="HostnameEdit" Type="Edit" X="20" Y="116" Width="320" Height="18"
+                 Property="HOSTNAME" Indirect="no" />
+
+        <Control Id="PortLabel" Type="Text" X="20" Y="144" Width="320" Height="12"
+                 NoPrefix="yes" Text="&amp;Port this proxy listens on" />
+        <Control Id="PortEdit" Type="Edit" X="20" Y="157" Width="80" Height="18"
+                 Property="LISTENPORT" Indirect="no" />
+        <Control Id="PortNote" Type="Text" X="106" Y="160" Width="234" Height="24"
+                 NoPrefix="yes"
+                 Text="An active proxy listens too, for the trapper and active agents." />
+
+        <Control Id="Back" Type="PushButton" X="180" Y="243" Width="56" Height="17"
+                 Text="!(loc.WixUIBack)" />
+        <Control Id="Next" Type="PushButton" X="236" Y="243" Width="56" Height="17"
+                 Default="yes" Text="!(loc.WixUINext)" />
+        <Control Id="Cancel" Type="PushButton" X="304" Y="243" Width="56" Height="17"
+                 Cancel="yes" Text="!(loc.WixUICancel)">
+          <Publish Event="SpawnDialog" Value="CancelDlg" />
+        </Control>
+      </Dialog>
+
+      <!-- Slot it between the install directory and the confirmation page. The
+           higher Order wins over the dialog set's own Next, which goes straight
+           to VerifyReadyDlg. -->
+      <Publish Dialog="InstallDirDlg" Control="Next" Event="NewDialog"
+               Value="ProxyConfigDlg" Order="3"
+               Condition="WIXUI_DONTVALIDATEPATH OR WIXUI_INSTALLDIR_VALID=&quot;1&quot;" />
+      <Publish Dialog="ProxyConfigDlg" Control="Back" Event="NewDialog"
+               Value="InstallDirDlg" />
+      <Publish Dialog="ProxyConfigDlg" Control="Next" Event="NewDialog"
+               Value="VerifyReadyDlg" />
+      <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog"
+               Value="ProxyConfigDlg" Order="3" Condition="NOT Installed" />
+    </UI>
+  </Package>
+
+  <Fragment>
+    <ComponentGroup Id="ProxyFiles" Directory="INSTALLFOLDER">
+      <!--
+        The service lives in the component whose key path is its executable.
+        Windows Installer derives the binary a service entry refers to from that
+        key path; hung on a component keyed to a registry value instead, the
+        install succeeded, laid the files down, and registered no service at all.
+      -->
+      <Component Id="ProxyExe" Guid="1c2f5a90-84d7-4e63-9b2a-5f0e7c318d24">
+        <File Id="zabbix_proxy.exe" Source="$(BinDir)\zabbix_proxy.exe" KeyPath="yes" />
+
+        <!--
+        The service runs as LocalSystem, which is what registering it by hand with
+        -i gives and what has been exercised. LocalService would be the better
+        choice and was tried: the service then failed to start, the installer
+        rolled back with error 1920, and the proxy never got as far as opening its
+        log to say why. The same configuration starts without complaint under an
+        ordinary account, so the account is what it turns on. Worth returning to,
+        with the reason found rather than guessed.
+
+        No failure actions here, deliberately. Both ways of asking for them are
+        broken: the Util extension does it through a custom action that returned
+        1603 and rolled every install back, and the built-in element carries a
+        WiX warning that the Windows Installer SDK documents it as not working as
+        expected. An operator gets the same result in one command, which
+        OPERATING_proxy gives:
+
+          sc failure "Zabbix Proxy" reset= 86400 ^
+              actions= restart/60000/restart/60000
+
+        Trading an install that always fails for a command an operator runs once
+        is the better bargain.
+        -->
+        <ServiceInstall Id="ProxyServiceInstall"
+                      Name="Zabbix Proxy"
+                      DisplayName="Zabbix Proxy"
+                      Description="Collects monitoring data and forwards it to a Zabbix server."
+                      Type="ownProcess"
+                      Start="auto"
+                      ErrorControl="normal"
+                      Arguments="-c &quot;[INSTALLFOLDER]zabbix_proxy.conf&quot;"
+                      Vital="yes" />
+
+        <!--
+        The installer registers the service but does not start it. Starting a
+        proxy on a configuration nobody has read yet is the wrong default: the
+        server address and the proxy name are guesses until an operator confirms
+        them. It is also what made a service that fails to start take the whole
+        install down with it, rolling back the very files needed to find out why.
+
+        Startup type is automatic, so it comes up on its own from the next boot.
+        -->
+        <ServiceControl Id="ProxyServiceControl"
+                      Name="Zabbix Proxy"
+                      Stop="both"
+                      Remove="uninstall"
+                      Wait="yes" />
+      </Component>
+
+      <!-- The documented sample. It is reference material, so an upgrade
+           refreshes it; the live configuration next to it is left alone. -->
+      <Component Id="ProxyConfSample" Guid="4e91b7d3-2a08-4c15-8f6b-91d0c4a7e532">
+        <File Id="zabbix_proxy.conf.example" Name="zabbix_proxy.conf.example"
+              Source="$(ConfDir)\zabbix_proxy.win.conf" KeyPath="yes" />
+      </Component>
+
+      <!-- The operator's guide, beside the thing it describes. Renamed so it
+           opens in Notepad rather than prompting for an application. -->
+      <Component Id="ProxyOperatingGuide" Guid="8a5d0c72-4f19-4b6e-a3c8-71e59d2b04f6">
+        <File Id="OPERATING.txt" Name="OPERATING.txt"
+              Source="..\OPERATING_proxy" KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+
+    <!-- The log and the SQLite buffer live under ProgramData rather than in
+         Program Files, which a service account should not be writing to. -->
+    <StandardDirectory Id="CommonAppDataFolder">
+      <Directory Id="DataFolder" Name="Zabbix Proxy" />
+    </StandardDirectory>
+
+    <Component Id="DataFolders" Directory="DataFolder"
+               Guid="9d4c1e68-7b35-4a02-83f1-6c5e2b90af47">
+      <CreateFolder />
+      <RegistryValue Root="HKLM" Key="Software\Zabbix\Zabbix Proxy" Name="DataPath"
+                     Type="string" Value="[DataFolder]" KeyPath="yes" />
+      <RemoveFolder Id="RemoveDataFolder" On="uninstall" />
+    </Component>
+
+  </Fragment>
+
+</Wix>
