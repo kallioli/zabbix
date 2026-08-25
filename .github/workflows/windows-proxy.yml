@@ -179,6 +179,9 @@ jobs:
     env:
       VCPKG_TRIPLET: x64-windows-static
       ZBX_VERSION: 7.4.13
+      # The same tree packaged as a later release, so an upgrade has something
+      # to upgrade to. It is never published; see the upload step.
+      ZBX_NEXT_VERSION: 7.4.14
 
     steps:
       - uses: actions/checkout@v4
@@ -286,12 +289,38 @@ jobs:
           build/win32/tests/installer_check.ps1
           -Msi (Resolve-Path bin/win64/zabbix_proxy-$env:ZBX_VERSION-x64.msi).Path
 
+      # An upgrade takes a different path through the package than a first
+      # install, and this one makes promises about it: the configuration an
+      # operator edited stays, and so does the buffer. Both were assumed.
+      - name: Package the same tree as the next version
+        shell: cmd
+        run: |
+          cd build\win32\installer
+          wix build zabbix_proxy.wxs ^
+            -ext WixToolset.Util.wixext ^
+            -ext WixToolset.UI.wixext ^
+            -arch x64 ^
+            -d Version=%ZBX_NEXT_VERSION% ^
+            -d BinDir=..\..\..\bin\win64 ^
+            -d ConfDir=..\..\..\conf ^
+            -o ..\..\..\bin\win64\zabbix_proxy-%ZBX_NEXT_VERSION%-x64.msi
+
+      - name: Upgrade one version to the next
+        shell: pwsh
+        run: >
+          build/win32/tests/upgrade_check.ps1
+          -OldMsi (Resolve-Path bin/win64/zabbix_proxy-$env:ZBX_VERSION-x64.msi).Path
+          -NewMsi (Resolve-Path bin/win64/zabbix_proxy-$env:ZBX_NEXT_VERSION-x64.msi).Path
+          -NewVersion $env:ZBX_NEXT_VERSION
+
+      # Name the one file rather than the directory: the upgrade test leaves a
+      # package numbered for a release that does not exist next to it.
       - name: Upload installer
         if: success()
         uses: actions/upload-artifact@v4
         with:
           name: zabbix_proxy-msi
-          path: bin/win64/*.msi
+          path: bin/win64/zabbix_proxy-${{ env.ZBX_VERSION }}-x64.msi
           if-no-files-found: error
 
       - name: Upload binary
