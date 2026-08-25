@@ -54,8 +54,10 @@ static zbx_mutex_t	cache_lock = ZBX_MUTEX_NULL;
 static zbx_mutex_t	trends_lock = ZBX_MUTEX_NULL;
 static zbx_mutex_t	cache_ids_lock = ZBX_MUTEX_NULL;
 
-static char		*sql = NULL;
-static size_t		sql_alloc = 4 * ZBX_KIBIBYTE;
+/* Scratch for whichever worker is building a statement. Workers are threads here, so this cannot be shared between */
+/* them. */
+static ZBX_THREAD_LOCAL char	*sql = NULL;
+static ZBX_THREAD_LOCAL size_t	sql_alloc = 4 * ZBX_KIBIBYTE;
 
 static zbx_get_program_type_f	get_program_type_cb = NULL;
 static zbx_sync_history_cache_f	sync_history_cache_cb = NULL;
@@ -157,10 +159,13 @@ typedef struct
 }
 dc_item_value_t;
 
-static char		*string_values = NULL;
-static size_t		string_values_alloc = 0, string_values_offset = 0;
-static dc_item_value_t	*item_values = NULL;
-static size_t		item_values_alloc = 0, item_values_num = 0;
+/* Where a worker gathers its values before pushing the batch into the shared cache. The batch belongs to the worker, */
+/* not to the program: two of them appending through item_values_num, with a realloc free to move the array, corrupts */
+/* both the batch and the cache it is copied into. */
+static ZBX_THREAD_LOCAL char		*string_values = NULL;
+static ZBX_THREAD_LOCAL size_t		string_values_alloc = 0, string_values_offset = 0;
+static ZBX_THREAD_LOCAL dc_item_value_t	*item_values = NULL;
+static ZBX_THREAD_LOCAL size_t		item_values_alloc = 0, item_values_num = 0;
 
 static void	hc_add_item_values(dc_item_value_t *values, int values_num);
 static void	hc_queue_item(zbx_hc_item_t *item);
@@ -207,8 +212,9 @@ void	zbx_dc_get_stats_all(zbx_wcache_info_t *wcache_info)
  ******************************************************************************/
 void	*zbx_dc_get_stats(int request)
 {
-	static zbx_uint64_t	value_uint;
-	static double		value_double;
+	/* Returned to the caller by address, so two workers asking at once must not share them. */
+	static ZBX_THREAD_LOCAL zbx_uint64_t	value_uint;
+	static ZBX_THREAD_LOCAL double		value_double;
 	void			*ret;
 
 	LOCK_CACHE;
