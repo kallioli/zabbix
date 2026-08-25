@@ -181,7 +181,7 @@ static int	zbx_socket_peer_ip_save(zbx_socket_t *s)
 	return SUCCEED;
 }
 
-#if !defined(_WINDOWS) && !defined(__MINGW32__)
+/* name resolution through getaddrinfo/getnameinfo, portable */
 /**
 *******************************************************************************
  *                                                                            *
@@ -317,7 +317,6 @@ out:
 		freeaddrinfo(ai);
 }
 
-#endif	/* _WINDOWS */
 
 #ifdef _WINDOWS
 /******************************************************************************

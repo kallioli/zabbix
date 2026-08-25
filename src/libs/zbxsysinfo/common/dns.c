@@ -92,39 +92,11 @@ static char	*get_name(unsigned char *msg, unsigned char *msg_end, unsigned char 
 }
 #endif	/* !defined(_WINDOWS) && !defined(__MINGW32__)*/
 
-/* Replace zbx_inet_ntop/zbx_inet_pton with inet_ntop/inet_pton in case of drop Windows XP/W2k3 support */
+/* Windows XP and W2k3 shipped no inet_ntop(); this local helper covers the one call site left in this file. The name */
+/* is deliberately local: zbxcomms exports a similarly named function taking a struct sockaddr, and the two would */
+/* collide at link time. */
 #if defined(_WINDOWS) || defined(__MINGW32__)
-int	zbx_inet_pton(int af, const char *src, void *dst)
-{
-	struct sockaddr_storage	ss;
-	int			size = sizeof(ss);
-	char			src_copy[INET6_ADDRSTRLEN + 1];
-
-	memset(&ss, '\0', sizeof(ss));
-	ss.ss_family = af;
-	zbx_strlcpy(src_copy, src, INET6_ADDRSTRLEN+1);
-	src_copy[INET6_ADDRSTRLEN] = 0;
-
-	if (0 == WSAStringToAddressA(src_copy, af, NULL, (struct sockaddr *)&ss, &size))
-	{
-		switch(af)
-		{
-			case AF_INET:
-				*((struct in_addr *)dst) = ((struct sockaddr_in *)&ss)->sin_addr;
-				return SUCCEED;
-			case AF_INET6:
-				*((struct in6_addr *)dst) = ((struct sockaddr_in6 *)&ss)->sin6_addr;
-				return SUCCEED;
-			default:
-				return FAIL;
-		}
-		return SUCCEED;
-	}
-
-	return FAIL;
-}
-
-const char *zbx_inet_ntop(int af, const void *src, char *dst, size_t size)
+static const char	*dns_inet_ntop(int af, const void *src, char *dst, size_t size)
 {
 	struct sockaddr_storage ss;
 	unsigned long s = size;
@@ -427,7 +399,7 @@ static int	dns_query(AGENT_REQUEST *request, AGENT_RESULT *result, int short_ans
 			case T_AAAA:
 				memcpy(&in6addr.s6_addr, &(pDnsRecord->Data.AAAA.Ip6Address), sizeof(in6addr.s6_addr));
 				offset += zbx_snprintf(buffer + offset, sizeof(buffer) - offset, " %s",
-						zbx_inet_ntop(AF_INET6, &in6addr, tmp, sizeof(tmp)));
+						dns_inet_ntop(AF_INET6, &in6addr, tmp, sizeof(tmp)));
 				break;
 			case T_NS:
 				offset += zbx_snprintf(buffer + offset, sizeof(buffer) - offset, " %s",
