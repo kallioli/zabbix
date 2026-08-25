@@ -20,7 +20,9 @@
 
 #include "zbxalgo.h"
 
+#ifndef _WINDOWS
 #include "pthread.h"
+#endif
 
 typedef struct
 {

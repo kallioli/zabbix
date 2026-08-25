@@ -16,6 +16,25 @@
 
 #include "zbxalgo.h"
 
+/* The timekeeper synchronises threads of one process, which is a critical section on Windows and a plain pthread */
+/* mutex elsewhere. */
+#ifdef _WINDOWS
+typedef CRITICAL_SECTION	zbx_tk_mutex_t;
+
+#define	zbx_tk_mutex_init(m)	(InitializeCriticalSection(m), 0)
+#define	zbx_tk_mutex_destroy(m)	DeleteCriticalSection(m)
+#define	zbx_tk_mutex_lock(m)	EnterCriticalSection(m)
+#define	zbx_tk_mutex_unlock(m)	LeaveCriticalSection(m)
+#else
+typedef pthread_mutex_t		zbx_tk_mutex_t;
+
+#define	zbx_tk_mutex_init(m)	pthread_mutex_init(m, NULL)
+#define	zbx_tk_mutex_destroy(m)	pthread_mutex_destroy(m)
+#define	zbx_tk_mutex_lock(m)	pthread_mutex_lock(m)
+#define	zbx_tk_mutex_unlock(m)	pthread_mutex_unlock(m)
+#endif
+
+
 #define MAX_HISTORY	60
 
 #define ZBX_TIMEKEEPER_FLUSH_DELAY		(ZBX_TIMEKEEPER_DELAY * 0.5)
@@ -84,7 +103,11 @@ struct zbx_timekeeper
 
 static clock_t	zbx_times(void)
 {
-#if !defined(TIMES_NULL_ARG)
+#if defined(_WINDOWS)
+	/* times() reports elapsed real time in ticks, not consumed CPU time; the millisecond tick count carries the */
+	/* same meaning */
+	return (clock_t)GetTickCount64();
+#elif !defined(TIMES_NULL_ARG)
 	struct tms	buf;
 
 	return times(&buf);
@@ -118,9 +141,9 @@ void	zbx_timekeeper_sync_init(zbx_timekeeper_sync_t *sync, zbx_timekeeper_sync_f
  ******************************************************************************/
 static void	timekeeper_thread_lock(void *data)
 {
-	pthread_mutex_t	*mutex = (pthread_mutex_t *)data;
+	zbx_tk_mutex_t	*mutex = (zbx_tk_mutex_t *)data;
 
-	pthread_mutex_lock(mutex);
+	zbx_tk_mutex_lock(mutex);
 }
 
 /******************************************************************************
@@ -130,9 +153,9 @@ static void	timekeeper_thread_lock(void *data)
  ******************************************************************************/
 static void	timekeeper_thread_unlock(void *data)
 {
-	pthread_mutex_t	*mutex = (pthread_mutex_t *)data;
+	zbx_tk_mutex_t	*mutex = (zbx_tk_mutex_t *)data;
 
-	pthread_mutex_unlock(mutex);
+	zbx_tk_mutex_unlock(mutex);
 }
 
 /******************************************************************************
@@ -145,11 +168,11 @@ static void	timekeeper_thread_unlock(void *data)
 static zbx_timekeeper_sync_t	*timekeeper_create_thread_sync(void)
 {
 	zbx_timekeeper_sync_t	*sync = (zbx_timekeeper_sync_t *)zbx_malloc(NULL, sizeof(zbx_timekeeper_sync_t));
-	pthread_mutex_t		*mutex;
+	zbx_tk_mutex_t		*mutex;
 	int			err;
 
-	mutex = (pthread_mutex_t *)zbx_malloc(NULL, sizeof(pthread_mutex_t));
-	if (0 != (err = pthread_mutex_init(mutex, NULL)))
+	mutex = (zbx_tk_mutex_t *)zbx_malloc(NULL, sizeof(zbx_tk_mutex_t));
+	if (0 != (err = zbx_tk_mutex_init(mutex)))
 	{
 		zabbix_log(LOG_LEVEL_CRIT, "cannot initialize timekeeper mutex: %s", zbx_strerror(err));
 		exit(EXIT_FAILURE);
@@ -167,9 +190,9 @@ static zbx_timekeeper_sync_t	*timekeeper_create_thread_sync(void)
  ******************************************************************************/
 static void	timekeeper_free_thread_sync(zbx_timekeeper_sync_t *sync)
 {
-	pthread_mutex_t	*mutex = (pthread_mutex_t *)sync->data;
+	zbx_tk_mutex_t	*mutex = (zbx_tk_mutex_t *)sync->data;
 
-	pthread_mutex_destroy(mutex);
+	zbx_tk_mutex_destroy(mutex);
 	zbx_free(mutex);
 	zbx_free(sync);
 }
@@ -202,7 +225,11 @@ zbx_timekeeper_t	*zbx_timekeeper_create_ext(int units_num, zbx_timekeeper_sync_t
 	timekeeper->units_num = units_num;
 	timekeeper->first = 0;
 	timekeeper->count = 0;
+#ifdef _WINDOWS
+	timekeeper->ticks_per_sec = 1000;	/* zbx_times() counts milliseconds */
+#else
 	timekeeper->ticks_per_sec = sysconf(_SC_CLK_TCK);
+#endif
 	timekeeper->ticks_sync = 0;
 
 	if (NULL == sync)

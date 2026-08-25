@@ -127,6 +127,17 @@ static void	zbx_cuid_init(void)
 {
 	char		*hostname;
 	zbx_uint64_t	hostname_num, hostname_len, i;
+#ifdef _WINDOWS
+	char		nodename[MAX_COMPUTERNAME_LENGTH + 1];
+	DWORD		nodename_len = (DWORD)sizeof(nodename);
+
+	srand((unsigned int)time(NULL) + (unsigned int)GetCurrentProcessId());
+
+	if (0 == GetComputerNameA(nodename, &nodename_len))
+		hostname = zbx_strdup(NULL, "dummy");
+	else
+		hostname = zbx_strdup(NULL, nodename);
+#else
 	struct utsname	name;
 
 	srand((unsigned int)time(NULL) + (unsigned int)getpid());
@@ -135,6 +146,7 @@ static void	zbx_cuid_init(void)
 		hostname = zbx_strdup(NULL, "dummy");
 	else
 		hostname = zbx_strdup(NULL, name.nodename);
+#endif
 
 	hostname_len = strlen(hostname);
 	hostname_num = hostname_len + CUID_BASE_36;
