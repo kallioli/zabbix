@@ -1,0 +1,363 @@
+Operating the Zabbix proxy on Windows
+=====================================
+
+This is the operator's side of build\win32\README_proxy, which covers building.
+Here: installing, configuring, running, and reading what the proxy tells you
+when something is wrong.
+
+Every message quoted below is one the proxy actually emits. When you meet one,
+searching this file for it is faster than reasoning about it.
+
+
+What you get
+------------
+
+Active and passive proxy, SQLite3 buffer, Zabbix agent checks, simple checks,
+trapper, preprocessing including JavaScript, data sender and housekeeper.
+
+Collection has been driven end to end, against a real server, for: agent checks
+both passive and active, simple checks, trapper, dependent items, calculated
+items, internal items, HTTP agent, external scripts, log monitoring,
+autoregistration, network discovery and remote commands. Preprocessing was
+exercised as a chain of regular expression, JavaScript and multiplier, with an
+error handler, and a user macro resolved inside an item key.
+
+Two of those need a setting that is not there by default: external scripts want
+ExternalScripts in this file, and remote commands want AllowKey=system.run[*] on
+the agent that runs them. A log item must have its value type set to Log; given
+a numeric type it stays silent and reports nothing wrong.
+
+Not included: SNMP, IPMI, VMware, ODBC database monitor and ICMP ping. Those
+checks are reported as unsupported rather than silently returning nothing.
+
+The workers Zabbix forks on Unix are threads here, in one process. Practical
+consequences: one entry in Task Manager rather than fifty, shared memory that is
+ordinary heap, and a runtime control target that cannot be narrowed to a single
+worker - see "Runtime control" below.
+
+
+Requirements
+------------
+
+  * 64-bit Windows. Exercised on Windows 11, Windows Server 2022 and Windows
+    Server 2025; Server 2019 is untested - see "What is not known yet".
+  * Outbound TCP to the server on 10051 for an active proxy, or inbound on the
+    proxy's ListenPort for a passive one.
+  * Nothing else. The binary is statically linked; there is no runtime to
+    install.
+
+
+Installing
+----------
+
+With the installer, which is the supported path:
+
+    msiexec /i zabbix_proxy-7.4.13-x64.msi SERVER=zabbix.example.com ^
+        HOSTNAME=proxy-paris
+
+  SERVER      the Zabbix server, "host" or "host:port". Default 127.0.0.1.
+  HOSTNAME    the proxy name as declared on the server. Defaults to the
+              computer name, which is rarely what the server expects.
+  LISTENPORT  default 10051.
+
+The installer writes zabbix_proxy.conf once, from those properties, registers
+the service, and stops there. It does not start it: the server address and the
+proxy name are guesses until you have read the file. Read it, then
+
+    Start-Service 'Zabbix Proxy'
+
+Startup type is automatic, so from the next boot it comes up on its own. Later
+upgrades find the configuration present and leave it alone, so local edits
+survive.
+
+By hand, when you build from source or want several instances:
+
+    zabbix_proxy.exe -c C:\path\zabbix_proxy.conf -i     install the service
+    zabbix_proxy.exe -c C:\path\zabbix_proxy.conf -s     start it
+    zabbix_proxy.exe -c C:\path\zabbix_proxy.conf -x     stop it
+    zabbix_proxy.exe -c C:\path\zabbix_proxy.conf -d     remove it
+
+    -S automatic|delayed|manual|disabled   startup type, default automatic
+
+All four need an elevated prompt. `-i` records the configuration path in the
+service command line, so moving the file afterwards breaks the service.
+
+Neither route configures recovery actions, so Windows will not restart the
+proxy after a crash. Both ways of asking the installer to do it are broken -
+one through a custom action that fails the whole install, the other documented
+by Microsoft as not working as expected - so it is left to one command, worth
+running whichever way you installed:
+
+    sc failure "Zabbix Proxy" reset= 86400 actions= restart/60000/restart/60000
+
+That restarts the service twice, a minute apart, before giving up.
+
+
+Where things live
+-----------------
+
+Installed by the MSI:
+
+    %ProgramFiles%\Zabbix Proxy\
+        zabbix_proxy.exe
+        zabbix_proxy.conf              yours, left alone by an upgrade
+        zabbix_proxy.conf.example      reference, refreshed by an upgrade
+
+    %ProgramData%\Zabbix Proxy\
+        zabbix_proxy.db                the buffer
+        zabbix_proxy.log
+        zabbix_proxy_*.sock            see SocketDir below
+
+The data directory is deliberately outside Program Files: the service account
+has to write there, and a service account writing into Program Files is a
+mistake. Uninstalling removes the folder only if it is empty, so the buffer and
+the log survive.
+
+
+Configuring
+-----------
+
+The sample next to the binary documents every parameter. These are the ones
+that decide whether the proxy works at all.
+
+  Hostname          must match the proxy name on the server, exactly.
+  ProxyMode         0 active, the proxy calls the server. 1 passive, the
+                    server calls the proxy.
+  Server            active mode: where to call. Passive mode: who may call.
+  ListenPort        the proxy still listens in active mode, for the trapper
+                    and for active agents.
+  DBName            path to the SQLite buffer. It is created on first start.
+  SocketDir         see below.
+
+SocketDir deserves attention because it does more here than on Unix. Each
+internal service publishes the port it listens on in a file there, which is how
+`-R` finds a running proxy from a separate process. Two consequences:
+
+  * the directory must be readable by whoever runs `-R` as well as by the
+    account the service runs under, which rules out a per-user temporary
+    directory. It defaults to %ProgramData%\Zabbix Proxy and is created if
+    missing.
+
+  * anyone who can read that directory can reach those endpoints, where a unix
+    domain socket would have carried the directory's own permissions. Protect
+    it as you would SocketDir on Unix.
+
+Buffering, if you expect long outages:
+
+    ProxyBufferMode=hybrid
+    ProxyMemoryBufferSize=16M     minimum 128K
+    ProxyMemoryBufferAge=600      minimum 600 seconds
+
+Values stay in memory and move to the database when they age past
+ProxyMemoryBufferAge or the memory fills. With the default `disk` mode every
+value goes straight to SQLite, which is slower but survives anything.
+
+Prefer the default unless you have measured a reason not to. Under a heavy
+burst, `hybrid` has been seen to lose values: the two halves of the buffer
+number their rows from separate counters, and when the memory half is holding
+rows the database half has not seen, both hand out the same number. The insert
+is refused and those rows are dropped, with this in the log:
+
+    [Z3005] query failed: [0] UNIQUE constraint failed: proxy_history.id
+
+The same burst in `disk` mode delivered every value. The counters are shared
+code, so a Linux proxy loaded hard enough should be able to reach the same
+state; it has not been reproduced there.
+
+What a hard stop costs, whatever the mode: the trapper answers "processed" as
+soon as a value reaches the history cache, which is memory. Killing the process
+at that instant loses everything not yet written to the buffer. Measured, on
+100 000 values acknowledged and the process killed immediately afterwards:
+14 700 arrived. The same test against a Linux proxy 7.4.13 delivered 11 900, so
+this is how Zabbix acknowledges rather than anything this build does. Stop the
+service rather than killing it, and the values are flushed on the way out.
+
+The buffer itself survives the kill. SQLite's rollback journal is replayed at
+the next start, `pragma integrity_check` answers ok, and everything already
+written is delivered - measured with the process killed in the middle of a
+write, under load.
+
+
+Encryption
+----------
+
+Both directions work, with a pre-shared key or with certificates, and the two
+can coexist: the link to the server can use certificates while the hosts the
+proxy polls use PSK. The host policy travels in the configuration the server
+pushes, so it needs no local setting.
+
+Pre-shared key, proxy side:
+
+    TLSConnect=psk                (active proxy: how it calls the server)
+    TLSAccept=psk                 (passive proxy: what it accepts)
+    TLSPSKIdentity=PSK proxy-paris
+    TLSPSKFile=C:\ProgramData\Zabbix Proxy\proxy.psk
+
+Certificates:
+
+    TLSConnect=cert
+    TLSCAFile=...\ca.crt
+    TLSCertFile=...\proxy.crt
+    TLSKeyFile=...\proxy.key
+
+The server side must agree. For a proxy object, tls_connect governs how the
+server calls a passive proxy and tls_accept what it accepts from an active one;
+tls_accept is a bitmask, so 5 accepts both cleartext and certificates during a
+migration.
+
+
+Runtime control
+---------------
+
+    zabbix_proxy.exe -c <config> -R config_cache_reload
+    zabbix_proxy.exe -c <config> -R housekeeper_execute
+    zabbix_proxy.exe -c <config> -R diaginfo=historycache
+    zabbix_proxy.exe -c <config> -R log_level_increase
+
+These reach the running proxy through SocketDir, so the config passed to `-R`
+must be the one the proxy is running with.
+
+The log level options reach every worker subscribed to the runtime control
+service and say so for the rest. Targeting one worker by process id has no
+meaning here: they are threads of a single process and no signal can single one
+out. Measured on a proxy with 48 workers, raising the level reached 17 of them
+- enough to diagnose, but not the per-process control Unix gives you.
+
+
+When something is wrong
+-----------------------
+
+The log is the first place to look; at DebugLevel=3 a healthy proxy writes
+almost nothing after start-up, so silence is good news.
+
+  cannot start service [Zabbix Proxy]: [0x00000422]
+
+    The service is disabled. Set its startup type: `-S automatic` at install
+    time, or `sc config "Zabbix Proxy" start= auto`.
+
+  "rtc" service is already running
+
+    Another instance is using this SocketDir - often a proxy started from a
+    console while the service is running. If nothing is running, the port files
+    are stale and will be taken over automatically; a proxy that still refuses
+    predates that behaviour and should be upgraded.
+
+  listener failed: bind() for [[-]:10051] failed
+
+    ListenPort is taken. Note that under WSL mirrored networking, a listener
+    inside the distro occupies the port on the Windows side too.
+
+  Unable to connect to [<server>]:10051 ... Could not to connect to server.
+
+    The server is unreachable. The proxy retries indefinitely and keeps
+    collecting into its buffer; this is not fatal and is expected at boot,
+    when the proxy usually starts before whatever the server runs on.
+
+  cannot send proxy data to server: connection of type "..." is not allowed
+
+    The server refuses this proxy's encryption. Compare TLSConnect here with
+    tls_accept on the proxy object there.
+
+  connection of type "..." is not allowed for host "<host>"
+
+    A host's own encryption policy, not the proxy's. It comes from the server
+    configuration; change it there.
+
+  Zabbix agent item "..." failed: first network error
+
+    The agent is unreachable, or refuses this proxy's encryption. Reproduce it
+    with zabbix_get from the proxy machine before suspecting the proxy.
+
+  unknown parameter "..." in config file
+
+    A parameter name that does not exist in this version. The proxy names it
+    and refuses to start rather than ignoring it.
+
+  ProxyMemoryBufferSize configuration parameter can be set only when
+  ProxyBufferMode is set to "memory" or "hybrid"
+
+    Validation reports every problem it finds, not just the first. Read the
+    whole output.
+
+
+Upgrading
+---------
+
+Run the new installer over the old one, with the proxy still running. It stops
+the service, replaces the binary and the sample, and leaves your configuration
+and the buffer alone.
+
+It does not start the service again. Start it yourself, or the proxy is down
+until someone notices:
+
+    net start "Zabbix Proxy"
+
+What an upgrade was measured to do, installing one package over another while
+the service ran: the old entry is replaced rather than left beside the new one,
+the version in Programs and Features is the new one, edits made to
+zabbix_proxy.conf are still there, the buffer is the same file it was, and
+zabbix_proxy.conf.example is refreshed. An uninstall then leaves the buffer and
+your configuration behind, and takes the service.
+
+The buffer is a database carrying a schema version, which the proxy checks at
+start-up and reports:
+
+    current database version (mandatory/optional): 07040000/07040011
+    required mandatory version: 07040000
+
+A buffer has been carried across binary replacements of the same version, an
+operating system restart and a package upgrade, without loss. A change of
+Zabbix version has not been tested either way. If a proxy refuses a buffer it
+cannot read, removing zabbix_proxy.db lets it start again, at the cost of
+whatever the buffer still held.
+
+
+Uninstalling
+------------
+
+Through Settings, or:
+
+    msiexec /x zabbix_proxy-7.4.13-x64.msi
+
+The service is stopped and removed. The data directory stays if it still holds
+the buffer or the log; delete it by hand when you are sure you no longer want
+them.
+
+
+What is not known yet
+---------------------
+
+Stated plainly, because a monitoring component that surprises you is worse than
+one with documented limits.
+
+  * Throughput has been measured only against one server, on one machine, with
+    trapper items. Six senders delivering 960 000 values took 102 seconds to
+    accept and about four minutes to relay in full. There is no figure for how
+    many hosts one Windows proxy sustains, so size it conservatively and watch
+    zabbix[wcache,values] and the buffer file.
+
+  * ProxyBufferMode=hybrid loses values under a heavy burst; see Configuring.
+
+  * Windows Server 2019 has not been exercised. Every check runs on Windows 11,
+    on Windows Server 2022 Datacenter (10.0.20348) and on Windows Server 2025
+    Datacenter (10.0.26100) - the self-test, the service registration and the
+    installer, against the one binary rather than three builds of it. Server
+    2019 is absent because its runner image is retired, so nothing here says
+    anything about it either way.
+
+  * The housekeeper has not run for days on end. It has been watched over a few
+    hours and does what it says - on its hourly schedule it clears the rows the
+    server has taken, and the buffer file came back from 16.8 MB to 4.1 MB:
+
+        housekeeper [deleted 14852 records in 0.038813 sec, idle for 1 hour(s)]
+
+    That is not the same as a week of it. Watch the size of zabbix_proxy.db
+    over the first one.
+
+  * The binary is unsigned unless you sign it yourself. SmartScreen warns on
+    every install and some endpoint protection blocks it outright.
+
+  * After a long server outage, collection pauses for around three minutes once
+    the server returns, for every item at once and with nothing in the log. A
+    Linux proxy of the same version does the same, so this is Zabbix behaviour
+    rather than something this build introduced.
