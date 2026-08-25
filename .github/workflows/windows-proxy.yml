@@ -157,6 +157,20 @@ jobs:
       - name: Collect through a stand-in server
         run: python build/win32/tests/proxy_selftest.py --timeout 240
 
+      # The self-test drives five items for a minute. Real load is what turns
+      # up the rest, and that is driven from outside CI - so hand the
+      # instrumented binary over, runtime included, rather than discarding it.
+      - name: Upload the instrumented binary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zabbix_proxy-asan
+          path: |
+            bin/win64/zabbix_proxy.exe
+            bin/win64/zabbix_proxy.pdb
+            bin/win64/clang_rt.asan_dynamic-x86_64.dll
+          if-no-files-found: error
+
 
   build:
     name: zabbix_proxy.exe (x64, MSVC)
