@@ -58,7 +58,7 @@ static void	parent_signal_handler(int sig)
 		case SIGTERM:
 			ZBX_DO_EXIT();
 			zabbix_log(LOG_LEVEL_INFORMATION, "Got signal. Exiting ...");
-			zbx_on_exit_cb(SUCCEED);
+			zbx_on_exit_cb(SUCCEED, NULL);
 			break;
 	}
 }

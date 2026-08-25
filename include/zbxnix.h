@@ -30,7 +30,11 @@ int	zbx_coredump_disable(void);
 
 /* daemon start */
 #if defined(_WINDOWS)
-#	error "This module allowed only for Unix OS"
+/* The Windows proxy implements this interface in src/libs/zbxwin. Every worker is a thread of one process there */
+/* rather than a forked child, which is what shapes the two differences below. There are no POSIX signals to mask, so */
+/* the signal-set operations are no-ops. Their callers still declare the mask they pass, so the type has to exist; */
+/* MSVC does not provide it. */
+typedef int	sigset_t;
 #endif
 
 typedef int	(*zbx_get_process_info_by_thread_f)(int local_server_num, unsigned char *local_process_type,
@@ -126,7 +130,8 @@ void	zbx_unset_exit_on_terminate(void);
 
 void	zbx_log_exit_signal(void);
 void	zbx_set_on_exit_args(void *args);
-void	zbx_set_child_pids(pid_t *pids, size_t pid_num);
+/* the callers pass the thread handle table, which is pid_t on Unix */
+void	zbx_set_child_pids(ZBX_THREAD_HANDLE *pids, size_t pid_num);
 /* sighandler end */
 
 int	zbx_parse_rtc_options(const char *opt, int *message);
