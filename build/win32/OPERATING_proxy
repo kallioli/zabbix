@@ -258,9 +258,21 @@ almost nothing after start-up, so silence is good news.
 Upgrading
 ---------
 
-Run the new installer over the old one. It stops the service, replaces the
-binary and the sample, leaves your configuration and the buffer alone, and
-starts the service again.
+Run the new installer over the old one, with the proxy still running. It stops
+the service, replaces the binary and the sample, and leaves your configuration
+and the buffer alone.
+
+It does not start the service again. Start it yourself, or the proxy is down
+until someone notices:
+
+    net start "Zabbix Proxy"
+
+What an upgrade was measured to do, installing one package over another while
+the service ran: the old entry is replaced rather than left beside the new one,
+the version in Programs and Features is the new one, edits made to
+zabbix_proxy.conf are still there, the buffer is the same file it was, and
+zabbix_proxy.conf.example is refreshed. An uninstall then leaves the buffer and
+your configuration behind, and takes the service.
 
 The buffer is a database carrying a schema version, which the proxy checks at
 start-up and reports:
@@ -268,11 +280,11 @@ start-up and reports:
     current database version (mandatory/optional): 07040000/07040011
     required mandatory version: 07040000
 
-A buffer has been carried across binary replacements of the same version, and
-across an operating system restart, without loss. A change of Zabbix version
-has not been tested either way. If a proxy refuses a buffer it cannot read,
-removing zabbix_proxy.db lets it start again, at the cost of whatever the
-buffer still held.
+A buffer has been carried across binary replacements of the same version, an
+operating system restart and a package upgrade, without loss. A change of
+Zabbix version has not been tested either way. If a proxy refuses a buffer it
+cannot read, removing zabbix_proxy.db lets it start again, at the cost of
+whatever the buffer still held.
 
 
 Uninstalling
