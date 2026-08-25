@@ -131,7 +131,10 @@ int	zbx_rtc_get_command_target(const char *data, pid_t *pid, int *proc_type, int
 	return SUCCEED;
 }
 
-#if defined(HAVE_SIGQUEUE)
+/* These reach subscribed workers through the service and fall back to signalling the rest. Windows has no sigqueue, */
+/* but it has the service, and the fallback reports the workers it could not address rather than pretending */
+/* otherwise. */
+#if defined(HAVE_SIGQUEUE) || defined(_WINDOWS)
 
 /******************************************************************************
  *                                                                            *
@@ -526,7 +529,7 @@ static void	rtc_process_request(zbx_rtc_t *rtc, zbx_uint32_t code, const unsigne
 
 	switch (code)
 	{
-#if defined(HAVE_SIGQUEUE)
+#if defined(HAVE_SIGQUEUE) || defined(_WINDOWS)
 		case ZBX_RTC_LOG_LEVEL_INCREASE:
 		case ZBX_RTC_LOG_LEVEL_DECREASE:
 			rtc_process_loglevel_option(rtc, code, (const char *)data, result);
