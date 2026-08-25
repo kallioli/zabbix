@@ -2650,6 +2650,15 @@ static int	eval_execute_math_return_value(const zbx_eval_context_t *ctx, const z
 
 	if (ZBX_MATH_RANDOM == value)
 	{
+#ifdef _WINDOWS
+		LARGE_INTEGER	counter;
+
+		/* the performance counter is the monotonic clock here, and MSVC spells the generator rand() rather */
+		/* than random() */
+		QueryPerformanceCounter(&counter);
+		srand((unsigned int)(counter.QuadPart ^ (counter.QuadPart >> 32)));
+		zbx_variant_set_dbl(&ret_value, rand());
+#else
 		struct timespec ts;
 
 		if (SUCCEED != clock_gettime(CLOCK_MONOTONIC, &ts))
@@ -2662,6 +2671,7 @@ static int	eval_execute_math_return_value(const zbx_eval_context_t *ctx, const z
 			srandom((unsigned int)(ts.tv_nsec ^ ts.tv_sec));
 			zbx_variant_set_dbl(&ret_value, random());
 		}
+#endif
 	}
 	else
 		zbx_variant_set_dbl(&ret_value, value);

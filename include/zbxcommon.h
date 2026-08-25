@@ -451,6 +451,7 @@ typedef enum
 	ZBX_TASK_START_SERVICE,
 	ZBX_TASK_STOP_SERVICE,
 	ZBX_TASK_SET_SERVICE_STARTUP_TYPE,
+	ZBX_TASK_RUNTIME_CONTROL,
 #else
 	ZBX_TASK_RUNTIME_CONTROL,
 #endif
@@ -802,7 +803,8 @@ int	zbx_get_log_level(void);
 void	zbx_set_log_level(int level);
 const char	*zbx_get_log_component_name(void);
 
-#ifndef _WINDOWS
+/* The per-component log level is plain C. It was behind a Unix guard only because the agent has no use for it; the */
+/* proxy worker pools do. */
 void		zabbix_increase_log_level(void);
 void		zabbix_decrease_log_level(void);
 void		zabbix_report_log_level_change(void);
@@ -817,6 +819,9 @@ zbx_log_component_t;
 
 void	zbx_set_log_component(const char *name, zbx_log_component_t *component);
 void	zbx_change_component_log_level(zbx_log_component_t *component, int direction);
+
+#ifndef _WINDOWS
+/* malloc_trim() is a glibc extension */
 void	zbx_malloc_trim(time_t now, int period, size_t pad);
 #endif
 

@@ -68,7 +68,7 @@ const char	*zbx_get_log_component_name(void)
 	return log_component_name;
 }
 
-#ifndef _WINDOWS
+/* the per-component log level is portable; see zbxcommon.h */
 static const char	*zabbix_get_log_level_ref_string(int loglevel)
 {
 	switch (loglevel)
@@ -215,7 +215,6 @@ void	zbx_change_component_log_level(zbx_log_component_t *component, int directio
 		}
 	}
 }
-#endif
 
 /******************************************************************************
  *                                                                            *
