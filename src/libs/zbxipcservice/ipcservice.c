@@ -2267,7 +2267,7 @@ int	zbx_ipc_async_socket_send(zbx_ipc_async_socket_t *asocket, zbx_uint32_t code
  ******************************************************************************/
 int	zbx_ipc_async_socket_recv(zbx_ipc_async_socket_t *asocket, int timeout, zbx_ipc_message_t **message)
 {
-	int	ret, flags, deadline_set = 0;
+	int	ret, flags, deadline_set = 0, turn = 0;
 	double	deadline = 0, started = zbx_time();
 
 	zabbix_log(LOG_LEVEL_DEBUG, "In %s() timeout:%d", __func__, timeout);
@@ -2300,6 +2300,16 @@ int	zbx_ipc_async_socket_recv(zbx_ipc_async_socket_t *asocket, int timeout, zbx_
 			double		left = deadline - zbx_time();
 			struct timeval	tv = {0, 0};
 
+			/* PROBE, to be removed: says whether the timer ever leaves the heap */
+			/* part way through a wait. On the first turn it is simply not armed */
+			/* yet, which is what the old code did once and only once.           */
+			if (0 != turn)
+			{
+				zabbix_log(LOG_LEVEL_WARNING, "the %d second wait timer had left the"
+						" event loop after %d turns, with %.3f seconds left",
+						timeout, turn, deadline - zbx_time());
+			}
+
 			if (0 < left)
 			{
 				tv.tv_sec = (long)left;
@@ -2318,6 +2328,7 @@ int	zbx_ipc_async_socket_recv(zbx_ipc_async_socket_t *asocket, int timeout, zbx_
 
 		event_base_loop(asocket->ev, flags);
 		*message = (zbx_ipc_message_t *)zbx_queue_ptr_pop(&asocket->client->rx_queue);
+		turn++;
 	}
 	while (NULL == *message && ZBX_IPC_ASYNC_SOCKET_STATE_NONE == asocket->state);
 
