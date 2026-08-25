@@ -27,8 +27,8 @@ worker - see "Runtime control" below.
 Requirements
 ------------
 
-  * 64-bit Windows. Built and exercised on Windows 11 and on the windows-latest
-    runner; other releases are untested - see "What is not known yet".
+  * 64-bit Windows. Exercised on Windows 11, Windows Server 2022 and Windows
+    Server 2025; Server 2019 is untested - see "What is not known yet".
   * Outbound TCP to the server on 10051 for an active proxy, or inbound on the
     proxy's ListenPort for a passive one.
   * Nothing else. The binary is statically linked; there is no runtime to
@@ -301,8 +301,12 @@ one with documented limits.
 
   * ProxyBufferMode=hybrid loses values under a heavy burst; see Configuring.
 
-  * Only Windows 11 and the windows-latest runner have been exercised. The
-    Windows Server releases differ in service and firewall behaviour.
+  * Windows Server 2019 has not been exercised. Every check runs on Windows 11,
+    on Windows Server 2022 Datacenter (10.0.20348) and on Windows Server 2025
+    Datacenter (10.0.26100) - the self-test, the service registration and the
+    installer, against the one binary rather than three builds of it. Server
+    2019 is absent because its runner image is retired, so nothing here says
+    anything about it either way.
 
   * The housekeeper has not run for days on end. Watch the size of
     zabbix_proxy.db over the first week.
