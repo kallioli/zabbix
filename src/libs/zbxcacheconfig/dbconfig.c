@@ -155,7 +155,13 @@ static int	dc_item_ref_compare(const void *d1, const void *d2)
 	return 0;
 }
 
-static int	sync_in_progress = 0;
+/* Set while this worker holds the configuration cache write lock for a sync,
+   and read by the locking macros so that the helpers a sync calls do not try
+   to take a lock their caller already holds. It describes the worker, not the
+   cache: a worker is a process where this forks and a thread where it does
+   not, and one worker announcing its sync must never stop the others from
+   locking halfway through their own critical sections. */
+static ZBX_THREAD_LOCAL int	sync_in_progress = 0;
 
 int	zbx_get_sync_in_progress(void)
 {
@@ -232,7 +238,10 @@ void	set_dc_config(zbx_dc_config_t *in)
 }
 
 static zbx_rwlock_t	config_lock = ZBX_RWLOCK_NULL;
-static int		wlock_is_locked;
+
+/* Whether this worker holds the write lock, for the same reason and with the
+   same scope as sync_in_progress above. */
+static ZBX_THREAD_LOCAL int	wlock_is_locked;
 
 zbx_rwlock_t	zbx_get_config_lock(void)
 {
