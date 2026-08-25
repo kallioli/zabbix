@@ -87,13 +87,15 @@ const char	*zbx_task_state_to_str(zbx_async_task_state_t task_state)
 static void	async_event(evutil_socket_t fd, short what, void *arg)
 {
 	zbx_async_task_t	*task = (zbx_async_task_t *)arg;
-	int			ret, fd_in = fd;
+	int			ret, fd_in = (int)fd, task_fd = (int)fd;
 	struct event_base	*ev;
 
 	zabbix_log(LOG_LEVEL_DEBUG, "In %s()", __func__);
 
-	ret = task->async_task_process_task_cb(what, task->data, &fd, &task->addresses, task->reverse_dns, task->error,
-			task->timeout_event);
+	/* the callback reports the descriptor through an int, while evutil_socket_t is wider than */
+	/* int on 64-bit Windows - give it a variable of its own rather than half of this one      */
+	ret = task->async_task_process_task_cb(what, task->data, &task_fd, &task->addresses, task->reverse_dns,
+			task->error, task->timeout_event);
 
 	switch (ret)
 	{
@@ -120,38 +122,38 @@ static void	async_event(evutil_socket_t fd, short what, void *arg)
 			}
 			break;
 		case ZBX_ASYNC_TASK_READ:
-			if (fd_in != fd && NULL != task->tx_event)
+			if (fd_in != task_fd && NULL != task->tx_event)
 			{
 				event_free(task->tx_event);
 				task->tx_event = NULL;
 			}
 
-			if (fd_in != fd || NULL == task->rx_event)
+			if (fd_in != task_fd || NULL == task->rx_event)
 			{
 				ev = event_get_base(task->timeout_event);
 
 				if (NULL != task->rx_event)
 					event_free(task->rx_event);
 
-				task->rx_event = event_new(ev, fd, EV_READ, async_event, (void *)task);
+				task->rx_event = event_new(ev, task_fd, EV_READ, async_event, (void *)task);
 			}
 			event_add(task->rx_event, NULL);
 			break;
 		case ZBX_ASYNC_TASK_WRITE:
-			if (fd_in != fd && NULL != task->rx_event)
+			if (fd_in != task_fd && NULL != task->rx_event)
 			{
 				event_free(task->rx_event);
 				task->rx_event = NULL;
 			}
 
-			if (fd_in != fd || NULL == task->tx_event)
+			if (fd_in != task_fd || NULL == task->tx_event)
 			{
 				ev = event_get_base(task->timeout_event);
 
 				if (NULL != task->tx_event)
 					event_free(task->tx_event);
 
-				task->tx_event = event_new(ev, fd, EV_WRITE, async_event, (void *)task);
+				task->tx_event = event_new(ev, task_fd, EV_WRITE, async_event, (void *)task);
 			}
 			event_add(task->tx_event, NULL);
 			break;
