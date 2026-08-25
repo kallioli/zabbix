@@ -2282,7 +2282,8 @@ int	zbx_ipc_async_socket_send(zbx_ipc_async_socket_t *asocket, zbx_uint32_t code
  ******************************************************************************/
 int	zbx_ipc_async_socket_recv(zbx_ipc_async_socket_t *asocket, int timeout, zbx_ipc_message_t **message)
 {
-	int	ret, flags;
+	int	ret, flags, armed = 0;
+	double	started = zbx_time();
 
 	zabbix_log(LOG_LEVEL_DEBUG, "In %s() timeout:%d", __func__, timeout);
 
@@ -2292,6 +2293,7 @@ int	zbx_ipc_async_socket_recv(zbx_ipc_async_socket_t *asocket, int timeout, zbx_
 		{
 			struct timeval	tv = {timeout, 0};
 			evtimer_add(asocket->ev_timer, &tv);
+			armed = 1;
 		}
 		flags = EVLOOP_ONCE;
 	}
@@ -2324,6 +2326,20 @@ int	zbx_ipc_async_socket_recv(zbx_ipc_async_socket_t *asocket, int timeout, zbx_
 		ret = FAIL;
 
 	evtimer_del(asocket->ev_timer);
+
+	/* A worker that asked to sleep for a second and slept for four minutes has
+	   lost its timer, and everything it was due to do has not happened. Saying
+	   so costs one comparison per wait and turns a silent stall into a line. */
+	if (0 != armed)
+	{
+		double	slept = zbx_time() - started;
+
+		if (slept > (double)timeout * 2 + 1)
+		{
+			zabbix_log(LOG_LEVEL_WARNING, "waited %.1f seconds for a timeout of %d;"
+					" the timer did not fire", slept, timeout);
+		}
+	}
 
 	zabbix_log(LOG_LEVEL_DEBUG, "End of %s():%d", __func__, ret);
 
