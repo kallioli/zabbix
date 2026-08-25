@@ -64,7 +64,7 @@ jobs:
           # that never ran reads as a harness that passed.
           set -o pipefail
 
-          grep -q "HAVE_TESTS" include/config.h || {
+          grep -q "HAVE_TESTS" include/common/config.h || {
             echo "configure did not pick up the test harness"; exit 1; }
           grep -qE "^check(-am)?:" tests/Makefile || {
             echo "tests/Makefile carries no check target:"; head -20 tests/Makefile; exit 1; }
