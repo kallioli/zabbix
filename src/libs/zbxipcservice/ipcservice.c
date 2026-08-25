@@ -34,29 +34,17 @@ static char	ipc_path[ZBX_IPC_PATH_MAX] = {0};
 static size_t	ipc_path_root_len = 0;
 
 #ifdef _WINDOWS
-/* Windows transport.
- *
- * The unix domain socket this service is built on has no counterpart that
- * libevent can drive on every supported Windows version, so the transport is a
- * loopback socket instead. Clients and services are threads of one process
- * here, which makes the rendezvous simpler than a filesystem path: a service
- * binds 127.0.0.1 on an ephemeral port and records it under its name, and a
- * client looks the name up.
- *
- * The name is the path the Unix build would put its socket at, and the port is
- * published in a file there with the same lifetime a socket file has: written
- * once the service listens, removed when it stops. Workers find each other
- * through the in-process table without touching the disk; a separate process -
- * a runtime control request - finds the service the same way it would on Unix,
- * by its path.
- *
- * A local user who can read that file can reach the endpoint, where a unix
- * domain socket would have carried the directory's permissions. The directory
- * is the operator's to protect, as SocketDir is on Unix.
- *
- * Everything above the address - message framing, the receive and send queues,
- * the libevent callbacks - is transport agnostic and shared with Unix.
- */
+/* Windows transport. The unix domain socket this service is built on has no counterpart that libevent can drive on */
+/* every supported Windows version, so the transport is a loopback socket instead. Clients and services are threads */
+/* of one process here, which makes the rendezvous simpler than a filesystem path: a service binds 127.0.0.1 on an */
+/* ephemeral port and records it under its name, and a client looks the name up. The name is the path the Unix build */
+/* would put its socket at, and the port is published in a file there with the same lifetime a socket file has: */
+/* written once the service listens, removed when it stops. Workers find each other through the in-process table */
+/* without touching the disk; a separate process - a runtime control request - finds the service the same way it */
+/* would on Unix, by its path. A local user who can read that file can reach the endpoint, where a unix domain socket */
+/* would have carried the directory's permissions. The directory is the operator's to protect, as SocketDir is on */
+/* Unix. Everything above the address - message framing, the receive and send queues, the libevent callbacks - is */
+/* transport agnostic and shared with Unix. */
 #define ZBX_IPC_ENDPOINTS_MAX	64
 
 typedef struct
@@ -237,9 +225,8 @@ static int	ipc_socket_set_nonblocking(int fd)
 #endif
 }
 
-/* Socket I/O differs from file I/O on Windows: a SOCKET is not a CRT file
-   descriptor, so read() and write() cannot be used on it, and the failure code
-   comes from WSAGetLastError() instead of errno. */
+/* Socket I/O differs from file I/O on Windows: a SOCKET is not a CRT file descriptor, so read() and write() cannot */
+/* be used on it, and the failure code comes from WSAGetLastError() instead of errno. */
 #ifdef _WINDOWS
 #	define ZBX_IPC_EINTR		WSAEINTR
 #	define ZBX_IPC_EWOULDBLOCK	WSAEWOULDBLOCK
@@ -1377,8 +1364,8 @@ int	zbx_ipc_socket_open(zbx_ipc_socket_t *csocket, const char *service_name, int
 	while (1)
 	{
 #ifdef _WINDOWS
-		/* Winsock refuses a second connect() on a socket whose first attempt
-		   failed, so every attempt starts from a fresh one. */
+		/* Winsock refuses a second connect() on a socket whose first attempt failed, so every attempt starts */
+		/* from a fresh one. */
 		if (-1 == (csocket->fd = (int)socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)))
 		{
 			*error = zbx_dsprintf(*error, "Cannot create client socket: %s.",
@@ -1386,10 +1373,9 @@ int	zbx_ipc_socket_open(zbx_ipc_socket_t *csocket, const char *service_name, int
 			goto out;
 		}
 
-		/* A service publishes its port once it is listening. Until then there is
-		   nothing to connect to, which is the state the POSIX build sees as a
-		   socket file that has not been created yet - so wait, rather than
-		   deciding the service will never arrive. */
+		/* A service publishes its port once it is listening. Until then there is nothing to connect to, */
+		/* which is the state the POSIX build sees as a socket file that has not been created yet - so wait, */
+		/* rather than deciding the service will never arrive. */
 		if (0 != (port = ipc_endpoint_find(socket_path)))
 		{
 			addr.sin_port = htons(port);
@@ -1686,8 +1672,8 @@ int	zbx_ipc_service_init_env(const char *path, char **error)
 	}
 
 #ifdef _WINDOWS
-	/* the services publish their ports here, so the directory has to exist;
-	   create it rather than make an operator do it by hand */
+	/* the services publish their ports here, so the directory has to exist; create it rather than make an */
+	/* operator do it by hand */
 	if (0 == CreateDirectoryA(path, NULL))
 	{
 		DWORD	last_error = GetLastError();
@@ -1836,8 +1822,8 @@ int	zbx_ipc_service_start(zbx_ipc_service_t *service, const char *service_name, 
 		goto out;
 	}
 
-	/* bind the loopback interface on an ephemeral port, then publish the port
-	   the system picked under the service name */
+	/* bind the loopback interface on an ephemeral port, then publish the port the system picked under the */
+	/* service name */
 	memset(&addr, 0, sizeof(addr));
 	addr.sin_family = AF_INET;
 	addr.sin_port = 0;
@@ -1883,9 +1869,8 @@ int	zbx_ipc_service_start(zbx_ipc_service_t *service, const char *service_name, 
 	}
 
 #ifdef _WINDOWS
-	/* Only now: a bound socket that is not listening yet still answers on
-	   loopback, and a client that connected in that window would hold
-	   something that is not a connection. */
+	/* Only now: a bound socket that is not listening yet still answers on loopback, and a client that connected */
+	/* in that window would hold something that is not a connection. */
 	if (SUCCEED != ipc_endpoint_register(socket_path, port))
 	{
 		*error = zbx_dsprintf(*error, "Cannot register service \"%s\": the limit of %d is reached.",
@@ -2353,9 +2338,9 @@ int	zbx_ipc_async_socket_recv(zbx_ipc_async_socket_t *asocket, int timeout, zbx_
 
 	evtimer_del(asocket->ev_timer);
 
-	/* A worker that asked to sleep for a second and slept for four minutes has
-	   lost its timeout, and everything it was due to do has not happened. Saying
-	   so costs one comparison per wait and turns a silent stall into a line. */
+	/* A worker that asked to sleep for a second and slept for four minutes has lost its timeout, and everything */
+	/* it was due to do has not happened. Saying so costs one comparison per wait and turns a silent stall into a */
+	/* line. */
 	if (0 != deadline_set)
 	{
 		double	slept = zbx_time() - started;

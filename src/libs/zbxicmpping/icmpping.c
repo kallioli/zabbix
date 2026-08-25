@@ -28,9 +28,8 @@
 ZBX_VECTOR_IMPL(fping_host, zbx_fping_host_t)
 
 #ifdef _WINDOWS
-/* ICMP checks drive the external fping utility, which this build does not
- * ship. The entry points stay so that their callers link unchanged, and
- * report the check as unsupported rather than silently returning no data. */
+/* ICMP checks drive the external fping utility, which this build does not ship. The entry points stay so that their */
+/* callers link unchanged, and report the check as unsupported rather than silently returning no data. */
 
 void	zbx_init_library_icmpping(const zbx_config_icmpping_t *config)
 {

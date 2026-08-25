@@ -21,8 +21,8 @@
 #include "zbxlog.h"
 
 #ifdef _WINDOWS
-/* a loadable module is a DLL here; the dl* interface maps directly onto the
-   Windows library calls, so the loader below stays as it is */
+/* a loadable module is a DLL here; the dl* interface maps directly onto the Windows library calls, so the loader */
+/* below stays as it is */
 #	define RTLD_NOW		0
 #	define dlopen(path, mode)	((void)(mode), (void *)LoadLibraryA(path))
 #	define dlsym(lib, sym)		((void *)GetProcAddress((HMODULE)(lib), sym))

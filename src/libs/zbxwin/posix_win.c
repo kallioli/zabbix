@@ -12,8 +12,8 @@
 ** If not, see <https://www.gnu.org/licenses/>.
 **/
 
-/* The handful of POSIX functions the proxy calls that MSVC does not provide.
- * Declared in include/common/zbxsysinc.h next to the other Windows shims. */
+/* The handful of POSIX functions the proxy calls that MSVC does not provide. Declared in include/common/zbxsysinc.h */
+/* next to the other Windows shims. */
 
 #include "zbxcommon.h"
 
@@ -33,8 +33,8 @@ int	nanosleep(const struct timespec *req, struct timespec *rem)
 		return -1;
 	}
 
-	/* Sleep() has millisecond resolution; round up so that a sub-millisecond
-	   request still yields the processor rather than spinning */
+	/* Sleep() has millisecond resolution; round up so that a sub-millisecond request still yields the processor */
+	/* rather than spinning */
 	ms = (DWORD)(req->tv_sec * 1000) + (DWORD)((req->tv_nsec + 999999L) / 1000000L);
 	Sleep(ms);
 
@@ -173,8 +173,8 @@ char	*strptime(const char *s, const char *format, struct tm *tm)
 				tm->tm_sec = value;
 				break;
 			case 'z':
-				/* +hhmm, -hhmm or Z; the offset is consumed but not applied,
-				   matching what the callers expect from a struct tm */
+				/* +hhmm, -hhmm or Z; the offset is consumed but not applied, matching what the */
+				/* callers expect from a struct tm */
 				if ('Z' == *s)
 				{
 					s++;

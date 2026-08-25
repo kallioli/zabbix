@@ -12,18 +12,12 @@
 ** If not, see <https://www.gnu.org/licenses/>.
 **/
 
-/* Windows counterpart of src/libs/zbxnix/sighandler.c.
- *
- * Termination is driven by the service control handler and by console control
- * events, both of which live in src/libs/zbxwinservice/service.c and end up
- * calling ZBX_DO_EXIT(). That gives a running/stopped flag but no exit status,
- * which the proxy needs, so the status is tracked here on top of it:
- * ZBX_IS_RUNNING() stays the one in service.c, ZBX_EXIT_STATUS() is ours.
- *
- * There are no POSIX signals to block. The signal-set operations are kept as
- * no-ops rather than removed, so that their twenty-odd callers across the
- * shared libraries compile unchanged.
- */
+/* Windows counterpart of src/libs/zbxnix/sighandler.c. Termination is driven by the service control handler and by */
+/* console control events, both of which live in src/libs/zbxwinservice/service.c and end up calling ZBX_DO_EXIT(). */
+/* That gives a running/stopped flag but no exit status, which the proxy needs, so the status is tracked here on top */
+/* of it: ZBX_IS_RUNNING() stays the one in service.c, ZBX_EXIT_STATUS() is ours. There are no POSIX signals to */
+/* block. The signal-set operations are kept as no-ops rather than removed, so that their twenty-odd callers across */
+/* the shared libraries compile unchanged. */
 
 #include "zbxcommon.h"
 
@@ -92,8 +86,7 @@ void	zbx_log_exit_signal(void)
 		zabbix_log(LOG_LEVEL_INFORMATION, "Got shutdown request, exiting...");
 }
 
-/* the operations below have no Windows counterpart and exist so that the
-   shared libraries compile and link unchanged */
+/* the operations below have no Windows counterpart and exist so that the shared libraries compile and link unchanged */
 
 void	zbx_set_child_signal_handler(void)
 {

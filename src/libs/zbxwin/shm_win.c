@@ -12,18 +12,12 @@
 ** If not, see <https://www.gnu.org/licenses/>.
 **/
 
-/* Windows counterpart of src/libs/zbxnix/ipc.c and src/libs/zbxnix/dshm.c.
- *
- * zbx_thread_start() creates a thread on Windows where it forks on Unix, so
- * every Zabbix worker shares one address space. What System V shared memory
- * buys on Unix - a region visible from several processes - is therefore
- * already true of ordinary heap memory here, and these segments are plain
- * allocations tracked by identifier so that callers keep working with shmids.
- *
- * The reallocation path is correspondingly simpler than dshm.c: there are no
- * other processes holding a stale attachment, so growing a segment is a copy
- * into a new allocation, with no re-attachment dance.
- */
+/* Windows counterpart of src/libs/zbxnix/ipc.c and src/libs/zbxnix/dshm.c. zbx_thread_start() creates a thread on */
+/* Windows where it forks on Unix, so every Zabbix worker shares one address space. What System V shared memory buys */
+/* on Unix - a region visible from several processes - is therefore already true of ordinary heap memory here, and */
+/* these segments are plain allocations tracked by identifier so that callers keep working with shmids. The */
+/* reallocation path is correspondingly simpler than dshm.c: there are no other processes holding a stale attachment, */
+/* so growing a segment is a copy into a new allocation, with no re-attachment dance. */
 
 #include "zbxcommon.h"
 

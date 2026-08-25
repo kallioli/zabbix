@@ -610,18 +610,11 @@ zbx_mutex_name_t	zbx_mutex_create_per_process_name(const zbx_mutex_name_t prefix
 #endif
 
 #ifdef _WINDOWS
-/* Read-write locks.
- *
- * Elsewhere these are process-shared pthread locks living in a shared memory
- * segment. On Windows every Zabbix worker is a thread of one process, so a
- * plain slim reader/writer lock in static storage covers the same ground.
- * SRWLOCK_INIT is all zeroes, which static storage already is, so the table
- * needs no initialisation.
- *
- * SRWLOCK is used directly rather than through the POSIX subset in
- * src/libs/zbxwin, because this translation unit is also linked into the
- * agent, which does not build that library.
- */
+/* Read-write locks. Elsewhere these are process-shared pthread locks living in a shared memory segment. On Windows */
+/* every Zabbix worker is a thread of one process, so a plain slim reader/writer lock in static storage covers the */
+/* same ground. SRWLOCK_INIT is all zeroes, which static storage already is, so the table needs no initialisation. */
+/* SRWLOCK is used directly rather than through the POSIX subset in src/libs/zbxwin, because this translation unit is */
+/* also linked into the agent, which does not build that library. */
 
 struct zbx_win_rwlock
 {
@@ -630,18 +623,12 @@ struct zbx_win_rwlock
 
 static struct zbx_win_rwlock	rwlocks[ZBX_RWLOCK_COUNT];
 
-/* Windows releases the shared and the exclusive mode with different calls and
- * cannot be asked which one is held, so the mode has to be recorded. It cannot
- * be recorded on the lock: the lock is shared between threads, the answer is
- * not - while one thread holds the lock exclusively another may be about to
- * release the shared hold it took before, and a single flag tells them both
- * the same thing. Releasing in the wrong mode raises STATUS_RESOURCE_NOT_OWNED
- * and takes the process down.
- *
- * Each thread therefore keeps its own record, which no other thread can
- * disturb. The depth counts nested holds, which the readers of the
- * configuration cache do take.
- */
+/* Windows releases the shared and the exclusive mode with different calls and cannot be asked which one is held, so */
+/* the mode has to be recorded. It cannot be recorded on the lock: the lock is shared between threads, the answer is */
+/* not - while one thread holds the lock exclusively another may be about to release the shared hold it took before, */
+/* and a single flag tells them both the same thing. Releasing in the wrong mode raises STATUS_RESOURCE_NOT_OWNED and */
+/* takes the process down. Each thread therefore keeps its own record, which no other thread can disturb. The depth */
+/* counts nested holds, which the readers of the configuration cache do take. */
 #define ZBX_RWLOCK_HELD_SHARED		1
 #define ZBX_RWLOCK_HELD_EXCLUSIVE	2
 

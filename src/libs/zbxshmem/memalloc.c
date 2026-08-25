@@ -485,9 +485,8 @@ static void	__mem_free(zbx_shmem_info_t *info, void *ptr)
 
 	chunk = (void *)((char *)ptr - SHMEM_SIZE_FIELD);
 
-	/* Both of these leave a free list holding something that is not a link,
-	   which is only noticed much later and somewhere else. Saying so here
-	   names the caller that did it. */
+	/* Both of these leave a free list holding something that is not a link, which is only noticed much later and */
+	/* somewhere else. Saying so here names the caller that did it. */
 	if (chunk < info->lo_bound || chunk >= info->hi_bound)
 	{
 		zabbix_log(LOG_LEVEL_CRIT, "freeing %p in \"%s\", which lies outside [%p, %p)",
@@ -568,8 +567,8 @@ static void	__mem_free(zbx_shmem_info_t *info, void *ptr)
 int	zbx_shmem_create(zbx_shmem_info_t **info, zbx_uint64_t size, const char *descr, const char *param,
 		int allow_oom, char **error)
 {
-	/* Windows has no segment id; leaving it uninitialised puts noise in the
-	   start-up log and in the diagnostics that print it. */
+	/* Windows has no segment id; leaving it uninitialised puts noise in the start-up log and in the diagnostics */
+	/* that print it. */
 	int	shm_id = 0, index, ret = FAIL;
 	void	*base;
 
@@ -596,8 +595,8 @@ int	zbx_shmem_create(zbx_shmem_info_t **info, zbx_uint64_t size, const char *des
 	}
 
 #ifdef _WINDOWS
-	/* every Zabbix worker is a thread of one process here, so a segment that
-	   has to be visible from all of them is ordinary heap */
+	/* every Zabbix worker is a thread of one process here, so a segment that has to be visible from all of them */
+	/* is ordinary heap */
 	if (NULL == (base = zbx_malloc(NULL, size)))
 	{
 		*error = zbx_dsprintf(*error, "cannot allocate shared memory of size " ZBX_FS_SIZE_T " for %s",

@@ -25,8 +25,8 @@
 #endif
 
 #if defined(_WINDOWS) || defined(__MINGW32__)
-/* shlwapi.h declares COM interfaces and so needs the 'interface' keyword,
-   which zbxsysinc.h undefines because Zabbix uses that word as an identifier */
+/* shlwapi.h declares COM interfaces and so needs the 'interface' keyword, which zbxsysinc.h undefines because Zabbix */
+/* uses that word as an identifier */
 #define interface struct
 #include <shlwapi.h>
 #undef interface

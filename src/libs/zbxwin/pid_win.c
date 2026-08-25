@@ -12,13 +12,10 @@
 ** If not, see <https://www.gnu.org/licenses/>.
 **/
 
-/* Windows counterpart of src/libs/zbxnix/coredump.c and the backtrace helper.
- *
- * Crash reporting is already handled for Windows by src/libs/zbxwin32/fatal.c,
- * which writes a minidump through an unhandled exception filter. There is no
- * core dump resource limit to lower, and no equivalent of walking the stack
- * from arbitrary code the way zbx_backtrace() does on Unix.
- */
+/* Windows counterpart of src/libs/zbxnix/coredump.c and the backtrace helper. Crash reporting is already handled for */
+/* Windows by src/libs/zbxwin32/fatal.c, which writes a minidump through an unhandled exception filter. There is no */
+/* core dump resource limit to lower, and no equivalent of walking the stack from arbitrary code the way */
+/* zbx_backtrace() does on Unix. */
 
 #include "zbxcommon.h"
 
@@ -42,5 +39,5 @@ int	zbx_coredump_disable(void)
 }
 #endif
 
-/* zbx_backtrace() is provided by src/libs/zbxwin32/fatal.c, which also
-   installs the unhandled exception filter that writes the minidump */
+/* zbx_backtrace() is provided by src/libs/zbxwin32/fatal.c, which also installs the unhandled exception filter that */
+/* writes the minidump */

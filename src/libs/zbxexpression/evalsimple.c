@@ -47,9 +47,8 @@
 static const char	*ptr;		/* character being looked at */
 static ZBX_THREAD_LOCAL int	level;			/* expression nesting level  */
 
-/* The caller's error buffer, held across the recursive descent. Several
-   workers evaluate at once and they are threads here, so each has to write
-   to the buffer its own caller passed in. */
+/* The caller's error buffer, held across the recursive descent. Several workers evaluate at once and they are */
+/* threads here, so each has to write to the buffer its own caller passed in. */
 static ZBX_THREAD_LOCAL char	*buffer;		/* error message buffer      */
 static ZBX_THREAD_LOCAL size_t	max_buffer_len;		/* error message buffer size */
 

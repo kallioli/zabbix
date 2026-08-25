@@ -155,12 +155,10 @@ static int	dc_item_ref_compare(const void *d1, const void *d2)
 	return 0;
 }
 
-/* Set while this worker holds the configuration cache write lock for a sync,
-   and read by the locking macros so that the helpers a sync calls do not try
-   to take a lock their caller already holds. It describes the worker, not the
-   cache: a worker is a process where this forks and a thread where it does
-   not, and one worker announcing its sync must never stop the others from
-   locking halfway through their own critical sections. */
+/* Set while this worker holds the configuration cache write lock for a sync, and read by the locking macros so that */
+/* the helpers a sync calls do not try to take a lock their caller already holds. It describes the worker, not the */
+/* cache: a worker is a process where this forks and a thread where it does not, and one worker announcing its sync */
+/* must never stop the others from locking halfway through their own critical sections. */
 static ZBX_THREAD_LOCAL int	sync_in_progress = 0;
 
 int	zbx_get_sync_in_progress(void)
@@ -239,8 +237,7 @@ void	set_dc_config(zbx_dc_config_t *in)
 
 static zbx_rwlock_t	config_lock = ZBX_RWLOCK_NULL;
 
-/* Whether this worker holds the write lock, for the same reason and with the
-   same scope as sync_in_progress above. */
+/* Whether this worker holds the write lock, for the same reason and with the same scope as sync_in_progress above. */
 static ZBX_THREAD_LOCAL int	wlock_is_locked;
 
 zbx_rwlock_t	zbx_get_config_lock(void)
@@ -377,10 +374,9 @@ struct zbx_dc_um_handle_t
 	unsigned char		macro_env;
 };
 
-/* The open user macro handles form a per-worker stack, and the cache they hold
-   is released when the outermost one closes. Workers are threads here, so each
-   needs its own stack: otherwise one worker's close releases a cache another
-   worker is still reading through. */
+/* The open user macro handles form a per-worker stack, and the cache they hold is released when the outermost one */
+/* closes. Workers are threads here, so each needs its own stack: otherwise one worker's close releases a cache */
+/* another worker is still reading through. */
 static ZBX_THREAD_LOCAL zbx_dc_um_handle_t	*dc_um_handle = NULL;
 
 /******************************************************************************

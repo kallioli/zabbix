@@ -507,8 +507,8 @@ int	zbx_rtc_async_exchange(char **data, zbx_uint32_t code, int config_timeout, c
 	unsigned char	*result = NULL;
 	int				ret;
 
-	/* Windows has no sigqueue either, but the runtime control service reaches every
-	   worker that subscribed to it, and reports the ones it could not address. */
+	/* Windows has no sigqueue either, but the runtime control service reaches every worker that subscribed to */
+	/* it, and reports the ones it could not address. */
 #if !defined(HAVE_SIGQUEUE) && !defined(_WINDOWS)
 	switch (code)
 	{

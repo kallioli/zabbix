@@ -16,8 +16,8 @@
 
 #include "zbxalgo.h"
 
-/* The timekeeper synchronises threads of one process, which is a critical
- * section on Windows and a plain pthread mutex elsewhere. */
+/* The timekeeper synchronises threads of one process, which is a critical section on Windows and a plain pthread */
+/* mutex elsewhere. */
 #ifdef _WINDOWS
 typedef CRITICAL_SECTION	zbx_tk_mutex_t;
 
@@ -104,8 +104,8 @@ struct zbx_timekeeper
 static clock_t	zbx_times(void)
 {
 #if defined(_WINDOWS)
-	/* times() reports elapsed real time in ticks, not consumed CPU time;
-	   the millisecond tick count carries the same meaning */
+	/* times() reports elapsed real time in ticks, not consumed CPU time; the millisecond tick count carries the */
+	/* same meaning */
 	return (clock_t)GetTickCount64();
 #elif !defined(TIMES_NULL_ARG)
 	struct tms	buf;

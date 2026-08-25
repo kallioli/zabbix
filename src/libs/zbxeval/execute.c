@@ -2653,8 +2653,8 @@ static int	eval_execute_math_return_value(const zbx_eval_context_t *ctx, const z
 #ifdef _WINDOWS
 		LARGE_INTEGER	counter;
 
-		/* the performance counter is the monotonic clock here, and MSVC
-		   spells the generator rand() rather than random() */
+		/* the performance counter is the monotonic clock here, and MSVC spells the generator rand() rather */
+		/* than random() */
 		QueryPerformanceCounter(&counter);
 		srand((unsigned int)(counter.QuadPart ^ (counter.QuadPart >> 32)));
 		zbx_variant_set_dbl(&ret_value, rand());

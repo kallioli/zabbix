@@ -17,8 +17,8 @@
 
 #include "zbxnix.h"
 
-/* counterpart of src/libs/zbxnix/nix_internal.h: state registered through the
-   public interface and shared between the translation units of this library */
+/* counterpart of src/libs/zbxnix/nix_internal.h: state registered through the public interface and shared between */
+/* the translation units of this library */
 
 zbx_get_progname_f			win_get_progname_cb(void);
 zbx_get_process_info_by_thread_f	win_get_process_info_by_thread_func_cb(void);

@@ -422,15 +422,13 @@
 #endif
 
 #ifdef _WINDOWS
-/* rpcndr.h, reached through winsock2.h and Iphlpapi.h, defines 'interface' as
- * a macro. Zabbix uses that word as an identifier in about a thousand places -
- * zbx_dc_interface_t interface; and the like - which the substitution turns
- * into syntax errors. Nothing here uses the COM meaning of the keyword. */
+/* rpcndr.h, reached through winsock2.h and Iphlpapi.h, defines 'interface' as a macro. Zabbix uses that word as an */
+/* identifier in about a thousand places - zbx_dc_interface_t interface; and the like - which the substitution turns */
+/* into syntax errors. Nothing here uses the COM meaning of the keyword. */
 #	undef interface
 
-/* access() mode constants, which MSVC declares the function for but does not
- * name. Windows has no execute permission to test, so X_OK checks for read,
- * which is what _access() accepts. */
+/* access() mode constants, which MSVC declares the function for but does not name. Windows has no execute permission */
+/* to test, so X_OK checks for read, which is what _access() accepts. */
 #	ifndef F_OK
 #		define F_OK	0
 #		define W_OK	2
@@ -438,22 +436,22 @@
 #		define X_OK	R_OK
 #	endif
 
-/* guard shared with the MSVC <sys/types.h>, which declares _mode_t but only
- * exposes mode_t under the non-standard names option */
+/* guard shared with the MSVC <sys/types.h>, which declares _mode_t but only exposes mode_t under the non-standard */
+/* names option */
 #	ifndef _MODE_T_DEFINED
 #		define _MODE_T_DEFINED
 typedef int	mode_t;
 #	endif
 
-/* runtime control identifies a target by process id; the guard is the one the
-   MSVC headers use, so whichever declaration comes first wins */
+/* runtime control identifies a target by process id; the guard is the one the MSVC headers use, so whichever */
+/* declaration comes first wins */
 #	ifndef _PID_T_
 #		define _PID_T_
 typedef int	pid_t;
 #	endif
 
-/* the worker pools of the discoverer, the asynchronous pollers and the
- * preprocessing manager synchronise with POSIX threads directly */
+/* the worker pools of the discoverer, the asynchronous pollers and the preprocessing manager synchronise with POSIX */
+/* threads directly */
 #	include "zbxwinpthread.h"
 
 /* MSVC spells the reentrant tokeniser differently, with the same signature */

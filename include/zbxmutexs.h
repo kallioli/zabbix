@@ -24,8 +24,8 @@
 #	define ZBX_MUTEX_LOG		zbx_mutex_create_per_process_name(L"ZBX_MUTEX_LOG")
 #	define ZBX_MUTEX_PERFSTAT	zbx_mutex_create_per_process_name(L"ZBX_MUTEX_PERFSTAT")
 
-/* the caches and buffers the proxy keeps; unlike the enum used elsewhere,
-   a Windows mutex is identified by a name scoped to this process */
+/* the caches and buffers the proxy keeps; unlike the enum used elsewhere, a Windows mutex is identified by a name */
+/* scoped to this process */
 #	define ZBX_MUTEX_CACHE			zbx_mutex_create_per_process_name(L"ZBX_MUTEX_CACHE")
 #	define ZBX_MUTEX_TRENDS		zbx_mutex_create_per_process_name(L"ZBX_MUTEX_TRENDS")
 #	define ZBX_MUTEX_CACHE_IDS		zbx_mutex_create_per_process_name(L"ZBX_MUTEX_CACHE_IDS")
@@ -45,11 +45,9 @@ typedef HANDLE zbx_mutex_t;
 #	define zbx_mutex_lock(mutex)		__zbx_mutex_lock(__FILE__, __LINE__, mutex)
 #	define zbx_mutex_unlock(mutex)		__zbx_mutex_unlock(__FILE__, __LINE__, mutex)
 
-/* Read-write locks, which the configuration and value caches of the proxy
- * need. Elsewhere these are process-shared pthread locks; here every Zabbix
- * worker is a thread of one process, so a slim reader/writer lock covers the
- * same ground. The handle stays a pointer, so ZBX_RWLOCK_NULL keeps meaning
- * "no lock" for the callers that test it. */
+/* Read-write locks, which the configuration and value caches of the proxy need. Elsewhere these are process-shared */
+/* pthread locks; here every Zabbix worker is a thread of one process, so a slim reader/writer lock covers the same */
+/* ground. The handle stays a pointer, so ZBX_RWLOCK_NULL keeps meaning "no lock" for the callers that test it. */
 typedef enum
 {
 	ZBX_RWLOCK_CONFIG = 0,

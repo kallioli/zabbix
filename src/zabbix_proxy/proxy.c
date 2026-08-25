@@ -232,8 +232,8 @@ static char	shortopts[] =
 /* end of COMMAND LINE OPTIONS */
 
 ZBX_GET_CONFIG_VAR(int, zbx_threads_num, 0)
-/* Holds what zbx_thread_start() produces, which is a process id on Unix and
-   a handle here. Sized as pid_t it was half the width it needed. */
+/* Holds what zbx_thread_start() produces, which is a process id on Unix and a handle here. Sized as pid_t it was */
+/* half the width it needed. */
 ZBX_GET_CONFIG_VAR(ZBX_THREAD_HANDLE*, zbx_threads, NULL)
 
 static int	*threads_flags;
@@ -636,10 +636,9 @@ static void	zbx_set_defaults(void)
 	if (NULL == config_socket_path)
 	{
 #ifdef _WINDOWS
-		/* the services publish their ports here and a runtime control request reads
-		   them back, so the location has to be the same for the account the proxy
-		   runs under and the one the operator uses - which rules out the per-user
-		   temporary directory */
+		/* the services publish their ports here and a runtime control request reads them back, so the */
+		/* location has to be the same for the account the proxy runs under and the one the operator uses - */
+		/* which rules out the per-user temporary directory */
 		const char	*programdata;
 
 		if (NULL != (programdata = getenv("ProgramData")))
@@ -1488,8 +1487,8 @@ int	main(int argc, char **argv)
 		config_file = zbx_strdup(NULL, DEFAULT_CONFIG_FILE);
 
 #ifdef _WINDOWS
-	/* Winsock has to be up before anything opens a socket, and on Windows the
-	   runtime control service is the first thing to do so. */
+	/* Winsock has to be up before anything opens a socket, and on Windows the runtime control service is the */
+	/* first thing to do so. */
 	if (ZBX_TASK_TEST_CONFIG != t.task)
 	{
 		char	*wsa_error = NULL;
@@ -2097,9 +2096,9 @@ int	MAIN_ZABBIX_ENTRY(int flags)
 	{
 		zbx_thread_args_t	*thread_args;
 
-		/* The worker owns its arguments for as long as it runs. They cannot be
-		   reused between iterations: a worker is a thread on Windows and would
-		   read whatever the next start had already written over them. */
+		/* The worker owns its arguments for as long as it runs. They cannot be reused between iterations: a */
+		/* worker is a thread on Windows and would read whatever the next start had already written over */
+		/* them. */
 		thread_args = (zbx_thread_args_t *)zbx_malloc(NULL, sizeof(zbx_thread_args_t));
 
 		if (FAIL == get_process_info_by_thread(i + 1, &thread_args->info.process_type,
@@ -2242,10 +2241,9 @@ int	MAIN_ZABBIX_ENTRY(int flags)
 			zbx_ipc_client_release(client);
 
 #ifdef _WINDOWS
-		/* A worker that has exited leaves its thread signalled, which is what
-		   waitpid() reports on the other platform. Polling each handle rather
-		   than WaitForMultipleObjects() avoids its limit of 64 objects, which
-		   a proxy can exceed. */
+		/* A worker that has exited leaves its thread signalled, which is what waitpid() reports on the other */
+		/* platform. Polling each handle rather than WaitForMultipleObjects() avoids its limit of 64 objects, */
+		/* which a proxy can exceed. */
 		{
 			int	n;
 

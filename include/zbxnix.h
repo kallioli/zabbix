@@ -30,13 +30,10 @@ int	zbx_coredump_disable(void);
 
 /* daemon start */
 #if defined(_WINDOWS)
-/* The Windows proxy implements this interface in src/libs/zbxwin. Every worker
- * is a thread of one process there rather than a forked child, which is what
- * shapes the two differences below.
- *
- * There are no POSIX signals to mask, so the signal-set operations are no-ops.
- * Their callers still declare the mask they pass, so the type has to exist;
- * MSVC does not provide it. */
+/* The Windows proxy implements this interface in src/libs/zbxwin. Every worker is a thread of one process there */
+/* rather than a forked child, which is what shapes the two differences below. There are no POSIX signals to mask, so */
+/* the signal-set operations are no-ops. Their callers still declare the mask they pass, so the type has to exist; */
+/* MSVC does not provide it. */
 typedef int	sigset_t;
 #endif
 

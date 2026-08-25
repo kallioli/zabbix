@@ -12,18 +12,12 @@
 ** If not, see <https://www.gnu.org/licenses/>.
 **/
 
-/* Windows counterpart of src/libs/zbxnix/control.c.
- *
- * Runtime control reaches a worker over the IPC service; rtc_service.c only
- * falls back to these functions for a worker that has no IPC subscription,
- * which on Unix it reaches by signalling its PID.
- *
- * That fallback has no equivalent here. The workers are threads of one
- * process, so there is no per-worker process to signal, and Windows offers no
- * way to interrupt one thread with a request the way a signal does. Rather
- * than pretend the request was delivered, these report that it was not, so an
- * operator sees why the option had no effect.
- */
+/* Windows counterpart of src/libs/zbxnix/control.c. Runtime control reaches a worker over the IPC service; */
+/* rtc_service.c only falls back to these functions for a worker that has no IPC subscription, which on Unix it */
+/* reaches by signalling its PID. That fallback has no equivalent here. The workers are threads of one process, so */
+/* there is no per-worker process to signal, and Windows offers no way to interrupt one thread with a request the way */
+/* a signal does. Rather than pretend the request was delivered, these report that it was not, so an operator sees */
+/* why the option had no effect. */
 
 #include "zbxcommon.h"
 
@@ -32,8 +26,8 @@
 
 static void	(*sigusr_handler_cb)(int flags) = NULL;
 
-/* The service has notified every worker subscribed to it by the time these are
-   reached, so what is left to report is the remainder, not an outright failure. */
+/* The service has notified every worker subscribed to it by the time these are reached, so what is left to report is */
+/* the remainder, not an outright failure. */
 static const char	*control_unsupported =
 		"Workers subscribed to the runtime control service have been notified. The rest are"
 		" threads of this process and cannot be addressed individually, so they keep their"

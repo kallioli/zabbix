@@ -12,8 +12,8 @@
 ** If not, see <https://www.gnu.org/licenses/>.
 **/
 
-/* The subset of POSIX threads declared in include/common/zbxwinpthread.h.
- * See that header for why it exists and what it deliberately leaves out. */
+/* The subset of POSIX threads declared in include/common/zbxwinpthread.h. See that header for why it exists and what */
+/* it deliberately leaves out. */
 
 #include "zbxcommon.h"
 
@@ -146,8 +146,7 @@ typedef struct
 }
 zbx_pthread_ctx_t;
 
-/* _beginthreadex wants __stdcall and an unsigned result, POSIX wants a void
-   pointer, so the entry point is wrapped */
+/* _beginthreadex wants __stdcall and an unsigned result, POSIX wants a void pointer, so the entry point is wrapped */
 static unsigned __stdcall	pthread_entry(void *ctx_raw)
 {
 	zbx_pthread_ctx_t	ctx = *(zbx_pthread_ctx_t *)ctx_raw;

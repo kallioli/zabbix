@@ -803,8 +803,8 @@ int	zbx_get_log_level(void);
 void	zbx_set_log_level(int level);
 const char	*zbx_get_log_component_name(void);
 
-/* The per-component log level is plain C. It was behind a Unix guard only
- * because the agent has no use for it; the proxy worker pools do. */
+/* The per-component log level is plain C. It was behind a Unix guard only because the agent has no use for it; the */
+/* proxy worker pools do. */
 void		zabbix_increase_log_level(void);
 void		zabbix_decrease_log_level(void);
 void		zabbix_report_log_level_change(void);

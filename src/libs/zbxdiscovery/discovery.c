@@ -89,8 +89,8 @@ static void	discovery_send(zbx_uint32_t code, unsigned char *data, zbx_uint32_t 
 		zbx_ipc_message_t *response)
 {
 	char			*error = NULL;
-	/* One permanent connection per worker. They are threads here, so a shared
-	   socket would let one write while another is still connecting it. */
+	/* One permanent connection per worker. They are threads here, so a shared socket would let one write while */
+	/* another is still connecting it. */
 	static ZBX_THREAD_LOCAL zbx_ipc_socket_t	socket = {0};
 
 	/* each process has a permanent connection to discovery manager */

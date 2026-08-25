@@ -12,17 +12,11 @@
 ** If not, see <https://www.gnu.org/licenses/>.
 **/
 
-/* Windows counterpart of src/libs/zbxnix/daemon.c.
- *
- * There is nothing to daemonise: zbx_service_start() either runs
- * MAIN_ZABBIX_ENTRY() in the console when started with --foreground, or hands
- * the process to the service control dispatcher, which calls it from the
- * service thread. Dropping privileges has no counterpart either - a Windows
- * service runs as the account it was installed with.
- *
- * What remains is registering the callbacks that the Unix implementation
- * stores at the same point.
- */
+/* Windows counterpart of src/libs/zbxnix/daemon.c. There is nothing to daemonise: zbx_service_start() either runs */
+/* MAIN_ZABBIX_ENTRY() in the console when started with --foreground, or hands the process to the service control */
+/* dispatcher, which calls it from the service thread. Dropping privileges has no counterpart either - a Windows */
+/* service runs as the account it was installed with. What remains is registering the callbacks that the Unix */
+/* implementation stores at the same point. */
 
 #include "zbxcommon.h"
 
@@ -40,18 +34,17 @@ int	zbx_daemon_start(int allow_root, const char *user, unsigned int flags,
 		const char *config_log_file, zbx_signal_redirect_f signal_redirect_cb,
 		zbx_get_threads_f get_threads_cb, zbx_get_config_int_f get_threads_num_cb)
 {
-	/* a Windows service runs as its configured account, so there is no user
-	   to switch to and no root to refuse */
+	/* a Windows service runs as its configured account, so there is no user to switch to and no root to refuse */
 	ZBX_UNUSED(allow_root);
 	ZBX_UNUSED(user);
 
-	/* stdio is not redirected: the service writes to its log file, and in
-	   the foreground the console is where the operator wants the output */
+	/* stdio is not redirected: the service writes to its log file, and in the foreground the console is where */
+	/* the operator wants the output */
 	ZBX_UNUSED(config_log_type);
 	ZBX_UNUSED(config_log_file);
 
-	/* runtime control is delivered over IPC rather than signals, so there is
-	   no handler to redirect - see control_win.c */
+	/* runtime control is delivered over IPC rather than signals, so there is no handler to redirect - see */
+	/* control_win.c */
 	ZBX_UNUSED(signal_redirect_cb);
 
 	get_pid_file_pathname_cb = get_pid_file_cb;

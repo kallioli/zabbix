@@ -19,23 +19,14 @@
 #	error "This module is only available for Windows OS"
 #endif
 
-/* The discoverer, the asynchronous pollers and the preprocessing manager run
- * their own worker pools, and each synchronises them with POSIX threads
- * directly rather than through the Zabbix thread interface. Those primitives
- * are all intra-process and map one to one onto Windows:
- *
- *     pthread_mutex_t   -> CRITICAL_SECTION
- *     pthread_cond_t    -> CONDITION_VARIABLE
- *     pthread_rwlock_t  -> SRWLOCK
- *     pthread_t         -> thread handle from _beginthreadex()
- *
- * so this provides the subset they use rather than reshaping three worker
- * pools. Only the intra-process case is covered: the process-shared attributes
- * that zbxmutexs uses have no counterpart here and are not declared.
- *
- * The condition variable and the slim reader/writer lock require Windows Vista,
- * which is why the proxy raises _WIN32_WINNT past the value the agent targets.
- */
+/* The discoverer, the asynchronous pollers and the preprocessing manager run their own worker pools, and each */
+/* synchronises them with POSIX threads directly rather than through the Zabbix thread interface. Those primitives */
+/* are all intra-process and map one to one onto Windows: pthread_mutex_t -> CRITICAL_SECTION pthread_cond_t -> */
+/* CONDITION_VARIABLE pthread_rwlock_t -> SRWLOCK pthread_t -> thread handle from _beginthreadex() so this provides */
+/* the subset they use rather than reshaping three worker pools. Only the intra-process case is covered: the */
+/* process-shared attributes that zbxmutexs uses have no counterpart here and are not declared. The condition */
+/* variable and the slim reader/writer lock require Windows Vista, which is why the proxy raises _WIN32_WINNT past */
+/* the value the agent targets. */
 
 #include <windows.h>
 
@@ -43,11 +34,10 @@ typedef CRITICAL_SECTION	pthread_mutex_t;
 typedef CONDITION_VARIABLE	pthread_cond_t;
 typedef HANDLE			pthread_t;
 
-/* Windows has separate release calls for the shared and the exclusive mode,
- * while POSIX has one, and a slim lock cannot be asked which mode it is held
- * in. The mode is therefore recorded when the lock is taken. One flag is
- * enough: an exclusive holder excludes every other holder, so it cannot be
- * observed at the same time as a shared one. */
+/* Windows has separate release calls for the shared and the exclusive mode, while POSIX has one, and a slim lock */
+/* cannot be asked which mode it is held in. The mode is therefore recorded when the lock is taken. One flag is */
+/* enough: an exclusive holder excludes every other holder, so it cannot be observed at the same time as a shared */
+/* one. */
 typedef struct
 {
 	SRWLOCK		lock;
@@ -61,8 +51,8 @@ typedef struct
 }
 pthread_attr_t;
 
-/* the POSIX functions return 0 on success and an errno value on failure, which
-   the callers log through zbx_strerror(); that convention is kept */
+/* the POSIX functions return 0 on success and an errno value on failure, which the callers log through */
+/* zbx_strerror(); that convention is kept */
 
 int	pthread_mutex_init(pthread_mutex_t *mutex, const void *attr);
 int	pthread_mutex_destroy(pthread_mutex_t *mutex);

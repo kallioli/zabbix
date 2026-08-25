@@ -409,8 +409,8 @@ void	zbx_diag_add_locks_info(struct zbx_json *json)
 {
 	int		i;
 #ifdef _WINDOWS
-	/* Windows mutexes are named kernel objects rather than an indexed
-	   table, so there is no address list to report here */
+	/* Windows mutexes are named kernel objects rather than an indexed table, so there is no address list to */
+	/* report here */
 	ZBX_UNUSED(i);
 #elif defined(HAVE_VMINFO_T_UPDATES)
 	const char	*names[ZBX_MUTEX_COUNT] = {"ZBX_MUTEX_LOG", "ZBX_MUTEX_CACHE", "ZBX_MUTEX_TRENDS",

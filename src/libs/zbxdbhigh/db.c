@@ -179,8 +179,8 @@ void	zbx_db_version_info_clear(struct zbx_db_version_info_t *version_info)
 	zbx_free(version_info->ext_friendly_current_version);
 }
 
-/* Handed back to the caller by the two helpers below, so it cannot be shared
-   between workers - they are threads here rather than processes. */
+/* Handed back to the caller by the two helpers below, so it cannot be shared between workers - they are threads here */
+/* rather than processes. */
 static ZBX_THREAD_LOCAL char	buf_string[640];
 
 /******************************************************************************

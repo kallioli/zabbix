@@ -17,8 +17,7 @@
 
 #include "zbxalgo.h"
 
-/* MSVC rejects a division by zero in a constant expression, so the same IEEE
-   values are named through HUGE_VAL there */
+/* MSVC rejects a division by zero in a constant expression, so the same IEEE values are named through HUGE_VAL there */
 #ifdef _WINDOWS
 #define ZBX_INFINITY	HUGE_VAL	/* "Positive infinity" value used as a fatal error code */
 #define ZBX_UNKNOWN	(-HUGE_VAL)	/* "Negative infinity" value used as a code for "Unknown" */

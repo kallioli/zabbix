@@ -92,10 +92,9 @@ static char	*get_name(unsigned char *msg, unsigned char *msg_end, unsigned char 
 }
 #endif	/* !defined(_WINDOWS) && !defined(__MINGW32__)*/
 
-/* Windows XP and W2k3 shipped no inet_ntop(); this local helper covers the
-   one call site left in this file. The name is deliberately local: zbxcomms
-   exports a similarly named function taking a struct sockaddr, and the two
-   would collide at link time. */
+/* Windows XP and W2k3 shipped no inet_ntop(); this local helper covers the one call site left in this file. The name */
+/* is deliberately local: zbxcomms exports a similarly named function taking a struct sockaddr, and the two would */
+/* collide at link time. */
 #if defined(_WINDOWS) || defined(__MINGW32__)
 static const char	*dns_inet_ntop(int af, const void *src, char *dst, size_t size)
 {

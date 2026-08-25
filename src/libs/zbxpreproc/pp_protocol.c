@@ -31,8 +31,8 @@
 #define PACKED_FIELD(value, size)	\
 		(zbx_packed_field_t){(value), (size), (0 == (size) ? PACKED_FIELD_STRING : PACKED_FIELD_RAW)}
 
-/* Batched on the way to the preprocessing manager, so this belongs to the
-   worker doing the batching rather than to the program. */
+/* Batched on the way to the preprocessing manager, so this belongs to the worker doing the batching rather than to */
+/* the program. */
 static ZBX_THREAD_LOCAL zbx_ipc_message_t	cached_message;
 static ZBX_THREAD_LOCAL int			cached_values;
 
@@ -911,8 +911,8 @@ static void	preprocessor_send(zbx_uint32_t code, unsigned char *data, zbx_uint32
 		zbx_ipc_message_t *response)
 {
 	char			*error = NULL;
-	/* One permanent connection per worker. They are threads here, so a shared
-	   socket would let one write while another is still connecting it. */
+	/* One permanent connection per worker. They are threads here, so a shared socket would let one write while */
+	/* another is still connecting it. */
 	static ZBX_THREAD_LOCAL zbx_ipc_socket_t	socket = {0};
 
 	if (0 == socket.fd && FAIL == zbx_ipc_socket_open(&socket, ZBX_IPC_SERVICE_PREPROCESSING, SEC_PER_MIN,

@@ -28,8 +28,7 @@
 #include "zbxtime.h"
 #include "zbxhash.h"
 
-/* Scratch for whichever syncer is building a statement; they are threads
-   here, so it cannot be shared. */
+/* Scratch for whichever syncer is building a statement; they are threads here, so it cannot be shared. */
 static ZBX_THREAD_LOCAL char	*sql = NULL;
 static ZBX_THREAD_LOCAL size_t	sql_alloc = 4 * ZBX_KIBIBYTE;
 
