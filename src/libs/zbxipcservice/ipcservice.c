@@ -2282,8 +2282,8 @@ int	zbx_ipc_async_socket_send(zbx_ipc_async_socket_t *asocket, zbx_uint32_t code
  ******************************************************************************/
 int	zbx_ipc_async_socket_recv(zbx_ipc_async_socket_t *asocket, int timeout, zbx_ipc_message_t **message)
 {
-	int	ret, flags, armed = 0, pending = 0;
-	double	started = zbx_time();
+	int	ret, flags, deadline_set = 0;
+	double	deadline = 0, started = zbx_time();
 
 	zabbix_log(LOG_LEVEL_DEBUG, "In %s() timeout:%d", __func__, timeout);
 
@@ -2291,25 +2291,8 @@ int	zbx_ipc_async_socket_recv(zbx_ipc_async_socket_t *asocket, int timeout, zbx_
 	{
 		if (ZBX_IPC_WAIT_FOREVER != timeout)
 		{
-			struct timeval	tv = {timeout, 0};
-
-			/* The event loop asks its timer heap what to wait for. An empty
-			   heap means no deadline, and the wait becomes indefinite - so
-			   whether this timer really landed there decides between waking
-			   in a second and never waking at all. The return value was
-			   being dropped, and nothing checked the timer afterwards. */
-			if (0 != evtimer_add(asocket->ev_timer, &tv))
-			{
-				zabbix_log(LOG_LEVEL_WARNING, "cannot arm the %d second wait timer;"
-						" this wait will not time out", timeout);
-			}
-			else if (0 == evtimer_pending(asocket->ev_timer, NULL))
-			{
-				zabbix_log(LOG_LEVEL_WARNING, "the %d second wait timer was accepted"
-						" but is not pending; this wait will not time out", timeout);
-			}
-
-			armed = 1;
+			deadline = zbx_time() + (double)timeout;
+			deadline_set = 1;
 		}
 		flags = EVLOOP_ONCE;
 	}
@@ -2321,6 +2304,33 @@ int	zbx_ipc_async_socket_recv(zbx_ipc_async_socket_t *asocket, int timeout, zbx_
 
 	do
 	{
+		/* A wait can take several turns of this loop, and the event loop derives  */
+		/* the deadline it gives select() from its timer heap alone. A timer that  */
+		/* is no longer in that heap leaves the next turn with no deadline at all, */
+		/* so it waits for input that may never arrive. Put the timer back for     */
+		/* what is left of the wait before every turn: when it is still pending    */
+		/* this costs one comparison and changes nothing.                          */
+		if (0 != deadline_set && 0 == evtimer_pending(asocket->ev_timer, NULL))
+		{
+			double		left = deadline - zbx_time();
+			struct timeval	tv = {0, 0};
+
+			if (0 < left)
+			{
+				tv.tv_sec = (long)left;
+				tv.tv_usec = (long)((left - (double)tv.tv_sec) * 1000000);
+			}
+
+			if (0 != evtimer_add(asocket->ev_timer, &tv))
+			{
+				zabbix_log(LOG_LEVEL_WARNING, "cannot set the %d second wait timeout,"
+						" giving up the wait instead of waiting without one",
+						timeout);
+				asocket->state = ZBX_IPC_ASYNC_SOCKET_STATE_TIMEOUT;
+				break;
+			}
+		}
+
 		event_base_loop(asocket->ev, flags);
 		*message = (zbx_ipc_message_t *)zbx_queue_ptr_pop(&asocket->client->rx_queue);
 	}
@@ -2341,26 +2351,19 @@ int	zbx_ipc_async_socket_recv(zbx_ipc_async_socket_t *asocket, int timeout, zbx_
 	else
 		ret = FAIL;
 
-	/* Was the timer still waiting to fire, or had it left the heap without
-	   ever running? That is the difference between a timer that was never
-	   really registered and one the event loop stopped accounting for. */
-	if (0 != armed)
-		pending = (0 != evtimer_pending(asocket->ev_timer, NULL));
-
 	evtimer_del(asocket->ev_timer);
 
 	/* A worker that asked to sleep for a second and slept for four minutes has
-	   lost its timer, and everything it was due to do has not happened. Saying
+	   lost its timeout, and everything it was due to do has not happened. Saying
 	   so costs one comparison per wait and turns a silent stall into a line. */
-	if (0 != armed)
+	if (0 != deadline_set)
 	{
 		double	slept = zbx_time() - started;
 
 		if (slept > (double)timeout * 2 + 1)
 		{
-			zabbix_log(LOG_LEVEL_WARNING, "waited %.1f seconds for a timeout of %d:"
-					" the timer did not fire and was %s", slept, timeout,
-					0 != pending ? "still pending" : "no longer registered");
+			zabbix_log(LOG_LEVEL_WARNING, "waited %.1f seconds for a timeout of %d seconds",
+					slept, timeout);
 		}
 	}
 
