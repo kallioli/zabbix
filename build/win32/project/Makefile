@@ -16,6 +16,9 @@ sender_dll:
 get:
 	nmake /f Makefile_get
 
+proxy:
+	nmake /f Makefile_proxy
+
 clean: agent_clean sender_clean sender_dll_clean get_clean
 
 agent_clean:
@@ -29,3 +32,6 @@ sender_dll_clean:
 
 get_clean:
 	nmake /f Makefile_get clean
+
+proxy_clean:
+	nmake /f Makefile_proxy clean

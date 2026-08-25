@@ -931,7 +931,9 @@ sub process()
 	foreach my $line (@lines)
 	{
 		$line =~ tr/\t//d;
-		chop($line);
+		# chop() would leave the carriage return of a CRLF checkout
+		# attached to the last field of every line
+		$line =~ s/[\r\n]+$//;
 
 		my ($type, $opts) = split(/\|/, $line, 2);
 
