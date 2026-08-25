@@ -2267,8 +2267,7 @@ int	zbx_ipc_async_socket_send(zbx_ipc_async_socket_t *asocket, zbx_uint32_t code
  ******************************************************************************/
 int	zbx_ipc_async_socket_recv(zbx_ipc_async_socket_t *asocket, int timeout, zbx_ipc_message_t **message)
 {
-	int	ret, flags, deadline_set = 0, turn = 0;
-	double	deadline = 0, started = zbx_time();
+	int	ret, flags;
 
 	zabbix_log(LOG_LEVEL_DEBUG, "In %s() timeout:%d", __func__, timeout);
 
@@ -2276,8 +2275,8 @@ int	zbx_ipc_async_socket_recv(zbx_ipc_async_socket_t *asocket, int timeout, zbx_
 	{
 		if (ZBX_IPC_WAIT_FOREVER != timeout)
 		{
-			deadline = zbx_time() + (double)timeout;
-			deadline_set = 1;
+			struct timeval	tv = {timeout, 0};
+			evtimer_add(asocket->ev_timer, &tv);
 		}
 		flags = EVLOOP_ONCE;
 	}
@@ -2289,46 +2288,8 @@ int	zbx_ipc_async_socket_recv(zbx_ipc_async_socket_t *asocket, int timeout, zbx_
 
 	do
 	{
-		/* A wait can take several turns of this loop, and the event loop derives  */
-		/* the deadline it gives select() from its timer heap alone. A timer that  */
-		/* is no longer in that heap leaves the next turn with no deadline at all, */
-		/* so it waits for input that may never arrive. Put the timer back for     */
-		/* what is left of the wait before every turn: when it is still pending    */
-		/* this costs one comparison and changes nothing.                          */
-		if (0 != deadline_set && 0 == evtimer_pending(asocket->ev_timer, NULL))
-		{
-			double		left = deadline - zbx_time();
-			struct timeval	tv = {0, 0};
-
-			/* PROBE, to be removed: says whether the timer ever leaves the heap */
-			/* part way through a wait. On the first turn it is simply not armed */
-			/* yet, which is what the old code did once and only once.           */
-			if (0 != turn)
-			{
-				zabbix_log(LOG_LEVEL_WARNING, "the %d second wait timer had left the"
-						" event loop after %d turns, with %.3f seconds left",
-						timeout, turn, deadline - zbx_time());
-			}
-
-			if (0 < left)
-			{
-				tv.tv_sec = (long)left;
-				tv.tv_usec = (long)((left - (double)tv.tv_sec) * 1000000);
-			}
-
-			if (0 != evtimer_add(asocket->ev_timer, &tv))
-			{
-				zabbix_log(LOG_LEVEL_WARNING, "cannot set the %d second wait timeout,"
-						" giving up the wait instead of waiting without one",
-						timeout);
-				asocket->state = ZBX_IPC_ASYNC_SOCKET_STATE_TIMEOUT;
-				break;
-			}
-		}
-
 		event_base_loop(asocket->ev, flags);
 		*message = (zbx_ipc_message_t *)zbx_queue_ptr_pop(&asocket->client->rx_queue);
-		turn++;
 	}
 	while (NULL == *message && ZBX_IPC_ASYNC_SOCKET_STATE_NONE == asocket->state);
 
@@ -2348,20 +2309,6 @@ int	zbx_ipc_async_socket_recv(zbx_ipc_async_socket_t *asocket, int timeout, zbx_
 		ret = FAIL;
 
 	evtimer_del(asocket->ev_timer);
-
-	/* A worker that asked to sleep for a second and slept for four minutes has lost its timeout, and everything */
-	/* it was due to do has not happened. Saying so costs one comparison per wait and turns a silent stall into a */
-	/* line. */
-	if (0 != deadline_set)
-	{
-		double	slept = zbx_time() - started;
-
-		if (slept > (double)timeout * 2 + 1)
-		{
-			zabbix_log(LOG_LEVEL_WARNING, "waited %.1f seconds for a timeout of %d seconds",
-					slept, timeout);
-		}
-	}
 
 	zabbix_log(LOG_LEVEL_DEBUG, "End of %s():%d", __func__, ret);
 
