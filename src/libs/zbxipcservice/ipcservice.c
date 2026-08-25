@@ -26,11 +26,238 @@
 #include "zbxalgo.h"
 #include "zbxstr.h"
 #include "zbxtime.h"
+#include "zbxlog.h"
 
 #define ZBX_IPC_DATA_DUMP_SIZE		128
 
 static char	ipc_path[ZBX_IPC_PATH_MAX] = {0};
 static size_t	ipc_path_root_len = 0;
+
+#ifdef _WINDOWS
+/* Windows transport. The unix domain socket this service is built on has no counterpart that libevent can drive on */
+/* every supported Windows version, so the transport is a loopback socket instead. Clients and services are threads */
+/* of one process here, which makes the rendezvous simpler than a filesystem path: a service binds 127.0.0.1 on an */
+/* ephemeral port and records it under its name, and a client looks the name up. The name is the path the Unix build */
+/* would put its socket at, and the port is published in a file there with the same lifetime a socket file has: */
+/* written once the service listens, removed when it stops. Workers find each other through the in-process table */
+/* without touching the disk; a separate process - a runtime control request - finds the service the same way it */
+/* would on Unix, by its path. A local user who can read that file can reach the endpoint, where a unix domain socket */
+/* would have carried the directory's permissions. The directory is the operator's to protect, as SocketDir is on */
+/* Unix. Everything above the address - message framing, the receive and send queues, the libevent callbacks - is */
+/* transport agnostic and shared with Unix. */
+#define ZBX_IPC_ENDPOINTS_MAX	64
+
+typedef struct
+{
+	char		name[ZBX_IPC_PATH_MAX];
+	unsigned short	port;
+}
+zbx_ipc_endpoint_t;
+
+static zbx_ipc_endpoint_t	ipc_endpoints[ZBX_IPC_ENDPOINTS_MAX];
+
+static void	ipc_endpoint_remove(const char *name);
+static CRITICAL_SECTION		ipc_endpoints_lock;
+static volatile LONG		ipc_endpoints_ready;
+
+static void	ipc_endpoints_enter(void)
+{
+	if (0 == InterlockedCompareExchange(&ipc_endpoints_ready, 1, 0))
+	{
+		InitializeCriticalSection(&ipc_endpoints_lock);
+		InterlockedExchange(&ipc_endpoints_ready, 2);
+	}
+	else
+	{
+		while (2 != InterlockedCompareExchange(&ipc_endpoints_ready, 2, 2))
+			SwitchToThread();
+	}
+
+	EnterCriticalSection(&ipc_endpoints_lock);
+}
+
+static void	ipc_endpoints_leave(void)
+{
+	LeaveCriticalSection(&ipc_endpoints_lock);
+}
+
+/******************************************************************************
+ *                                                                            *
+ * Purpose: publishes the port of a service so other processes can find it    *
+ *                                                                            *
+ * Comments: takes the place of the unix domain socket the Unix build binds,  *
+ *           and is removed at the same point in the service's life.          *
+ *                                                                            *
+ ******************************************************************************/
+static int	ipc_endpoint_publish(const char *name, unsigned short port)
+{
+	FILE	*f;
+
+	if (NULL == (f = fopen(name, "w")))
+		return FAIL;
+
+	if (0 > fprintf(f, "%hu\n", port))
+	{
+		fclose(f);
+		return FAIL;
+	}
+
+	return 0 == fclose(f) ? SUCCEED : FAIL;
+}
+
+static unsigned short	ipc_endpoint_published(const char *name)
+{
+	FILE		*f;
+	unsigned int	port = 0;
+
+	if (NULL == (f = fopen(name, "r")))
+		return 0;
+
+	if (1 != fscanf(f, "%u", &port) || 0 == port || 0xffff < port)
+		port = 0;
+
+	fclose(f);
+
+	return (unsigned short)port;
+}
+
+static int	ipc_endpoint_register(const char *name, unsigned short port)
+{
+	int	i, ret = FAIL;
+
+	ipc_endpoints_enter();
+
+	for (i = 0; i < ZBX_IPC_ENDPOINTS_MAX; i++)
+	{
+		if (0 == ipc_endpoints[i].port)
+		{
+			zbx_strlcpy(ipc_endpoints[i].name, name, sizeof(ipc_endpoints[i].name));
+			ipc_endpoints[i].port = port;
+			ret = SUCCEED;
+			break;
+		}
+	}
+
+	ipc_endpoints_leave();
+
+	if (SUCCEED == ret && SUCCEED != ipc_endpoint_publish(name, port))
+	{
+		ipc_endpoint_remove(name);
+		ret = FAIL;
+	}
+
+	return ret;
+}
+
+static void	ipc_endpoint_remove(const char *name)
+{
+	int	i;
+
+	remove(name);
+
+	ipc_endpoints_enter();
+
+	for (i = 0; i < ZBX_IPC_ENDPOINTS_MAX; i++)
+	{
+		if (0 != ipc_endpoints[i].port && 0 == strcmp(ipc_endpoints[i].name, name))
+		{
+			ipc_endpoints[i].port = 0;
+			break;
+		}
+	}
+
+	ipc_endpoints_leave();
+}
+
+static unsigned short	ipc_endpoint_find(const char *name)
+{
+	int		i;
+	unsigned short	port = 0;
+
+	ipc_endpoints_enter();
+
+	for (i = 0; i < ZBX_IPC_ENDPOINTS_MAX; i++)
+	{
+		if (0 != ipc_endpoints[i].port && 0 == strcmp(ipc_endpoints[i].name, name))
+		{
+			port = ipc_endpoints[i].port;
+			break;
+		}
+	}
+
+	ipc_endpoints_leave();
+
+	/* a client outside this process has no table to look in */
+	if (0 == port)
+		port = ipc_endpoint_published(name);
+
+	return port;
+}
+#endif	/* _WINDOWS */
+
+/******************************************************************************
+ *                                                                            *
+ * Purpose: puts a socket into non-blocking mode                              *
+ *                                                                            *
+ ******************************************************************************/
+static void	ipc_socket_close_fd(int fd)
+{
+#ifdef _WINDOWS
+	closesocket((SOCKET)fd);
+#else
+	close(fd);
+#endif
+}
+
+static int	ipc_socket_set_nonblocking(int fd)
+{
+#ifdef _WINDOWS
+	u_long	mode = 1;
+
+	return 0 == ioctlsocket((SOCKET)fd, FIONBIO, &mode) ? SUCCEED : FAIL;
+#else
+	int	flags;
+
+	if (-1 == (flags = fcntl(fd, F_GETFL, 0)))
+		return FAIL;
+
+	return -1 != fcntl(fd, F_SETFL, flags | O_NONBLOCK) ? SUCCEED : FAIL;
+#endif
+}
+
+/* Socket I/O differs from file I/O on Windows: a SOCKET is not a CRT file descriptor, so read() and write() cannot */
+/* be used on it, and the failure code comes from WSAGetLastError() instead of errno. */
+#ifdef _WINDOWS
+#	define ZBX_IPC_EINTR		WSAEINTR
+#	define ZBX_IPC_EWOULDBLOCK	WSAEWOULDBLOCK
+#	define ZBX_IPC_EAGAIN		WSAEWOULDBLOCK
+#	define ipc_socket_errno()	WSAGetLastError()
+#	define ipc_socket_strerror(e)	zbx_strerror_from_system((unsigned long)(e))
+#else
+#	define ZBX_IPC_EINTR		EINTR
+#	define ZBX_IPC_EWOULDBLOCK	EWOULDBLOCK
+#	define ZBX_IPC_EAGAIN		EAGAIN
+#	define ipc_socket_errno()	errno
+#	define ipc_socket_strerror(e)	zbx_strerror(e)
+#endif
+
+static int	ipc_socket_send(int fd, const unsigned char *data, zbx_uint32_t size)
+{
+#ifdef _WINDOWS
+	return send((SOCKET)fd, (const char *)data, (int)size, 0);
+#else
+	return (int)write(fd, data, size);
+#endif
+}
+
+static int	ipc_socket_recv(int fd, unsigned char *buffer, zbx_uint32_t size)
+{
+#ifdef _WINDOWS
+	return recv((SOCKET)fd, (char *)buffer, (int)size, 0);
+#else
+	return (int)read(fd, buffer, size);
+#endif
+}
 
 #define ZBX_IPC_CLIENT_STATE_NONE	0
 #define ZBX_IPC_CLIENT_STATE_QUEUED	1
@@ -178,27 +405,29 @@ static const char	*ipc_make_path(const char *service_name, char **error)
 static int	ipc_write_data(int fd, const unsigned char *data, zbx_uint32_t size, zbx_uint32_t *size_sent)
 {
 	zbx_uint32_t	offset = 0;
-	int		ret = SUCCEED;
-	ssize_t		n;
+	int		ret = SUCCEED, n;
 
 	while (offset != size)
 	{
-		n = write(fd, data + offset, size - offset);
+		n = ipc_socket_send(fd, data + offset, size - offset);
 
 		if (-1 == n)
 		{
-			if (EINTR == errno)
+			int	err = ipc_socket_errno();
+
+			if (ZBX_IPC_EINTR == err)
 				continue;
 
-			if (EWOULDBLOCK == errno || EAGAIN == errno)
+			if (ZBX_IPC_EWOULDBLOCK == err || ZBX_IPC_EAGAIN == err)
 				break;
 
-			zabbix_log(LOG_LEVEL_WARNING, "cannot write to IPC socket: %s", strerror(errno));
+			zabbix_log(LOG_LEVEL_WARNING, "cannot write to IPC socket: %s",
+					ipc_socket_strerror(err));
 			ret = FAIL;
 			break;
 		}
 
-		offset += n;
+		offset += (zbx_uint32_t)n;
 	}
 
 	*size_sent = offset;
@@ -228,12 +457,14 @@ static int	ipc_read_data(int fd, unsigned char *buffer, zbx_uint32_t size, zbx_u
 
 	*read_size = 0;
 
-	while (-1 == (n = read(fd, buffer + *read_size, size - *read_size)))
+	while (-1 == (n = ipc_socket_recv(fd, buffer + *read_size, size - *read_size)))
 	{
-		if (EINTR == errno)
+		int	err = ipc_socket_errno();
+
+		if (ZBX_IPC_EINTR == err)
 			continue;
 
-		if (EWOULDBLOCK == errno || EAGAIN == errno)
+		if (ZBX_IPC_EWOULDBLOCK == err || ZBX_IPC_EAGAIN == err)
 			return SUCCEED;
 
 		return FAIL;
@@ -742,20 +973,13 @@ static void	ipc_service_add_client(zbx_ipc_service_t *service, int fd)
 {
 	static zbx_uint64_t	next_clientid = 1;
 	zbx_ipc_client_t	*client;
-	int			flags;
 
 	zabbix_log(LOG_LEVEL_DEBUG, "In %s()", __func__);
 
 	client = (zbx_ipc_client_t *)zbx_malloc(NULL, sizeof(zbx_ipc_client_t));
 	memset(client, 0, sizeof(zbx_ipc_client_t));
 
-	if (-1 == (flags = fcntl(fd, F_GETFL, 0)))
-	{
-		zabbix_log(LOG_LEVEL_CRIT, "cannot get IPC client socket flags");
-		exit(EXIT_FAILURE);
-	}
-
-	if (-1 == fcntl(fd, F_SETFL, flags | O_NONBLOCK))
+	if (SUCCEED != ipc_socket_set_nonblocking(fd))
 	{
 		zabbix_log(LOG_LEVEL_CRIT, "cannot set non-blocking mode for IPC client socket");
 		exit(EXIT_FAILURE);
@@ -1103,9 +1327,14 @@ static int	ipc_check_running_service(const char *service_name)
  ******************************************************************************/
 int	zbx_ipc_socket_open(zbx_ipc_socket_t *csocket, const char *service_name, int timeout, char **error)
 {
+#ifdef _WINDOWS
+	struct sockaddr_in	addr;
+	unsigned short		port;
+#else
 	struct sockaddr_un	addr;
-	time_t			start;
 	struct timespec		ts = {0, 100000000};
+#endif
+	time_t			start;
 	const char		*socket_path;
 	int			ret = FAIL;
 
@@ -1114,6 +1343,11 @@ int	zbx_ipc_socket_open(zbx_ipc_socket_t *csocket, const char *service_name, int
 	if (NULL == (socket_path = ipc_make_path(service_name, error)))
 		goto out;
 
+#ifdef _WINDOWS
+	memset(&addr, 0, sizeof(addr));
+	addr.sin_family = AF_INET;
+	addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+#else
 	if (-1 == (csocket->fd = socket(AF_UNIX, SOCK_STREAM, 0)))
 	{
 		*error = zbx_dsprintf(*error, "Cannot create client socket: %s.", zbx_strerror(errno));
@@ -1123,20 +1357,57 @@ int	zbx_ipc_socket_open(zbx_ipc_socket_t *csocket, const char *service_name, int
 	memset(&addr, 0, sizeof(addr));
 	addr.sun_family = AF_UNIX;
 	memcpy(addr.sun_path, socket_path, sizeof(addr.sun_path));
+#endif
 
 	start = time(NULL);
 
-	while (0 != connect(csocket->fd, (struct sockaddr*)&addr, sizeof(addr)))
+	while (1)
 	{
-		if (0 == timeout || time(NULL) - start > timeout)
+#ifdef _WINDOWS
+		/* Winsock refuses a second connect() on a socket whose first attempt failed, so every attempt starts */
+		/* from a fresh one. */
+		if (-1 == (csocket->fd = (int)socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)))
 		{
-			*error = zbx_dsprintf(*error, "Cannot connect to service \"%s\": %s.", service_name,
-					zbx_strerror(errno));
-			close(csocket->fd);
+			*error = zbx_dsprintf(*error, "Cannot create client socket: %s.",
+					zbx_strerror_from_system(WSAGetLastError()));
 			goto out;
 		}
 
+		/* A service publishes its port once it is listening. Until then there is nothing to connect to, */
+		/* which is the state the POSIX build sees as a socket file that has not been created yet - so wait, */
+		/* rather than deciding the service will never arrive. */
+		if (0 != (port = ipc_endpoint_find(socket_path)))
+		{
+			addr.sin_port = htons(port);
+
+			if (0 == connect(csocket->fd, (struct sockaddr *)&addr, sizeof(addr)))
+				break;
+		}
+
+		ipc_socket_close_fd(csocket->fd);
+		csocket->fd = -1;
+#else
+		if (0 == connect(csocket->fd, (struct sockaddr *)&addr, sizeof(addr)))
+			break;
+#endif
+		if (0 == timeout || time(NULL) - start > timeout)
+		{
+#ifdef _WINDOWS
+			*error = zbx_dsprintf(*error, "Cannot connect to service \"%s\": it did not start"
+					" listening within %d seconds.", service_name, timeout);
+#else
+			*error = zbx_dsprintf(*error, "Cannot connect to service \"%s\": %s.", service_name,
+					zbx_strerror(errno));
+			ipc_socket_close_fd(csocket->fd);
+#endif
+			goto out;
+		}
+
+#ifdef _WINDOWS
+		Sleep(100);
+#else
 		nanosleep(&ts, NULL);
+#endif
 	}
 
 	csocket->rx_buffer_bytes = 0;
@@ -1161,7 +1432,7 @@ void	zbx_ipc_socket_close(zbx_ipc_socket_t *csocket)
 
 	if (-1 != csocket->fd)
 	{
-		close(csocket->fd);
+		ipc_socket_close_fd(csocket->fd);
 		csocket->fd = -1;
 	}
 
@@ -1386,7 +1657,9 @@ static void	ipc_service_user_cb(evutil_socket_t fd, short what, void *arg)
  ******************************************************************************/
 int	zbx_ipc_service_init_env(const char *path, char **error)
 {
+#ifndef _WINDOWS
 	struct stat	fs;
+#endif
 	int		ret = FAIL;
 
 	zabbix_log(LOG_LEVEL_DEBUG, "In %s() path:%s", __func__, path);
@@ -1398,6 +1671,21 @@ int	zbx_ipc_service_init_env(const char *path, char **error)
 		goto out;
 	}
 
+#ifdef _WINDOWS
+	/* the services publish their ports here, so the directory has to exist; create it rather than make an */
+	/* operator do it by hand */
+	if (0 == CreateDirectoryA(path, NULL))
+	{
+		DWORD	last_error = GetLastError();
+
+		if (ERROR_ALREADY_EXISTS != last_error)
+		{
+			*error = zbx_dsprintf(*error, "Cannot create the directory \"%s\": %s.", path,
+					zbx_strerror_from_system(last_error));
+			goto out;
+		}
+	}
+#else
 	if (0 != stat(path, &fs))
 	{
 		*error = zbx_dsprintf(*error, "Failed to stat the specified path \"%s\": %s.", path,
@@ -1416,6 +1704,7 @@ int	zbx_ipc_service_init_env(const char *path, char **error)
 		*error = zbx_dsprintf(*error, "Cannot access path \"%s\": %s.", path, zbx_strerror(errno));
 		goto out;
 	}
+#endif
 
 	ipc_path_root_len = strlen(path);
 	if (ZBX_IPC_PATH_MAX < ipc_path_root_len + 3)
@@ -1431,7 +1720,11 @@ int	zbx_ipc_service_init_env(const char *path, char **error)
 
 	ipc_service_init_libevent();
 
+#ifdef _WINDOWS
+	if (0 != evthread_use_windows_threads())
+#else
 	if (0 != evthread_use_pthreads())
+#endif
 	{
 		*error = zbx_strdup(*error, "Cannot initialize libevent threading support");
 		goto out;
@@ -1468,18 +1761,27 @@ void	zbx_ipc_service_free_env(void)
  ******************************************************************************/
 int	zbx_ipc_service_start(zbx_ipc_service_t *service, const char *service_name, char **error)
 {
+#ifdef _WINDOWS
+	struct sockaddr_in	addr;
+	int			addrlen = (int)sizeof(addr);
+	unsigned short		port;
+#else
 	struct sockaddr_un	addr;
+	mode_t			mode;
+#endif
 	const char		*socket_path;
 	int			ret = FAIL;
-	mode_t			mode;
 
 	zabbix_log(LOG_LEVEL_DEBUG, "In %s() service:%s", __func__, service_name);
 
+#ifndef _WINDOWS
 	mode = umask(077);
+#endif
 
 	if (NULL == (socket_path = ipc_make_path(service_name, error)))
 		goto out;
 
+#ifndef _WINDOWS
 	if (0 == access(socket_path, F_OK))
 	{
 		if (0 != access(socket_path, W_OK))
@@ -1496,7 +1798,53 @@ int	zbx_ipc_service_start(zbx_ipc_service_t *service, const char *service_name, 
 
 		unlink(socket_path);
 	}
+#endif
 
+#ifdef _WINDOWS
+	if (0 != ipc_endpoint_find(socket_path))
+	{
+		if (SUCCEED == ipc_check_running_service(service_name))
+		{
+			*error = zbx_dsprintf(*error, "\"%s\" service is already running.", service_name);
+			goto out;
+		}
+
+		/* A published port nobody answers on is what the Unix build finds when a  */
+		/* killed process leaves its socket file behind: take the name rather than */
+		/* refusing to start until someone deletes the file by hand.               */
+		ipc_endpoint_remove(socket_path);
+	}
+
+	if (-1 == (service->fd = (int)socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)))
+	{
+		*error = zbx_dsprintf(*error, "Cannot create socket: %s.",
+				zbx_strerror_from_system(WSAGetLastError()));
+		goto out;
+	}
+
+	/* bind the loopback interface on an ephemeral port, then publish the port the system picked under the */
+	/* service name */
+	memset(&addr, 0, sizeof(addr));
+	addr.sin_family = AF_INET;
+	addr.sin_port = 0;
+	addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+
+	if (0 != bind(service->fd, (struct sockaddr *)&addr, (int)sizeof(addr)))
+	{
+		*error = zbx_dsprintf(*error, "Cannot bind socket for \"%s\": %s.", service_name,
+				zbx_strerror_from_system(WSAGetLastError()));
+		goto out;
+	}
+
+	if (0 != getsockname(service->fd, (struct sockaddr *)&addr, &addrlen))
+	{
+		*error = zbx_dsprintf(*error, "Cannot read the bound port for \"%s\": %s.", service_name,
+				zbx_strerror_from_system(WSAGetLastError()));
+		goto out;
+	}
+
+	port = ntohs(addr.sin_port);
+#else
 	if (-1 == (service->fd = socket(AF_UNIX, SOCK_STREAM, 0)))
 	{
 		*error = zbx_dsprintf(*error, "Cannot create socket: %s.", zbx_strerror(errno));
@@ -1512,12 +1860,24 @@ int	zbx_ipc_service_start(zbx_ipc_service_t *service, const char *service_name, 
 		*error = zbx_dsprintf(*error, "Cannot bind socket to \"%s\": %s.", socket_path, zbx_strerror(errno));
 		goto out;
 	}
+#endif
 
 	if (0 != listen(service->fd, SOMAXCONN))
 	{
 		*error = zbx_dsprintf(*error, "Cannot listen socket: %s.", zbx_strerror(errno));
 		goto out;
 	}
+
+#ifdef _WINDOWS
+	/* Only now: a bound socket that is not listening yet still answers on loopback, and a client that connected */
+	/* in that window would hold something that is not a connection. */
+	if (SUCCEED != ipc_endpoint_register(socket_path, port))
+	{
+		*error = zbx_dsprintf(*error, "Cannot register service \"%s\": the limit of %d is reached.",
+				service_name, ZBX_IPC_ENDPOINTS_MAX);
+		goto out;
+	}
+#endif
 
 	service->path = zbx_strdup(NULL, socket_path);
 	zbx_vector_ipc_client_ptr_create(&service->clients);
@@ -1533,7 +1893,9 @@ int	zbx_ipc_service_start(zbx_ipc_service_t *service, const char *service_name, 
 
 	ret = SUCCEED;
 out:
+#ifndef _WINDOWS
 	umask(mode);
+#endif
 
 	zabbix_log(LOG_LEVEL_DEBUG, "End of %s():%s", __func__, zbx_result_string(ret));
 
@@ -1553,11 +1915,15 @@ void	zbx_ipc_service_close(zbx_ipc_service_t *service)
 
 	zabbix_log(LOG_LEVEL_DEBUG, "In %s() path:%s", __func__, service->path);
 
-	if (0 != close(service->fd))
-		zabbix_log(LOG_LEVEL_DEBUG, "Cannot close path \"%s\": %s", service->path, zbx_strerror(errno));
+	ipc_socket_close_fd(service->fd);
 
+#ifdef _WINDOWS
+	/* the endpoint lives in the registry rather than on disk */
+	ipc_endpoint_remove(service->path);
+#else
 	if (-1 == unlink(service->path))
 		zabbix_log(LOG_LEVEL_WARNING, "cannot remove socket at %s: %s.", service->path, zbx_strerror(errno));
+#endif
 
 	/* remove received clients which are not registered */
 	while (NULL != (client = (zbx_ipc_client_t *)zbx_queue_ptr_pop(&service->clients_recv)))
@@ -1790,7 +2156,7 @@ void	*zbx_ipc_client_get_userdata(zbx_ipc_client_t *client)
  ******************************************************************************/
 int	zbx_ipc_async_socket_open(zbx_ipc_async_socket_t *asocket, const char *service_name, int timeout, char **error)
 {
-	int	ret = FAIL, flags;
+	int	ret = FAIL;
 
 	zabbix_log(LOG_LEVEL_DEBUG, "In %s()", __func__);
 
@@ -1804,13 +2170,7 @@ int	zbx_ipc_async_socket_open(zbx_ipc_async_socket_t *asocket, const char *servi
 		goto out;
 	}
 
-	if (-1 == (flags = fcntl(asocket->client->csocket.fd, F_GETFL, 0)))
-	{
-		zabbix_log(LOG_LEVEL_CRIT, "cannot get IPC client socket flags");
-		exit(EXIT_FAILURE);
-	}
-
-	if (-1 == fcntl(asocket->client->csocket.fd, F_SETFL, flags | O_NONBLOCK))
+	if (SUCCEED != ipc_socket_set_nonblocking(asocket->client->csocket.fd))
 	{
 		zabbix_log(LOG_LEVEL_CRIT, "cannot set non-blocking mode for IPC client socket");
 		exit(EXIT_FAILURE);
