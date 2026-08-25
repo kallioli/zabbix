@@ -290,3 +290,60 @@ jobs:
             bin/win64/zabbix_proxy.pdb
             bin/win64/zabbix_proxy.map
           if-no-files-found: error
+
+  # The build job proves the binary works on whatever windows-latest points at
+  # today. Production runs on Windows Server, where the service manager, the
+  # firewall and the installer behave differently enough to be worth naming.
+  # The same artefact is taken apart on each, rather than rebuilt: that is what
+  # an operator does with a release.
+  #
+  # Server 2019 is not here because GitHub retired its runner image. Nothing
+  # below says anything about it.
+  windows-versions:
+    name: The same binary on ${{ matrix.os }}
+    needs: build
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2022, windows-2025]
+
+    env:
+      ZBX_VERSION: 7.4.13
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Take the binary the build job produced
+        uses: actions/download-artifact@v4
+        with:
+          name: zabbix_proxy-x64
+          path: bin/win64
+
+      - name: Take the installer the build job produced
+        uses: actions/download-artifact@v4
+        with:
+          name: zabbix_proxy-msi
+          path: bin/win64
+
+      - name: Say which Windows this is
+        shell: pwsh
+        run: |
+          $os = Get-CimInstance Win32_OperatingSystem
+          "{0} - {1}" -f $os.Caption, $os.Version
+
+      - name: Collect through a stand-in server
+        run: python build/win32/tests/proxy_selftest.py --timeout 120
+
+      - name: Register a service the service manager will start
+        shell: pwsh
+        run: >
+          build/win32/tests/service_check.ps1
+          -Exe (Resolve-Path bin/win64/zabbix_proxy.exe).Path
+
+      - name: Install the package and take it apart again
+        shell: pwsh
+        run: >
+          build/win32/tests/installer_check.ps1
+          -Msi (Resolve-Path bin/win64/zabbix_proxy-$env:ZBX_VERSION-x64.msi).Path
