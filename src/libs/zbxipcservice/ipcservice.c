@@ -2292,7 +2292,23 @@ int	zbx_ipc_async_socket_recv(zbx_ipc_async_socket_t *asocket, int timeout, zbx_
 		if (ZBX_IPC_WAIT_FOREVER != timeout)
 		{
 			struct timeval	tv = {timeout, 0};
-			evtimer_add(asocket->ev_timer, &tv);
+
+			/* The event loop asks its timer heap what to wait for. An empty
+			   heap means no deadline, and the wait becomes indefinite - so
+			   whether this timer really landed there decides between waking
+			   in a second and never waking at all. The return value was
+			   being dropped, and nothing checked the timer afterwards. */
+			if (0 != evtimer_add(asocket->ev_timer, &tv))
+			{
+				zabbix_log(LOG_LEVEL_WARNING, "cannot arm the %d second wait timer;"
+						" this wait will not time out", timeout);
+			}
+			else if (0 == evtimer_pending(asocket->ev_timer, NULL))
+			{
+				zabbix_log(LOG_LEVEL_WARNING, "the %d second wait timer was accepted"
+						" but is not pending; this wait will not time out", timeout);
+			}
+
 			armed = 1;
 		}
 		flags = EVLOOP_ONCE;
