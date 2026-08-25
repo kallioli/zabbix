@@ -210,6 +210,27 @@ static void	mem_link_chunk(zbx_shmem_info_t *info, void *chunk)
 	info->buckets[index] = chunk;
 }
 
+/******************************************************************************
+ *                                                                            *
+ * Purpose: reports a link that does not point inside the segment             *
+ *                                                                            *
+ * Comments: Following one faults with nothing to go on. Saying which segment *
+ *           it was, and what the pointer was, turns an access violation into  *
+ *           something that can be acted on.                                   *
+ *                                                                            *
+ ******************************************************************************/
+static void	mem_check_link(const zbx_shmem_info_t *info, const void *chunk, const void *link,
+		const char *what)
+{
+	if (NULL == link || (link >= info->lo_bound && link < info->hi_bound))
+		return;
+
+	zabbix_log(LOG_LEVEL_CRIT, "corrupted free list in \"%s\": the %s link of chunk %p is %p,"
+			" outside [%p, %p)", info->mem_descr, what, chunk, link, info->lo_bound, info->hi_bound);
+	zbx_backtrace();
+	exit(EXIT_FAILURE);
+}
+
 static void	mem_unlink_chunk(zbx_shmem_info_t *info, void *chunk)
 {
 	int	index;
@@ -220,6 +241,9 @@ static void	mem_unlink_chunk(zbx_shmem_info_t *info, void *chunk)
 
 	prev_chunk = mem_get_prev_chunk(chunk);
 	next_chunk = mem_get_next_chunk(chunk);
+
+	mem_check_link(info, chunk, prev_chunk, "previous");
+	mem_check_link(info, chunk, next_chunk, "next");
 
 	next_in_prev_chunk = mem_ptr_to_next_field(prev_chunk, &info->buckets[index]);
 	prev_in_next_chunk = mem_ptr_to_prev_field(next_chunk);
@@ -460,6 +484,23 @@ static void	__mem_free(zbx_shmem_info_t *info, void *ptr)
 	int		prev_free, next_free;
 
 	chunk = (void *)((char *)ptr - SHMEM_SIZE_FIELD);
+
+	/* Both of these leave a free list holding something that is not a link, which is only noticed much later and */
+	/* somewhere else. Saying so here names the caller that did it. */
+	if (chunk < info->lo_bound || chunk >= info->hi_bound)
+	{
+		zabbix_log(LOG_LEVEL_CRIT, "freeing %p in \"%s\", which lies outside [%p, %p)",
+				ptr, info->mem_descr, info->lo_bound, info->hi_bound);
+		zbx_backtrace();
+		exit(EXIT_FAILURE);
+	}
+
+	if (FREE_CHUNK(chunk))
+	{
+		zabbix_log(LOG_LEVEL_CRIT, "freeing %p in \"%s\" a second time", ptr, info->mem_descr);
+		zbx_backtrace();
+		exit(EXIT_FAILURE);
+	}
 	chunk_size = CHUNK_SIZE(chunk);
 
 	info->used_size -= chunk_size;
@@ -526,7 +567,9 @@ static void	__mem_free(zbx_shmem_info_t *info, void *ptr)
 int	zbx_shmem_create(zbx_shmem_info_t **info, zbx_uint64_t size, const char *descr, const char *param,
 		int allow_oom, char **error)
 {
-	int	shm_id, index, ret = FAIL;
+	/* Windows has no segment id; leaving it uninitialised puts noise in the start-up log and in the diagnostics */
+	/* that print it. */
+	int	shm_id = 0, index, ret = FAIL;
 	void	*base;
 
 	descr = ZBX_NULL2STR(descr);
@@ -551,6 +594,18 @@ int	zbx_shmem_create(zbx_shmem_info_t **info, zbx_uint64_t size, const char *des
 		goto out;
 	}
 
+#ifdef _WINDOWS
+	/* every Zabbix worker is a thread of one process here, so a segment that has to be visible from all of them */
+	/* is ordinary heap */
+	if (NULL == (base = zbx_malloc(NULL, size)))
+	{
+		*error = zbx_dsprintf(*error, "cannot allocate shared memory of size " ZBX_FS_SIZE_T " for %s",
+				(zbx_fs_size_t)size, descr);
+		goto out;
+	}
+
+	memset(base, 0, size);
+#else
 	if (-1 == (shm_id = shmget(IPC_PRIVATE, size, 0600)))
 	{
 		*error = zbx_dsprintf(*error, "cannot get private shared memory of size " ZBX_FS_SIZE_T " for %s: %s",
@@ -566,6 +621,7 @@ int	zbx_shmem_create(zbx_shmem_info_t **info, zbx_uint64_t size, const char *des
 
 	if (-1 == shmctl(shm_id, IPC_RMID, NULL))
 		zbx_error("cannot mark shared memory %d for destruction: %s", shm_id, zbx_strerror(errno));
+#endif
 
 	ret = SUCCEED;
 
@@ -661,7 +717,12 @@ int	zbx_shmem_create_min(zbx_shmem_info_t **info, zbx_uint64_t size, const char 
 
 void	zbx_shmem_destroy(zbx_shmem_info_t *info)
 {
+#ifdef _WINDOWS
+	/* the segment is heap here, allocated in zbx_shmem_create_ext() */
+	zbx_free(info->base);
+#else
 	(void)shmdt(info->base);
+#endif
 }
 
 void	*__zbx_shmem_malloc(const char *file, int line, zbx_shmem_info_t *info, const void *old, size_t size)
