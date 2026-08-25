@@ -1,0 +1,420 @@
+name: Windows proxy build
+
+on:
+  push:
+    branches:
+      - "feature/windows-proxy"
+  pull_request:
+    branches:
+      - "feature/windows-proxy"
+  workflow_dispatch:
+
+jobs:
+
+  linux:
+    name: Linux build is not regressed
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            autoconf automake libtool pkg-config gettext \
+            libsqlite3-dev libssl-dev libpcre2-dev libevent-dev \
+            libcurl4-openssl-dev zlib1g-dev libxml2-dev \
+            libpq-dev
+
+      - name: Generate configure
+        run: ./bootstrap.sh
+
+      # The port touches sources the Linux server, proxy and agent all compile,
+      # and the server links the largest share of them - the configuration
+      # cache, the history cache and the locks that this port rewrote are its
+      # code before they are the proxy's. It was not being compiled at all.
+      #
+      # SQLite cannot back a server, so this pass uses PostgreSQL; the proxy is
+      # rebuilt on SQLite below, which is what it ships as on Windows.
+      - name: Build server, proxy and agent
+        run: |
+          set -o pipefail
+          ./configure --quiet \
+            --enable-server --enable-proxy --enable-agent \
+            --with-postgresql \
+            --with-openssl --with-libpcre2 --with-libcurl
+          make -j"$(nproc)" 2>&1 | tail -40
+          test -x src/zabbix_server/zabbix_server
+          test -x src/zabbix_proxy/zabbix_proxy
+          test -x src/zabbix_agent/zabbix_agentd
+          src/zabbix_server/zabbix_server -V | head -1
+
+      # The unit tests under tests/ are not run here, and it is not for want of
+      # trying. `./bootstrap.sh tests` does wire them in and they compile, but
+      # they do not link from this tree: libzbxmockdata needs symbols from
+      # zbxalgo and zbxstr that the per-library targets deliberately do not
+      # link, and cmocka arrives only through LDFLAGS. Making them run means
+      # editing upstream test makefiles, which has nothing to do with a Windows
+      # port and would show up in its diff. Said here so the next person does
+      # not repeat the afternoon.
+
+      - name: Rebuild the proxy on SQLite
+        run: |
+          ./configure --quiet \
+            --enable-proxy --enable-agent \
+            --with-sqlite3 --with-openssl --with-libpcre2 --with-libcurl
+          make -j"$(nproc)" 2>&1 | tail -40
+          test -x src/zabbix_proxy/zabbix_proxy
+          src/zabbix_proxy/zabbix_proxy -V | head -1
+
+      # The same harness against the Linux binary. It tells a defect this port
+      # introduced from one that was always there.
+      - name: Collect through a stand-in server
+        run: |
+          python3 build/win32/tests/proxy_selftest.py \
+            --exe src/zabbix_proxy/zabbix_proxy --timeout 120
+
+  windows-agent:
+    name: Windows agent is not regressed
+    runs-on: windows-latest
+
+    env:
+      VCPKG_TRIPLET: x64-windows-static
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore third-party libraries
+        id: cache-vcpkg
+        uses: actions/cache/restore@v4
+        with:
+          path: vcpkg_installed
+          key: vcpkg-${{ env.VCPKG_TRIPLET }}-${{ hashFiles('build/win32/vcpkg.json') }}
+
+      - name: Install third-party libraries
+        if: steps.cache-vcpkg.outputs.cache-hit != 'true'
+        shell: cmd
+        run: |
+          "%VCPKG_INSTALLATION_ROOT%\vcpkg" install ^
+            --triplet %VCPKG_TRIPLET% ^
+            --x-manifest-root=build/win32 ^
+            --x-install-root=%GITHUB_WORKSPACE%\vcpkg_installed
+          if errorlevel 1 exit /b 1
+
+      # The agent compiles dns.c, comms.c, misc.c, common_log.c, jsonpath.c and
+      # the service layer, all of which this port changes.
+      - name: Build the agent
+        shell: cmd
+        run: |
+          for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set VSPATH=%%i
+          call "%VSPATH%\VC\Auxiliary\Build\vcvars64.bat"
+          set VCPKG=%GITHUB_WORKSPACE%\vcpkg_installed\%VCPKG_TRIPLET%
+          cd build\win32\project
+          nmake /f Makefile_agent ^
+            ZBX_REVISION=%GITHUB_SHA:~0,11% ZBX_RC_NUM=0 ^
+            TLS=openssl ^
+            TLSINCDIR=%VCPKG%\include TLSLIBDIR=%VCPKG%\lib ^
+            PCRE2INCDIR=%VCPKG%\include PCRE2LIBDIR=%VCPKG%\lib
+          if errorlevel 1 exit /b 1
+          ..\..\..\bin\win64\zabbix_agentd.exe -V
+
+  asan:
+    name: zabbix_proxy.exe under AddressSanitizer
+    runs-on: windows-latest
+
+    env:
+      VCPKG_TRIPLET: x64-windows-static
+      ZBX_VERSION: 7.4.13
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore third-party libraries
+        id: cache-vcpkg
+        uses: actions/cache/restore@v4
+        with:
+          path: vcpkg_installed
+          key: vcpkg-${{ env.VCPKG_TRIPLET }}-${{ hashFiles('build/win32/vcpkg.json') }}
+
+      - name: Install third-party libraries
+        if: steps.cache-vcpkg.outputs.cache-hit != 'true'
+        shell: cmd
+        run: |
+          "%VCPKG_INSTALLATION_ROOT%\vcpkg" install ^
+            --triplet %VCPKG_TRIPLET% ^
+            --x-manifest-root=build/win32 ^
+            --x-install-root=%GITHUB_WORKSPACE%\vcpkg_installed
+          if errorlevel 1 exit /b 1
+
+      - name: Generate the database schema source
+        shell: bash
+        run: perl create/bin/gen_schema.pl c > src/libs/zbxdbschema/dbschema.c
+
+      # /fsanitize=address instruments every heap access. The shared memory
+      # segments are plain allocations on this platform, so the caches the port
+      # has been corrupting are covered like anything else.
+      - name: Build
+        shell: cmd
+        run: |
+          for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set VSPATH=%%i
+          call "%VSPATH%\VC\Auxiliary\Build\vcvars64.bat"
+          set VCPKG=%GITHUB_WORKSPACE%\vcpkg_installed\%VCPKG_TRIPLET%
+          cd build\win32\project
+          nmake /f Makefile_proxy ^
+            EXTRA_CFLAGS="/fsanitize=address" ^
+            ZBX_REVISION=%GITHUB_SHA:~0,11% ^
+            TLS=openssl ^
+            TLSINCDIR=%VCPKG%\include TLSLIBDIR=%VCPKG%\lib ^
+            PCRE2INCDIR=%VCPKG%\include PCRE2LIBDIR=%VCPKG%\lib ^
+            SQLITE3INCDIR=%VCPKG%\include SQLITE3LIBDIR=%VCPKG%\lib ^
+            LIBEVENTINCDIR=%VCPKG%\include LIBEVENTLIBDIR=%VCPKG%\lib ^
+            CURLINCDIR=%VCPKG%\include CURLLIBDIR=%VCPKG%\lib ^
+            ZLIBINCDIR=%VCPKG%\include ZLIBLIBDIR=%VCPKG%\lib
+
+      # An instrumented binary loads the sanitizer runtime at start-up, and it
+      # does not sit anywhere the loader looks by default.
+      - name: Place the sanitizer runtime beside the binary
+        shell: cmd
+        run: |
+          for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -property installationPath`) do set VSPATH=%%i
+          for /f "delims=" %%d in ('dir /b /s "%VSPATH%\clang_rt.asan_dynamic-x86_64.dll" 2^>nul') do copy /y "%%d" bin\win64\ >nul
+          if not exist bin\win64\clang_rt.asan_dynamic-x86_64.dll for /f "delims=" %%d in ('dir /b /s "%ProgramFiles%\clang_rt.asan_dynamic-x86_64.dll" 2^>nul') do copy /y "%%d" bin\win64\ >nul
+          dir /b bin\win64\*.dll
+
+      - name: Collect through a stand-in server
+        run: python build/win32/tests/proxy_selftest.py --timeout 240
+
+      # The self-test drives five items for a minute. Real load is what turns
+      # up the rest, and that is driven from outside CI - so hand the
+      # instrumented binary over, runtime included, rather than discarding it.
+      - name: Upload the instrumented binary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zabbix_proxy-asan
+          path: |
+            bin/win64/zabbix_proxy.exe
+            bin/win64/zabbix_proxy.pdb
+            bin/win64/clang_rt.asan_dynamic-x86_64.dll
+          if-no-files-found: error
+
+
+  build:
+    name: zabbix_proxy.exe (x64, MSVC)
+    runs-on: windows-latest
+
+    env:
+      VCPKG_TRIPLET: x64-windows-static
+      ZBX_VERSION: 7.4.13
+      # The same tree packaged as a later release, so an upgrade has something
+      # to upgrade to. It is never published; see the upload step.
+      ZBX_NEXT_VERSION: 7.4.14
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Building OpenSSL and curl from source costs about ten minutes, which is
+      # the whole run. Cache the installed tree on the manifest instead.
+      - name: Restore third-party libraries
+        id: cache-vcpkg
+        uses: actions/cache/restore@v4
+        with:
+          path: vcpkg_installed
+          key: vcpkg-${{ env.VCPKG_TRIPLET }}-${{ hashFiles('build/win32/vcpkg.json') }}
+
+      - name: Install third-party libraries
+        if: steps.cache-vcpkg.outputs.cache-hit != 'true'
+        shell: cmd
+        run: |
+          "%VCPKG_INSTALLATION_ROOT%\vcpkg" install ^
+            --triplet %VCPKG_TRIPLET% ^
+            --x-manifest-root=build/win32 ^
+            --x-install-root=%GITHUB_WORKSPACE%\vcpkg_installed
+          if errorlevel 1 exit /b 1
+
+      # Save before building. The combined cache action skips its save step
+      # when the job fails, and a failing build is exactly the case where the
+      # ten minutes spent on dependencies must not be paid again.
+      - name: Save third-party libraries
+        if: steps.cache-vcpkg.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: vcpkg_installed
+          key: vcpkg-${{ env.VCPKG_TRIPLET }}-${{ hashFiles('build/win32/vcpkg.json') }}
+
+      - name: List installed libraries
+        shell: cmd
+        run: |
+          dir /b "%GITHUB_WORKSPACE%\vcpkg_installed\%VCPKG_TRIPLET%\lib"
+
+      # dbschema.c is generated, and the release tooling ships it in the tarball
+      # rather than committing it.
+      - name: Generate the database schema source
+        shell: bash
+        run: |
+          perl create/bin/gen_schema.pl c > src/libs/zbxdbschema/dbschema.c
+          wc -c src/libs/zbxdbschema/dbschema.c
+
+      - name: Build
+        shell: cmd
+        run: |
+          for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set VSPATH=%%i
+          call "%VSPATH%\VC\Auxiliary\Build\vcvars64.bat"
+          set VCPKG=%GITHUB_WORKSPACE%\vcpkg_installed\%VCPKG_TRIPLET%
+          cd build\win32\project
+          rem /K keeps going after a failed source file, so one run reports every
+          rem compilation error instead of stopping at the first.
+          nmake /K /f Makefile_proxy ^
+            ZBX_REVISION=%GITHUB_SHA:~0,11% ^
+            TLS=openssl ^
+            TLSINCDIR=%VCPKG%\include TLSLIBDIR=%VCPKG%\lib ^
+            PCRE2INCDIR=%VCPKG%\include PCRE2LIBDIR=%VCPKG%\lib ^
+            SQLITE3INCDIR=%VCPKG%\include SQLITE3LIBDIR=%VCPKG%\lib ^
+            LIBEVENTINCDIR=%VCPKG%\include LIBEVENTLIBDIR=%VCPKG%\lib ^
+            CURLINCDIR=%VCPKG%\include CURLLIBDIR=%VCPKG%\lib ^
+            ZLIBINCDIR=%VCPKG%\include ZLIBLIBDIR=%VCPKG%\lib
+
+      # Starting is not collecting. This drives a value the whole way:
+      # configuration sync, scheduling, polling, preprocessing, the history
+      # cache and the data sender.
+      - name: Collect through a stand-in server
+        run: python build/win32/tests/proxy_selftest.py --timeout 120
+
+      # Registering a service needs an elevated prompt, which is why this went
+      # unchecked long enough for the proxy to install one the service manager
+      # refused to start. Runners are elevated, so it can be checked here.
+      - name: Register a service the service manager will start
+        shell: pwsh
+        run: >
+          build/win32/tests/service_check.ps1
+          -Exe (Resolve-Path bin/win64/zabbix_proxy.exe).Path
+
+      - name: Build the installer
+        shell: cmd
+        run: |
+          dotnet tool install --global wix --version 5.0.2
+          if errorlevel 1 exit /b 1
+          wix extension add -g WixToolset.Util.wixext/5.0.2
+          wix extension add -g WixToolset.UI.wixext/5.0.2
+          cd build\win32\installer
+          python make_license_rtf.py ..\..\..\COPYING license.rtf
+          wix build zabbix_proxy.wxs ^
+            -ext WixToolset.Util.wixext ^
+            -ext WixToolset.UI.wixext ^
+            -arch x64 ^
+            -d Version=%ZBX_VERSION% ^
+            -d BinDir=..\..\..\bin\win64 ^
+            -d ConfDir=..\..\..\conf ^
+            -o ..\..\..\bin\win64\zabbix_proxy-%ZBX_VERSION%-x64.msi
+
+      # Building the package proves it compiles. The first time one was actually
+      # run, it rolled back on every install - so run one here, on a runner that
+      # is elevated, and take it apart again afterwards.
+      - name: Install the package and take it apart again
+        shell: pwsh
+        run: >
+          build/win32/tests/installer_check.ps1
+          -Msi (Resolve-Path bin/win64/zabbix_proxy-$env:ZBX_VERSION-x64.msi).Path
+
+      # An upgrade takes a different path through the package than a first
+      # install, and this one makes promises about it: the configuration an
+      # operator edited stays, and so does the buffer. Both were assumed.
+      - name: Package the same tree as the next version
+        shell: cmd
+        run: |
+          cd build\win32\installer
+          wix build zabbix_proxy.wxs ^
+            -ext WixToolset.Util.wixext ^
+            -ext WixToolset.UI.wixext ^
+            -arch x64 ^
+            -d Version=%ZBX_NEXT_VERSION% ^
+            -d BinDir=..\..\..\bin\win64 ^
+            -d ConfDir=..\..\..\conf ^
+            -o ..\..\..\bin\win64\zabbix_proxy-%ZBX_NEXT_VERSION%-x64.msi
+
+      - name: Upgrade one version to the next
+        shell: pwsh
+        run: >
+          build/win32/tests/upgrade_check.ps1
+          -OldMsi (Resolve-Path bin/win64/zabbix_proxy-$env:ZBX_VERSION-x64.msi).Path
+          -NewMsi (Resolve-Path bin/win64/zabbix_proxy-$env:ZBX_NEXT_VERSION-x64.msi).Path
+          -NewVersion $env:ZBX_NEXT_VERSION
+
+      # Name the one file rather than the directory: the upgrade test leaves a
+      # package numbered for a release that does not exist next to it.
+      - name: Upload installer
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zabbix_proxy-msi
+          path: bin/win64/zabbix_proxy-${{ env.ZBX_VERSION }}-x64.msi
+          if-no-files-found: error
+
+      - name: Upload binary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zabbix_proxy-x64
+          path: |
+            bin/win64/zabbix_proxy.exe
+            bin/win64/zabbix_proxy.pdb
+            bin/win64/zabbix_proxy.map
+          if-no-files-found: error
+
+  # The build job proves the binary works on whatever windows-latest points at
+  # today. Production runs on Windows Server, where the service manager, the
+  # firewall and the installer behave differently enough to be worth naming.
+  # The same artefact is taken apart on each, rather than rebuilt: that is what
+  # an operator does with a release.
+  #
+  # Server 2019 is not here because GitHub retired its runner image. Nothing
+  # below says anything about it.
+  windows-versions:
+    name: The same binary on ${{ matrix.os }}
+    needs: build
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2022, windows-2025]
+
+    env:
+      ZBX_VERSION: 7.4.13
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Take the binary the build job produced
+        uses: actions/download-artifact@v4
+        with:
+          name: zabbix_proxy-x64
+          path: bin/win64
+
+      - name: Take the installer the build job produced
+        uses: actions/download-artifact@v4
+        with:
+          name: zabbix_proxy-msi
+          path: bin/win64
+
+      - name: Say which Windows this is
+        shell: pwsh
+        run: |
+          $os = Get-CimInstance Win32_OperatingSystem
+          "{0} - {1}" -f $os.Caption, $os.Version
+
+      - name: Collect through a stand-in server
+        run: python build/win32/tests/proxy_selftest.py --timeout 120
+
+      - name: Register a service the service manager will start
+        shell: pwsh
+        run: >
+          build/win32/tests/service_check.ps1
+          -Exe (Resolve-Path bin/win64/zabbix_proxy.exe).Path
+
+      - name: Install the package and take it apart again
+        shell: pwsh
+        run: >
+          build/win32/tests/installer_check.ps1
+          -Msi (Resolve-Path bin/win64/zabbix_proxy-$env:ZBX_VERSION-x64.msi).Path
