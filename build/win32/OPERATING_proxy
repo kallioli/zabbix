@@ -152,6 +152,19 @@ The same burst in `disk` mode delivered every value. The counters are shared
 code, so a Linux proxy loaded hard enough should be able to reach the same
 state; it has not been reproduced there.
 
+What a hard stop costs, whatever the mode: the trapper answers "processed" as
+soon as a value reaches the history cache, which is memory. Killing the process
+at that instant loses everything not yet written to the buffer. Measured, on
+100 000 values acknowledged and the process killed immediately afterwards:
+14 700 arrived. The same test against a Linux proxy 7.4.13 delivered 11 900, so
+this is how Zabbix acknowledges rather than anything this build does. Stop the
+service rather than killing it, and the values are flushed on the way out.
+
+The buffer itself survives the kill. SQLite's rollback journal is replayed at
+the next start, `pragma integrity_check` answers ok, and everything already
+written is delivered - measured with the process killed in the middle of a
+write, under load.
+
 
 Encryption
 ----------
