@@ -65,7 +65,7 @@ CFLAGS =	$(CFLAGS) /DHAVE_OPENSSL /DHAVE_OPENSSL_WITH_PSK
 !		IF !EXISTS("$(TLSLIB2)")
 !			ERROR TLS library "$(TLSLIB2)" not found. $(ADDMSG)
 !		ENDIF
-LIBS =		$(LIBS) "$(TLSLIB)" "$(TLSLIB2)"
+LIBS =		$(LIBS) "$(TLSLIB)" "$(TLSLIB2)" crypt32.lib
 !	ELSE
 LIBS =		$(LIBS) "$(TLSLIB)"
 !	ENDIF
