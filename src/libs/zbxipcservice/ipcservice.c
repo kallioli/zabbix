@@ -2282,7 +2282,7 @@ int	zbx_ipc_async_socket_send(zbx_ipc_async_socket_t *asocket, zbx_uint32_t code
  ******************************************************************************/
 int	zbx_ipc_async_socket_recv(zbx_ipc_async_socket_t *asocket, int timeout, zbx_ipc_message_t **message)
 {
-	int	ret, flags, armed = 0;
+	int	ret, flags, armed = 0, pending = 0;
 	double	started = zbx_time();
 
 	zabbix_log(LOG_LEVEL_DEBUG, "In %s() timeout:%d", __func__, timeout);
@@ -2325,6 +2325,12 @@ int	zbx_ipc_async_socket_recv(zbx_ipc_async_socket_t *asocket, int timeout, zbx_
 	else
 		ret = FAIL;
 
+	/* Was the timer still waiting to fire, or had it left the heap without
+	   ever running? That is the difference between a timer that was never
+	   really registered and one the event loop stopped accounting for. */
+	if (0 != armed)
+		pending = (0 != evtimer_pending(asocket->ev_timer, NULL));
+
 	evtimer_del(asocket->ev_timer);
 
 	/* A worker that asked to sleep for a second and slept for four minutes has
@@ -2336,8 +2342,9 @@ int	zbx_ipc_async_socket_recv(zbx_ipc_async_socket_t *asocket, int timeout, zbx_
 
 		if (slept > (double)timeout * 2 + 1)
 		{
-			zabbix_log(LOG_LEVEL_WARNING, "waited %.1f seconds for a timeout of %d;"
-					" the timer did not fire", slept, timeout);
+			zabbix_log(LOG_LEVEL_WARNING, "waited %.1f seconds for a timeout of %d:"
+					" the timer did not fire and was %s", slept, timeout,
+					0 != pending ? "still pending" : "no longer registered");
 		}
 	}
 
