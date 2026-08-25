@@ -140,6 +140,18 @@ Values stay in memory and move to the database when they age past
 ProxyMemoryBufferAge or the memory fills. With the default `disk` mode every
 value goes straight to SQLite, which is slower but survives anything.
 
+Prefer the default unless you have measured a reason not to. Under a heavy
+burst, `hybrid` has been seen to lose values: the two halves of the buffer
+number their rows from separate counters, and when the memory half is holding
+rows the database half has not seen, both hand out the same number. The insert
+is refused and those rows are dropped, with this in the log:
+
+    [Z3005] query failed: [0] UNIQUE constraint failed: proxy_history.id
+
+The same burst in `disk` mode delivered every value. The counters are shared
+code, so a Linux proxy loaded hard enough should be able to reach the same
+state; it has not been reproduced there.
+
 
 Encryption
 ----------
@@ -281,9 +293,13 @@ What is not known yet
 Stated plainly, because a monitoring component that surprises you is worse than
 one with documented limits.
 
-  * Throughput has not been measured. There is no figure for how many hosts one
-    Windows proxy sustains, so size it conservatively and watch
+  * Throughput has been measured only against one server, on one machine, with
+    trapper items. Six senders delivering 960 000 values took 102 seconds to
+    accept and about four minutes to relay in full. There is no figure for how
+    many hosts one Windows proxy sustains, so size it conservatively and watch
     zabbix[wcache,values] and the buffer file.
+
+  * ProxyBufferMode=hybrid loses values under a heavy burst; see Configuring.
 
   * Only Windows 11 and the windows-latest runner have been exercised. The
     Windows Server releases differ in service and firewall behaviour.
