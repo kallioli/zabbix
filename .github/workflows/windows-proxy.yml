@@ -60,7 +60,17 @@ jobs:
       # platform expect of it.
       - name: Run the upstream unit tests
         run: |
-          make -C tests check 2>&1 | tail -80
+          # Without this the tail swallows make's exit status and a harness
+          # that never ran reads as a harness that passed.
+          set -o pipefail
+
+          grep -q "HAVE_TESTS" include/config.h || {
+            echo "configure did not pick up the test harness"; exit 1; }
+          grep -qE "^check(-am)?:" tests/Makefile || {
+            echo "tests/Makefile carries no check target:"; head -20 tests/Makefile; exit 1; }
+
+          make -C tests check 2>&1 | tail -100
+
           if grep -rq "FAIL" tests --include="*.log" 2>/dev/null; then
             echo "--- the failing logs:"
             grep -rl "FAIL" tests --include="*.log" | while read -r f; do
