@@ -24,20 +24,58 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             autoconf automake libtool pkg-config gettext \
             libsqlite3-dev libssl-dev libpcre2-dev libevent-dev \
-            libcurl4-openssl-dev zlib1g-dev libxml2-dev
+            libcurl4-openssl-dev zlib1g-dev libxml2-dev \
+            libpq-dev libcmocka-dev libyaml-dev
 
-      # The port touches sources the Linux server, proxy and agent all compile.
-      # Most changes sit behind _WINDOWS, but twenty-one files have lines
-      # removed or rewritten, so the guard has to be proven rather than assumed.
-      - name: Build proxy and agent
+      # configure.ac looks for the test harness in m4/ and the tree keeps it in
+      # tests/, so a plain checkout builds no tests at all. Put it where it is
+      # looked for before bootstrapping.
+      - name: Wire in the test harness
         run: |
+          cp tests/conf_tests.m4 m4/
           ./bootstrap.sh
+
+      # The port touches sources the Linux server, proxy and agent all compile,
+      # and the server links the largest share of them - the configuration
+      # cache, the history cache and the locks that this port rewrote are its
+      # code before they are the proxy's. It was not being compiled at all.
+      #
+      # SQLite cannot back a server, so this pass uses PostgreSQL; the proxy is
+      # rebuilt on SQLite below, which is what it ships as on Windows.
+      - name: Build server, proxy and agent
+        run: |
+          ./configure --quiet \
+            --enable-server --enable-proxy --enable-agent \
+            --with-postgresql \
+            --with-openssl --with-libpcre2 --with-libcurl \
+            --with-cmocka --with-libyaml
+          make -j"$(nproc)" 2>&1 | tail -40
+          test -x src/zabbix_server/zabbix_server
+          test -x src/zabbix_proxy/zabbix_proxy
+          test -x src/zabbix_agent/zabbix_agentd
+          src/zabbix_server/zabbix_server -V | head -1
+
+      # Zabbix ships its own unit tests. They answer what an end-to-end run
+      # cannot: whether a shared helper still does what callers on every
+      # platform expect of it.
+      - name: Run the upstream unit tests
+        run: |
+          make -C tests check 2>&1 | tail -80
+          if grep -rq "FAIL" tests --include="*.log" 2>/dev/null; then
+            echo "--- the failing logs:"
+            grep -rl "FAIL" tests --include="*.log" | while read -r f; do
+              echo "=== $f"; cat "$f"
+            done
+            exit 1
+          fi
+
+      - name: Rebuild the proxy on SQLite
+        run: |
           ./configure --quiet \
             --enable-proxy --enable-agent \
             --with-sqlite3 --with-openssl --with-libpcre2 --with-libcurl
           make -j"$(nproc)" 2>&1 | tail -40
           test -x src/zabbix_proxy/zabbix_proxy
-          test -x src/zabbix_agent/zabbix_agentd
           src/zabbix_proxy/zabbix_proxy -V | head -1
 
       # The same harness against the Linux binary. It tells a defect this port
