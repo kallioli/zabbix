@@ -27,13 +27,11 @@ jobs:
             libcurl4-openssl-dev zlib1g-dev libxml2-dev \
             libpq-dev libcmocka-dev libyaml-dev
 
-      # configure.ac looks for the test harness in m4/ and the tree keeps it in
-      # tests/, so a plain checkout builds no tests at all. Put it where it is
-      # looked for before bootstrapping.
-      - name: Wire in the test harness
-        run: |
-          cp tests/conf_tests.m4 m4/
-          ./bootstrap.sh
+      # bootstrap.sh takes an argument for this. Without it, it removes the
+      # test harness from m4/ before generating configure, and a plain checkout
+      # therefore builds no tests at all.
+      - name: Generate configure, with the test harness
+        run: ./bootstrap.sh tests
 
       # The port touches sources the Linux server, proxy and agent all compile,
       # and the server links the largest share of them - the configuration
