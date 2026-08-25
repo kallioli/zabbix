@@ -15,6 +15,18 @@ What you get
 Active and passive proxy, SQLite3 buffer, Zabbix agent checks, simple checks,
 trapper, preprocessing including JavaScript, data sender and housekeeper.
 
+Collection has been driven end to end, against a real server, for: agent checks
+both passive and active, simple checks, trapper, dependent items, calculated
+items, internal items, HTTP agent, external scripts, log monitoring,
+autoregistration, network discovery and remote commands. Preprocessing was
+exercised as a chain of regular expression, JavaScript and multiplier, with an
+error handler, and a user macro resolved inside an item key.
+
+Two of those need a setting that is not there by default: external scripts want
+ExternalScripts in this file, and remote commands want AllowKey=system.run[*] on
+the agent that runs them. A log item must have its value type set to Log; given
+a numeric type it stays silent and reports nothing wrong.
+
 Not included: SNMP, IPMI, VMware, ODBC database monitor and ICMP ping. Those
 checks are reported as unsupported rather than silently returning nothing.
 
