@@ -333,8 +333,14 @@ one with documented limits.
     2019 is absent because its runner image is retired, so nothing here says
     anything about it either way.
 
-  * The housekeeper has not run for days on end. Watch the size of
-    zabbix_proxy.db over the first week.
+  * The housekeeper has not run for days on end. It has been watched over a few
+    hours and does what it says - on its hourly schedule it clears the rows the
+    server has taken, and the buffer file came back from 16.8 MB to 4.1 MB:
+
+        housekeeper [deleted 14852 records in 0.038813 sec, idle for 1 hour(s)]
+
+    That is not the same as a week of it. Watch the size of zabbix_proxy.db
+    over the first one.
 
   * The binary is unsigned unless you sign it yourself. SmartScreen warns on
     every install and some endpoint protection blocks it outright.
