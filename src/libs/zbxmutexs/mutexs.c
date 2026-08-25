@@ -625,14 +625,28 @@ zbx_mutex_name_t	zbx_mutex_create_per_process_name(const zbx_mutex_name_t prefix
 
 struct zbx_win_rwlock
 {
-	SRWLOCK		lock;
-	/* Windows releases the shared and the exclusive mode with different
-	   calls and cannot be asked which is held, so the mode is recorded.
-	   One flag is enough: an exclusive holder excludes every other. */
-	volatile LONG	exclusive;
+	SRWLOCK	lock;
 };
 
 static struct zbx_win_rwlock	rwlocks[ZBX_RWLOCK_COUNT];
+
+/* Windows releases the shared and the exclusive mode with different calls and
+ * cannot be asked which one is held, so the mode has to be recorded. It cannot
+ * be recorded on the lock: the lock is shared between threads, the answer is
+ * not - while one thread holds the lock exclusively another may be about to
+ * release the shared hold it took before, and a single flag tells them both
+ * the same thing. Releasing in the wrong mode raises STATUS_RESOURCE_NOT_OWNED
+ * and takes the process down.
+ *
+ * Each thread therefore keeps its own record, which no other thread can
+ * disturb. The depth counts nested holds, which the readers of the
+ * configuration cache do take.
+ */
+#define ZBX_RWLOCK_HELD_SHARED		1
+#define ZBX_RWLOCK_HELD_EXCLUSIVE	2
+
+static ZBX_THREAD_LOCAL unsigned char	rwlock_held[ZBX_RWLOCK_COUNT];
+static ZBX_THREAD_LOCAL int		rwlock_depth[ZBX_RWLOCK_COUNT];
 
 int	zbx_rwlock_create(zbx_rwlock_t *rwlock, zbx_rwlock_name_t name, char **error)
 {
@@ -650,6 +664,8 @@ zbx_rwlock_t	zbx_rwlock_addr_get(zbx_rwlock_name_t rwlock_name)
 
 void	__zbx_rwlock_wrlock(const char *filename, int line, zbx_rwlock_t rwlock)
 {
+	int	index;
+
 	ZBX_UNUSED(filename);
 	ZBX_UNUSED(line);
 
@@ -657,11 +673,16 @@ void	__zbx_rwlock_wrlock(const char *filename, int line, zbx_rwlock_t rwlock)
 		return;
 
 	AcquireSRWLockExclusive(&rwlock->lock);
-	InterlockedExchange(&rwlock->exclusive, 1);
+
+	index = (int)(rwlock - rwlocks);
+	rwlock_held[index] = ZBX_RWLOCK_HELD_EXCLUSIVE;
+	rwlock_depth[index]++;
 }
 
 void	__zbx_rwlock_rdlock(const char *filename, int line, zbx_rwlock_t rwlock)
 {
+	int	index;
+
 	ZBX_UNUSED(filename);
 	ZBX_UNUSED(line);
 
@@ -669,21 +690,37 @@ void	__zbx_rwlock_rdlock(const char *filename, int line, zbx_rwlock_t rwlock)
 		return;
 
 	AcquireSRWLockShared(&rwlock->lock);
+
+	index = (int)(rwlock - rwlocks);
+	rwlock_held[index] = ZBX_RWLOCK_HELD_SHARED;
+	rwlock_depth[index]++;
 }
 
 void	__zbx_rwlock_unlock(const char *filename, int line, zbx_rwlock_t rwlock)
 {
-	ZBX_UNUSED(filename);
-	ZBX_UNUSED(line);
+	int	index;
 
 	if (ZBX_RWLOCK_NULL == rwlock)
 		return;
 
-	/* clear the flag while the exclusive hold still keeps everyone else out */
-	if (0 != InterlockedCompareExchange(&rwlock->exclusive, 0, 1))
+	index = (int)(rwlock - rwlocks);
+
+	if (0 == rwlock_depth[index])
+	{
+		/* releasing a lock this thread never took would corrupt the lock for */
+		/* everyone waiting on it, so say where it came from and do nothing   */
+		zbx_error("[file:'%s',line:%d] read-write lock released by a thread that does not hold it",
+				filename, line);
+		return;
+	}
+
+	if (ZBX_RWLOCK_HELD_EXCLUSIVE == rwlock_held[index])
 		ReleaseSRWLockExclusive(&rwlock->lock);
 	else
 		ReleaseSRWLockShared(&rwlock->lock);
+
+	if (0 == --rwlock_depth[index])
+		rwlock_held[index] = 0;
 }
 
 void	zbx_rwlock_destroy(zbx_rwlock_t *rwlock)
