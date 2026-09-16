@@ -88,8 +88,8 @@ build\win32\installer builds an MSI with WiX v5:
     python make_license_rtf.py ..\..\..\COPYING license.rtf
     wix build zabbix_proxy.wxs ^
         -ext WixToolset.Util.wixext -ext WixToolset.UI.wixext -arch x64 ^
-        -d Version=7.4.13 -d BinDir=..\..\..\bin\win64 -d ConfDir=..\..\..\conf ^
-        -o zabbix_proxy-7.4.13-x64.msi
+        -d Version=7.4.14 -d BinDir=..\..\..\bin\win64 -d ConfDir=..\..\..\conf ^
+        -o zabbix_proxy-7.4.14-x64.msi
 
 The extensions have to match the toolset version: an unqualified name resolves
 to the 7 series, which a v5 build cannot load.
@@ -97,7 +97,7 @@ to the 7 series, which a v5 build cannot load.
 Installing
 ----------
 
-    msiexec /i zabbix_proxy-7.4.13-x64.msi SERVER=zabbix.example.com HOSTNAME=proxy-paris
+    msiexec /i zabbix_proxy-7.4.14-x64.msi SERVER=zabbix.example.com HOSTNAME=proxy-paris
 
 Add /qn for an unattended install. The package lays the binary and the
 documented sample down in "%ProgramFiles%\Zabbix Proxy", registers the service

@@ -125,7 +125,7 @@ jobs:
 
     env:
       VCPKG_TRIPLET: x64-windows-static
-      ZBX_VERSION: 7.4.13
+      ZBX_VERSION: 7.4.14
 
     steps:
       - uses: actions/checkout@v4
@@ -206,10 +206,10 @@ jobs:
 
     env:
       VCPKG_TRIPLET: x64-windows-static
-      ZBX_VERSION: 7.4.13
+      ZBX_VERSION: 7.4.14
       # The same tree packaged as a later release, so an upgrade has something
       # to upgrade to. It is never published; see the upload step.
-      ZBX_NEXT_VERSION: 7.4.14
+      ZBX_NEXT_VERSION: 7.4.15
 
     steps:
       - uses: actions/checkout@v4
@@ -381,7 +381,7 @@ jobs:
         os: [windows-2022, windows-2025]
 
     env:
-      ZBX_VERSION: 7.4.13
+      ZBX_VERSION: 7.4.14
 
     steps:
       - uses: actions/checkout@v4

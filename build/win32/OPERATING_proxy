@@ -52,7 +52,7 @@ Installing
 
 With the installer, which is the supported path:
 
-    msiexec /i zabbix_proxy-7.4.13-x64.msi SERVER=zabbix.example.com ^
+    msiexec /i zabbix_proxy-7.4.14-x64.msi SERVER=zabbix.example.com ^
         HOSTNAME=proxy-paris
 
   SERVER      the Zabbix server, "host" or "host:port". Default 127.0.0.1.
@@ -317,7 +317,7 @@ Uninstalling
 
 Through Settings, or:
 
-    msiexec /x zabbix_proxy-7.4.13-x64.msi
+    msiexec /x zabbix_proxy-7.4.14-x64.msi
 
 The service is stopped and removed. The data directory stays if it still holds
 the buffer or the log; delete it by hand when you are sure you no longer want

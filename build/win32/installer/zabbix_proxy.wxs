@@ -9,12 +9,12 @@
   Installer for the Windows Zabbix proxy. Build it with WiX v5:
 
       wix build zabbix_proxy.wxs -ext WixToolset.Util.wixext ^
-          -d Version=7.4.13 -d BinDir=..\..\..\bin\win64 -d ConfDir=..\..\..\conf ^
-          -arch x64 -o zabbix_proxy-7.4.13-x64.msi
+          -d Version=7.4.14 -d BinDir=..\..\..\bin\win64 -d ConfDir=..\..\..\conf ^
+          -arch x64 -o zabbix_proxy-7.4.14-x64.msi
 
   Silent install, with the proxy configured in one go:
 
-      msiexec /i zabbix_proxy-7.4.13-x64.msi /qn ^
+      msiexec /i zabbix_proxy-7.4.14-x64.msi /qn ^
           SERVER=zabbix.example.com HOSTNAME=proxy-paris
 -->
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
