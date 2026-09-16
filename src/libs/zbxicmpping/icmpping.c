@@ -28,12 +28,45 @@
 ZBX_VECTOR_IMPL(fping_host, zbx_fping_host_t)
 
 #ifdef _WINDOWS
-/* ICMP checks drive the external fping utility, which this build does not ship. The entry points stay so that their */
-/* callers link unchanged, and report the check as unsupported rather than silently returning no data. */
+/* On Unix ICMP checks drive the external fping utility. It has no Windows port, so this build talks to the ICMP */
+/* driver through iphlpapi (IcmpSendEcho2Ex/Icmp6SendEcho2) instead, keeping fping's option semantics: requests   */
+/* are sent in rounds separated by the period, each round completes within the per-packet timeout, and a reply    */
+/* arriving from an address other than the target counts as a response only when redirects are allowed.           */
+
+#include <iphlpapi.h>
+#include <icmpapi.h>
+
+#include "zbxlog.h"
+
+/* fping defaults, applied when the item omits the option */
+#define ZBX_WINPING_DEFAULT_PERIOD	1000	/* -p, milliseconds between requests to one target */
+#define ZBX_WINPING_DEFAULT_TIMEOUT	500	/* -t, milliseconds to wait for a response */
+#define ZBX_WINPING_DEFAULT_SIZE	56	/* -b, payload bytes */
+#define ZBX_WINPING_DEFAULT_BACKOFF	1.5	/* -B, timeout multiplier between retries */
+
+/* the ICMP driver reports round-trip times in whole milliseconds; a reply that arrives     */
+/* within the same tick reads 0, which would look like "no time at all", so report half of */
+/* the measurement resolution instead */
+#define ZBX_WINPING_SUB_MS_SEC		0.0005
+
+static const zbx_config_icmpping_t	*config_icmpping;
+
+typedef struct
+{
+	struct sockaddr_storage	sa;	/* resolved target, AF_INET or AF_INET6 */
+	HANDLE			event;
+	unsigned char		*reply;
+	DWORD			reply_size;
+	int			resolved;
+	int			awaited;	/* echo in flight or completed this round */
+	int			responded;	/* got a valid reply this round */
+	double			rtt_sec;	/* round-trip time of that reply */
+}
+zbx_winping_target_t;
 
 void	zbx_init_library_icmpping(const zbx_config_icmpping_t *config)
 {
-	ZBX_UNUSED(config);
+	config_icmpping = config;
 }
 
 void	zbx_init_icmpping_env(const char *prefix, long int id)
@@ -42,24 +75,351 @@ void	zbx_init_icmpping_env(const char *prefix, long int id)
 	ZBX_UNUSED(id);
 }
 
+static void	winping_source_parse(struct in_addr *src4, int *has_src4, struct sockaddr_in6 *src6)
+{
+	const char	*source_ip;
+
+	src4->s_addr = INADDR_ANY;
+	*has_src4 = 0;
+	memset(src6, 0, sizeof(*src6));
+	src6->sin6_family = AF_INET6;	/* in6addr_any */
+
+	if (NULL == config_icmpping->get_source_ip || NULL == (source_ip = config_icmpping->get_source_ip()))
+		return;
+
+	if (1 == inet_pton(AF_INET, source_ip, src4))
+		*has_src4 = 1;
+	else if (1 != inet_pton(AF_INET6, source_ip, &src6->sin6_addr))
+		zabbix_log(LOG_LEVEL_WARNING, "cannot parse SourceIP \"%s\" for ICMP checks", source_ip);
+}
+
+static int	winping_resolve(zbx_fping_host_t *host, zbx_winping_target_t *target, int rdns)
+{
+	struct addrinfo	hints, *ai;
+	char		name[NI_MAXHOST];
+
+	memset(&hints, 0, sizeof(hints));
+	hints.ai_family = AF_UNSPEC;
+
+	if (0 != getaddrinfo(host->addr, NULL, &hints, &ai))
+	{
+		zabbix_log(LOG_LEVEL_DEBUG, "cannot resolve \"%s\" for ICMP check", host->addr);
+		return FAIL;
+	}
+
+	memcpy(&target->sa, ai->ai_addr, ai->ai_addrlen);
+	freeaddrinfo(ai);
+	target->resolved = 1;
+
+	if (0 != rdns)
+	{
+		socklen_t	salen = (AF_INET == target->sa.ss_family) ? sizeof(struct sockaddr_in) :
+				sizeof(struct sockaddr_in6);
+
+		if (0 != getnameinfo((struct sockaddr *)&target->sa, salen, name, sizeof(name), NULL, 0,
+				NI_NAMEREQD))
+		{
+			name[0] = '\0';
+		}
+
+		host->dnsname = zbx_strdup(host->dnsname, name);
+	}
+
+	return SUCCEED;
+}
+
+/* Sends one echo request; the completion event fires when a reply arrives or the driver's own timeout elapses. */
+static int	winping_send(HANDLE h4, HANDLE h6, zbx_winping_target_t *target, struct in_addr src4, int has_src4,
+		struct sockaddr_in6 *src6, unsigned char *payload, int size, int timeout)
+{
+	DWORD	rc;
+
+	ResetEvent(target->event);
+
+	if (AF_INET == target->sa.ss_family)
+	{
+		struct sockaddr_in	*dst = (struct sockaddr_in *)&target->sa;
+
+		rc = IcmpSendEcho2Ex(h4, target->event, NULL, NULL,
+				(0 != has_src4 ? src4.s_addr : INADDR_ANY), dst->sin_addr.s_addr,
+				payload, (WORD)size, NULL, target->reply, target->reply_size, (DWORD)timeout);
+	}
+	else
+	{
+		struct sockaddr_in6	*dst = (struct sockaddr_in6 *)&target->sa;
+
+		rc = Icmp6SendEcho2(h6, target->event, NULL, NULL, src6, dst,
+				payload, (WORD)size, NULL, target->reply, target->reply_size, (DWORD)timeout);
+	}
+
+	if (0 == rc && ERROR_IO_PENDING != GetLastError())
+	{
+		zabbix_log(LOG_LEVEL_DEBUG, "cannot send ICMP echo request: %s",
+				zbx_strerror_from_system(GetLastError()));
+		return FAIL;
+	}
+
+	return SUCCEED;
+}
+
+/* Reads the completed reply buffer and decides whether it counts as a response. */
+static void	winping_harvest(zbx_winping_target_t *target, unsigned char allow_redirect)
+{
+	if (AF_INET == target->sa.ss_family)
+	{
+		ICMP_ECHO_REPLY		*reply = (ICMP_ECHO_REPLY *)target->reply;
+		struct sockaddr_in	*dst = (struct sockaddr_in *)&target->sa;
+
+		if (0 == IcmpParseReplies(target->reply, target->reply_size) || IP_SUCCESS != reply->Status)
+			return;
+
+		if (reply->Address != dst->sin_addr.s_addr && 0 == allow_redirect)
+			return;
+
+		target->responded = 1;
+		target->rtt_sec = (0 == reply->RoundTripTime ? ZBX_WINPING_SUB_MS_SEC :
+				reply->RoundTripTime / 1000.0);
+	}
+	else
+	{
+		ICMPV6_ECHO_REPLY	*reply = (ICMPV6_ECHO_REPLY *)target->reply;
+		struct sockaddr_in6	*dst = (struct sockaddr_in6 *)&target->sa;
+
+		if (0 == Icmp6ParseReplies(target->reply, target->reply_size) || IP_SUCCESS != reply->Status)
+			return;
+
+		if (0 != memcmp(reply->Address.sin6_addr, &dst->sin6_addr, sizeof(dst->sin6_addr)) &&
+				0 == allow_redirect)
+		{
+			return;
+		}
+
+		target->responded = 1;
+		target->rtt_sec = (0 == reply->RoundTripTime ? ZBX_WINPING_SUB_MS_SEC :
+				reply->RoundTripTime / 1000.0);
+	}
+}
+
+/* One round: an echo to every listed target, then a wait bounded by the shared per-packet timeout. */
+static void	winping_round(HANDLE h4, HANDLE h6, zbx_winping_target_t *targets, int *indexes, int indexes_count,
+		struct in_addr src4, int has_src4, struct sockaddr_in6 *src6, unsigned char *payload, int size,
+		int timeout, unsigned char allow_redirect)
+{
+	ULONGLONG	deadline;
+	int		i;
+
+	for (i = 0; i < indexes_count; i++)
+	{
+		zbx_winping_target_t	*target = &targets[indexes[i]];
+
+		target->awaited = 0;
+		target->responded = 0;
+
+		if (0 == target->resolved)
+			continue;
+
+		if (SUCCEED == winping_send(h4, h6, target, src4, has_src4, src6, payload, size, timeout))
+			target->awaited = 1;
+	}
+
+	/* the driver completes every request by its timeout, the margin only covers scheduling */
+	deadline = GetTickCount64() + (ULONGLONG)timeout + 500;
+
+	for (i = 0; i < indexes_count; i++)
+	{
+		zbx_winping_target_t	*target = &targets[indexes[i]];
+		ULONGLONG		now;
+		DWORD			wait_ms;
+
+		if (0 == target->awaited)
+			continue;
+
+		now = GetTickCount64();
+		wait_ms = (now < deadline) ? (DWORD)(deadline - now) : 0;
+
+		if (WAIT_OBJECT_0 != WaitForSingleObject(target->event, wait_ms))
+		{
+			/* the request is still in flight and owns its reply buffer: retire the target */
+			/* rather than risk the driver completing into a reused buffer                 */
+			zabbix_log(LOG_LEVEL_WARNING, "ICMP echo request did not complete within its timeout, "
+					"skipping this target for the remaining rounds");
+			target->awaited = 0;
+			target->resolved = 0;
+			continue;
+		}
+
+		winping_harvest(target, allow_redirect);
+	}
+}
+
 int	zbx_ping(zbx_fping_host_t *hosts, int hosts_count, int requests_count, int period, int size, int timeout,
 		int retries, double backoff, unsigned char allow_redirect, int rdns, char *error,
 		size_t max_error_len)
 {
-	ZBX_UNUSED(hosts);
-	ZBX_UNUSED(hosts_count);
-	ZBX_UNUSED(requests_count);
-	ZBX_UNUSED(period);
-	ZBX_UNUSED(size);
-	ZBX_UNUSED(timeout);
-	ZBX_UNUSED(retries);
-	ZBX_UNUSED(backoff);
-	ZBX_UNUSED(allow_redirect);
-	ZBX_UNUSED(rdns);
+	HANDLE			h4 = INVALID_HANDLE_VALUE, h6 = INVALID_HANDLE_VALUE;
+	zbx_winping_target_t	*targets;
+	unsigned char		*payload;
+	struct in_addr		src4;
+	struct sockaddr_in6	src6;
+	int			i, has_src4, *indexes, ret = NOTSUPPORTED;
 
-	zbx_strlcpy(error, "ICMP checks are not supported on this platform", max_error_len);
+	zabbix_log(LOG_LEVEL_DEBUG, "In %s() hosts_count:%d", __func__, hosts_count);
 
-	return NOTSUPPORTED;
+	if (0 >= hosts_count)
+		return SUCCEED;
+
+	if (0 >= period)
+		period = ZBX_WINPING_DEFAULT_PERIOD;
+	if (0 >= timeout)
+		timeout = ZBX_WINPING_DEFAULT_TIMEOUT;
+	if (0 >= size)
+		size = ZBX_WINPING_DEFAULT_SIZE;
+	if (0 < retries && 0 >= backoff)
+		backoff = ZBX_WINPING_DEFAULT_BACKOFF;
+
+	if (INVALID_HANDLE_VALUE == (h4 = IcmpCreateFile()))
+	{
+		zbx_snprintf(error, max_error_len, "cannot open ICMP handle: %s",
+				zbx_strerror_from_system(GetLastError()));
+		return NOTSUPPORTED;
+	}
+
+	if (INVALID_HANDLE_VALUE == (h6 = Icmp6CreateFile()))
+		zabbix_log(LOG_LEVEL_DEBUG, "cannot open ICMPv6 handle, IPv6 targets will fail to resolve replies");
+
+	winping_source_parse(&src4, &has_src4, &src6);
+
+	payload = (unsigned char *)zbx_malloc(NULL, (size_t)size);
+	memset(payload, 'Z', (size_t)size);
+
+	targets = (zbx_winping_target_t *)zbx_calloc(NULL, (size_t)hosts_count, sizeof(zbx_winping_target_t));
+	indexes = (int *)zbx_malloc(NULL, (size_t)hosts_count * sizeof(int));
+
+	for (i = 0; i < hosts_count; i++)
+	{
+		zbx_winping_target_t	*target = &targets[i];
+
+		hosts[i].cnt = hosts[i].rcv = 0;
+		hosts[i].min = hosts[i].sum = hosts[i].max = 0;
+
+		if (0 != rdns && NULL == hosts[i].dnsname)
+			hosts[i].dnsname = zbx_strdup(NULL, "");
+
+		if (SUCCEED != winping_resolve(&hosts[i], target, rdns))
+			continue;
+
+		target->reply_size = (DWORD)((AF_INET == target->sa.ss_family ? sizeof(ICMP_ECHO_REPLY) :
+				sizeof(ICMPV6_ECHO_REPLY)) + (size_t)size + 8 + 64);
+		target->reply = (unsigned char *)zbx_malloc(NULL, target->reply_size);
+		target->event = CreateEvent(NULL, TRUE, FALSE, NULL);
+	}
+
+	if (0 > retries)
+	{
+		/* fping -C mode: a fixed number of rounds, statistics per request */
+		int	round;
+
+		for (round = 0; round < requests_count; round++)
+		{
+			int	indexes_count = 0;
+
+			if (0 < round)
+				Sleep((DWORD)period);
+
+			for (i = 0; i < hosts_count; i++)
+			{
+				if (0 != targets[i].resolved)
+					indexes[indexes_count++] = i;
+			}
+
+			if (0 == indexes_count)
+				break;
+
+			winping_round(h4, h6, targets, indexes, indexes_count, src4, has_src4, &src6,
+					payload, size, timeout, allow_redirect);
+
+			for (i = 0; i < hosts_count; i++)
+			{
+				if (0 == targets[i].responded)
+					continue;
+
+				if (0 == hosts[i].rcv || hosts[i].min > targets[i].rtt_sec)
+					hosts[i].min = targets[i].rtt_sec;
+				if (0 == hosts[i].rcv || hosts[i].max < targets[i].rtt_sec)
+					hosts[i].max = targets[i].rtt_sec;
+				hosts[i].sum += targets[i].rtt_sec;
+				hosts[i].rcv++;
+			}
+		}
+
+		for (i = 0; i < hosts_count; i++)
+		{
+			if (0 != targets[i].resolved || 0 != hosts[i].rcv)
+				hosts[i].cnt = requests_count;
+		}
+	}
+	else
+	{
+		/* fping -r mode: retransmit with backoff until the first response, report alive or not */
+		int	attempt, attempt_timeout = timeout;
+
+		for (attempt = 0; attempt <= retries; attempt++)
+		{
+			int	indexes_count = 0;
+
+			for (i = 0; i < hosts_count; i++)
+			{
+				if (0 != targets[i].resolved && 0 == hosts[i].rcv)
+					indexes[indexes_count++] = i;
+			}
+
+			if (0 == indexes_count)
+				break;
+
+			if (0 < attempt)
+				attempt_timeout = (int)(attempt_timeout * backoff);
+
+			winping_round(h4, h6, targets, indexes, indexes_count, src4, has_src4, &src6,
+					payload, size, attempt_timeout, allow_redirect);
+
+			for (i = 0; i < hosts_count; i++)
+			{
+				if (0 == targets[i].responded || 0 != hosts[i].rcv)
+					continue;
+
+				hosts[i].rcv = 1;
+				hosts[i].min = hosts[i].max = targets[i].rtt_sec;
+				hosts[i].sum = targets[i].rtt_sec;
+			}
+		}
+
+		for (i = 0; i < hosts_count; i++)
+		{
+			if (0 != targets[i].resolved || 0 != hosts[i].rcv)
+				hosts[i].cnt = 1;
+		}
+	}
+
+	ret = SUCCEED;
+
+	for (i = 0; i < hosts_count; i++)
+	{
+		if (NULL != targets[i].event)
+			CloseHandle(targets[i].event);
+		zbx_free(targets[i].reply);
+	}
+
+	zbx_free(indexes);
+	zbx_free(targets);
+	zbx_free(payload);
+
+	if (INVALID_HANDLE_VALUE != h6)
+		IcmpCloseHandle(h6);
+	IcmpCloseHandle(h4);
+
+	zabbix_log(LOG_LEVEL_DEBUG, "End of %s():%s", __func__, zbx_result_string(ret));
+
+	return ret;
 }
 #else
 

@@ -13,7 +13,8 @@ What you get
 ------------
 
 Active and passive proxy, SQLite3 buffer, Zabbix agent checks, simple checks,
-trapper, preprocessing including JavaScript, data sender and housekeeper.
+ICMP ping, trapper, preprocessing including JavaScript, data sender and
+housekeeper.
 
 Collection has been driven end to end, against a real server, for: agent checks
 both passive and active, simple checks, trapper, dependent items, calculated
@@ -27,8 +28,16 @@ ExternalScripts in this file, and remote commands want AllowKey=system.run[*] on
 the agent that runs them. A log item must have its value type set to Log; given
 a numeric type it stays silent and reports nothing wrong.
 
-Not included: SNMP, IPMI, VMware, ODBC database monitor and ICMP ping. Those
-checks are reported as unsupported rather than silently returning nothing.
+Not included: SNMP, IPMI, VMware and ODBC database monitor. Those checks are
+reported as unsupported rather than silently returning nothing.
+
+ICMP ping (icmpping, icmppingsec, icmppingloss, icmppingretry and discovery
+ICMP checks) does not use fping here - there is none on Windows. The proxy
+talks to the system ICMP driver instead, which brings two differences from a
+Unix proxy: round-trip times are measured in whole milliseconds, so a reply
+on a fast LAN reads as 0.5 ms rather than its true sub-millisecond value, and
+no fping binary or FpingLocation setting is involved. SourceIP is honoured.
+No elevation is needed; the ICMP driver is open to ordinary processes.
 
 The workers Zabbix forks on Unix are threads here, in one process. Practical
 consequences: one entry in Task Manager rather than fifty, shared memory that is
