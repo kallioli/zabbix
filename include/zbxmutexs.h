@@ -40,6 +40,7 @@
 #	define ZBX_MUTEX_VPS_MONITOR		zbx_mutex_create_per_process_name(L"ZBX_MUTEX_VPS_MONITOR")
 
 typedef wchar_t * zbx_mutex_name_t;
+/* an opaque pointer to the in-process lock behind the name; see mutexs.c for why it is not a kernel handle */
 typedef HANDLE zbx_mutex_t;
 
 #	define zbx_mutex_lock(mutex)		__zbx_mutex_lock(__FILE__, __LINE__, mutex)
