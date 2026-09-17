@@ -42,8 +42,10 @@ if not exist net-snmp-%VER%\win32\Configure (
 
 cd net-snmp-%VER%\win32 || exit /b 1
 
+rem --config and --linktype are both required by Configure; omitting linktype
+rem makes it print usage and exit without generating a Makefile.
 echo === configuring (static, release, no ssl) ===
-perl Configure --config=release --with-sdk --prefix="%PREFIX%" || exit /b 1
+perl Configure --config=release --linktype=static --with-sdk --prefix="%PREFIX%" || exit /b 1
 
 echo === building ===
 nmake || exit /b 1
