@@ -3955,17 +3955,23 @@ static int	zbx_snmp_process_standard(struct snmp_session *ss, const zbx_dc_item_
  *******************************************************************************************/
 static void	zbx_init_snmp(const char *progname)
 {
+#ifndef _WINDOWS
 	sigset_t	mask, orig_mask;
+#endif
 
 	if (1 == zbx_snmp_init_done)
 		return;
 
+#ifndef _WINDOWS
+	/* Net-SNMP initialisation is not async-signal-safe, so the signals the workers use are blocked around it. */
+	/* Windows workers are threads and are not delivered these POSIX signals, so there is nothing to block. */
 	sigemptyset(&mask);
 	sigaddset(&mask, SIGTERM);
 	sigaddset(&mask, SIGUSR2);
 	sigaddset(&mask, SIGHUP);
 	sigaddset(&mask, SIGQUIT);
 	zbx_sigmask(SIG_BLOCK, &mask, &orig_mask);
+#endif
 
 	netsnmp_ds_set_boolean(NETSNMP_DS_LIBRARY_ID, NETSNMP_DS_LIB_DISABLE_PERSISTENT_LOAD, 1);
 	netsnmp_ds_set_boolean(NETSNMP_DS_LIBRARY_ID, NETSNMP_DS_LIB_DISABLE_PERSISTENT_SAVE, 1);
@@ -3973,7 +3979,9 @@ static void	zbx_init_snmp(const char *progname)
 	init_snmp(progname);
 	zbx_snmp_init_done = 1;
 
+#ifndef _WINDOWS
 	zbx_sigmask(SIG_SETMASK, &orig_mask, NULL);
+#endif
 }
 
 /*******************************************************************************************
@@ -3984,20 +3992,25 @@ static void	zbx_init_snmp(const char *progname)
  *******************************************************************************************/
 static void	zbx_shutdown_snmp(const char *progname)
 {
+#ifndef _WINDOWS
 	sigset_t	mask, orig_mask;
 
+	/* see zbx_init_snmp() for why the signal block is Unix-only */
 	sigemptyset(&mask);
 	sigaddset(&mask, SIGTERM);
 	sigaddset(&mask, SIGUSR2);
 	sigaddset(&mask, SIGHUP);
 	sigaddset(&mask, SIGQUIT);
 	zbx_sigmask(SIG_BLOCK, &mask, &orig_mask);
+#endif
 
 	snmp_shutdown(progname);
 
 	zbx_snmp_init_done = 0;
 
+#ifndef _WINDOWS
 	zbx_sigmask(SIG_SETMASK, &orig_mask, NULL);
+#endif
 }
 
 /******************************************************************************
