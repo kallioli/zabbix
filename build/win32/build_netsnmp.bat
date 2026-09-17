@@ -24,12 +24,21 @@ if "%OUTDIR%"=="" ( echo usage: build_netsnmp.bat ^<version^> ^<install-dir^> & 
 rem Net-SNMP wants a forward-slash prefix (README.win32).
 set "PREFIX=%OUTDIR:\=/%"
 
+rem The official release archives live on SourceForge; there is no GitHub
+rem release asset. curl -L follows the mirror redirects.
 echo === downloading net-snmp %VER% ===
 curl -L --fail -o netsnmp.zip ^
-    https://github.com/net-snmp/net-snmp/releases/download/v%VER%/net-snmp-%VER%.zip || exit /b 1
+    https://downloads.sourceforge.net/project/net-snmp/net-snmp/%VER%/net-snmp-%VER%.zip || exit /b 1
 
 echo === extracting ===
 tar -xf netsnmp.zip || exit /b 1
+
+rem A sick SourceForge mirror can serve an HTML page with a 200 that curl does
+rem not catch; if so the source tree is not there and we stop before nmake.
+if not exist net-snmp-%VER%\win32\Configure (
+    echo ERROR: net-snmp-%VER%\win32\Configure missing - download was not the source archive
+    exit /b 1
+)
 
 cd net-snmp-%VER%\win32 || exit /b 1
 
