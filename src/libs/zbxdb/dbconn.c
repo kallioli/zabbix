@@ -755,7 +755,21 @@ out:
 	/* do not return SQLITE_BUSY immediately, wait for N ms */
 	sqlite3_busy_timeout(db->conn, SEC_PER_MIN * 1000);
 
-	if (0 < (ret = dbconn_execute(db, "pragma synchronous=0")))
+	/* Write-ahead logging. The proxy runs several history syncers, each with its own connection to this file. In the */
+	/* default rollback-journal mode every commit takes an exclusive lock on the whole database and the other        */
+	/* connections fall back to disk, so writers and readers exclude each other and their page caches thrash: on      */
+	/* Windows, where the syncers are threads rather than processes, several senders at once drove throughput below   */
+	/* that of a single sender. WAL lets one writer and the readers proceed together and commits by appending, which  */
+	/* recovers most of the loss. It also matters for durability under WAL that synchronous is at least NORMAL, which */
+	/* fsyncs at checkpoint rather than on every commit: committed data then survives an operating-system crash, at a */
+	/* far smaller cost than the per-commit fsync of FULL. */
+	if (0 < (ret = dbconn_execute(db, "pragma journal_mode=wal")))
+		ret = ZBX_DB_OK;
+
+	if (ZBX_DB_OK != ret)
+		goto out;
+
+	if (0 < (ret = dbconn_execute(db, "pragma synchronous=normal")))
 		ret = ZBX_DB_OK;
 
 	if (ZBX_DB_OK != ret)
