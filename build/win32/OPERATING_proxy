@@ -293,13 +293,15 @@ Upgrading
 ---------
 
 Run the new installer over the old one, with the proxy still running. It stops
-the service, replaces the binary and the sample, and leaves your configuration
-and the buffer alone.
+the service, replaces the binary and the sample, leaves your configuration and
+the buffer alone, and starts the service again. Only an upgrade does that; a
+first install never starts a proxy whose configuration nobody has read yet.
 
-It does not start the service again. Start it yourself, or the proxy is down
-until someone notices:
+The restart is fire-and-forget: if the proxy cannot start on the new binary,
+the upgrade still completes and the reason is in the proxy log, not in a
+half-rolled-back install. Check after upgrading:
 
-    net start "Zabbix Proxy"
+    sc query "Zabbix Proxy"
 
 What an upgrade was measured to do, installing one package over another while
 the service ran: the old entry is replaced rather than left beside the new one,

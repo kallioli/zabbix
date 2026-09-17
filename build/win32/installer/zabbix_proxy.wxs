@@ -208,19 +208,50 @@
                       Vital="yes" />
 
         <!--
-        The installer registers the service but does not start it. Starting a
+        A first install registers the service but does not start it. Starting a
         proxy on a configuration nobody has read yet is the wrong default: the
         server address and the proxy name are guesses until an operator confirms
         them. It is also what made a service that fails to start take the whole
         install down with it, rolling back the very files needed to find out why.
 
         Startup type is automatic, so it comes up on its own from the next boot.
+        An upgrade is the one case that starts it: see ProxyServiceRestart.
         -->
         <ServiceControl Id="ProxyServiceControl"
                       Name="Zabbix Proxy"
                       Stop="both"
                       Remove="uninstall"
                       Wait="yes" />
+      </Component>
+
+      <!--
+        An upgrade stops the service to swap the binary, and for a long time the
+        package left it that way - documented as a trap, but a trap nonetheless:
+        a monitored site went dark until someone remembered. So on upgrades, and
+        only there (WIX_UPGRADE_DETECTED is set by MajorUpgrade in the incoming
+        package), the service is started again once the new files are down. The
+        first-install behaviour above is unchanged.
+
+        Wait="no", deliberately: the start is fired and the installer moves on.
+        A proxy that cannot start on the upgraded binary should leave its reason
+        in the log, not fail the upgrade and roll back to the version being
+        replaced - that rollback is how error 1920 took whole installs down.
+
+        The service was necessarily running or startable before the upgrade in
+        the common case; an operator who had deliberately stopped it gets it
+        back, which matches what the auto start type does at the next boot
+        anyway.
+      -->
+      <Component Id="ProxyServiceRestart" Directory="INSTALLFOLDER"
+                 Guid="6b2e9f04-3d81-47c5-95a6-08e4d17c3b92"
+                 Condition="WIX_UPGRADE_DETECTED">
+        <RegistryValue Root="HKLM" Key="Software\Zabbix\Zabbix Proxy"
+                       Name="RestartedByUpgrade" Type="integer" Value="1"
+                       KeyPath="yes" />
+        <ServiceControl Id="ProxyServiceRestartControl"
+                      Name="Zabbix Proxy"
+                      Start="install"
+                      Wait="no" />
       </Component>
 
       <!-- The documented sample. It is reference material, so an upgrade

@@ -10,8 +10,8 @@ new version, and neither had been put to the test.
 
 What is checked: the old product is replaced rather than left beside the new
 one, edits made to the configuration are still there afterwards, the buffer
-database survives, the sample configuration is refreshed, and the service is
-still registered and can run.
+database survives, the sample configuration is refreshed, and the service the
+upgrade had to stop is running again without anyone asking.
 
 Installing needs an elevated prompt. GitHub's Windows runners are elevated.
 #>
@@ -154,15 +154,16 @@ Note (Test-Path -LiteralPath $sample) 'sample configuration is still shipped'
 
 $svc = Get-Service -Name $name -ErrorAction SilentlyContinue
 Note ($null -ne $svc) 'service still registered'
-Write-Host "  note  service is $(if ($svc) { $svc.Status } else { 'absent' }) after the upgrade"
 
-if ($svc -and $svc.Status -ne 'Running') {
-	try { Start-Service -Name $name -ErrorAction Stop } catch {}
-	Start-Sleep -Seconds 8
+# The package fires the start without waiting for it, so give the service
+# a moment to come up before holding it to the promise.
+$deadline = (Get-Date).AddSeconds(30)
+while ($svc -and $svc.Status -ne 'Running' -and (Get-Date) -lt $deadline) {
+	Start-Sleep -Seconds 2
 	$svc = Get-Service -Name $name -ErrorAction SilentlyContinue
 }
-Note ($svc -and $svc.Status -eq 'Running') 'service runs on the new version' `
-	$(if ($svc) { $svc.Status })
+Note ($svc -and $svc.Status -eq 'Running') 'upgrade restarts the service it stopped' `
+	$(if ($svc) { "status stayed $($svc.Status)" })
 
 Stop-Service -Name $name -ErrorAction SilentlyContinue
 
