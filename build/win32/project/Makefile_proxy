@@ -416,4 +416,5 @@ LIBS = ws2_32.lib psapi.lib pdh.lib Wldap32.lib advapi32.lib uuid.lib Iphlpapi.l
 !INCLUDE Makefile_sqlite.inc
 !INCLUDE Makefile_libevent.inc
 !INCLUDE Makefile_curl.inc
+!INCLUDE Makefile_snmp.inc
 !INCLUDE Makefile_proxy_targets.inc
