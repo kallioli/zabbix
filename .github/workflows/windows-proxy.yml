@@ -11,6 +11,36 @@ on:
 
 jobs:
 
+  # vcpkg has no net-snmp port, so the SNMP library the proxy needs is built
+  # here from source with Net-SNMP's own win32 build system and cached, keyed on
+  # the version and the build script. The proxy-building jobs restore this cache
+  # rather than rebuild it. This first cut only builds and lists the install
+  # tree, to pin the exact header and library paths before wiring the proxy.
+  netsnmp:
+    name: Net-SNMP built for MSVC
+    runs-on: windows-latest
+
+    env:
+      NETSNMP_VERSION: 5.9.4
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore Net-SNMP
+        id: cache-netsnmp
+        uses: actions/cache@v4
+        with:
+          path: netsnmp_installed
+          key: netsnmp-${{ env.NETSNMP_VERSION }}-${{ hashFiles('build/win32/build_netsnmp.bat') }}
+
+      - name: Build Net-SNMP
+        if: steps.cache-netsnmp.outputs.cache-hit != 'true'
+        shell: cmd
+        run: |
+          for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set VSPATH=%%i
+          call "%VSPATH%\VC\Auxiliary\Build\vcvars64.bat"
+          call build\win32\build_netsnmp.bat %NETSNMP_VERSION% "%GITHUB_WORKSPACE%\netsnmp_installed"
+
   linux:
     name: Linux build is not regressed
     runs-on: ubuntu-latest
