@@ -13,8 +13,8 @@ What you get
 ------------
 
 Active and passive proxy, SQLite3 buffer, Zabbix agent checks, simple checks,
-ICMP ping, trapper, preprocessing including JavaScript, data sender and
-housekeeper.
+ICMP ping, SNMP (v1 and v2c), trapper, preprocessing including JavaScript,
+data sender and housekeeper.
 
 Collection has been driven end to end, against a real server, for: agent checks
 both passive and active, simple checks, trapper, dependent items, calculated
@@ -28,8 +28,18 @@ ExternalScripts in this file, and remote commands want AllowKey=system.run[*] on
 the agent that runs them. A log item must have its value type set to Log; given
 a numeric type it stays silent and reports nothing wrong.
 
-Not included: SNMP, IPMI, VMware and ODBC database monitor. Those checks are
+Not included: IPMI, VMware and ODBC database monitor. Those checks are
 reported as unsupported rather than silently returning nothing.
+
+SNMP is built against Net-SNMP, which vcpkg does not carry, so it is compiled
+from source in CI and linked statically like everything else. SNMP v1 and v2c
+polling, get and walk, are driven end to end against a live agent. SNMPv3 is
+present but its authentication and privacy are not yet proven on this build:
+Net-SNMP is compiled here without OpenSSL for now, so v3 falls back to its
+built-in MD5/SHA1 and DES and the stronger protocols (AES, SHA-2) are absent
+until a later build wires in the OpenSSL that is already present for TLS. There
+is no MIB directory shipped; use numeric OIDs, or set MIBS/MIBDIRS if a host
+provides its own.
 
 ICMP ping (icmpping, icmppingsec, icmppingloss, icmppingretry and discovery
 ICMP checks) does not use fping here - there is none on Windows. The proxy
