@@ -53,6 +53,17 @@ nmake || exit /b 1
 echo === installing to %OUTDIR% ===
 nmake install || exit /b 1
 
+rem nmake install lays down the .exe tools, headers and MIBs but not the static
+rem library the proxy has to link. It is left in win32\lib; copy it into the
+rem install prefix alongside the headers so the cache carries everything.
+echo === static libraries in win32\lib ===
+dir /b lib\*.lib
+if not exist "%OUTDIR%\lib" mkdir "%OUTDIR%\lib"
+copy /y lib\*.lib "%OUTDIR%\lib\" || exit /b 1
+
+echo === installed libraries ===
+dir /b "%OUTDIR%\lib"
+
 echo === installed tree ===
 dir /s /b "%OUTDIR%"
 
