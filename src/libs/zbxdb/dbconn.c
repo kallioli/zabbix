@@ -759,17 +759,18 @@ out:
 	/* default rollback-journal mode every commit takes an exclusive lock on the whole database and the other        */
 	/* connections fall back to disk, so writers and readers exclude each other and their page caches thrash: on      */
 	/* Windows, where the syncers are threads rather than processes, several senders at once drove throughput below   */
-	/* that of a single sender. WAL lets one writer and the readers proceed together and commits by appending, which  */
-	/* recovers most of the loss. It also matters for durability under WAL that synchronous is at least NORMAL, which */
-	/* fsyncs at checkpoint rather than on every commit: committed data then survives an operating-system crash, at a */
-	/* far smaller cost than the per-commit fsync of FULL. */
+	/* that of a single sender. WAL lets one writer and the readers proceed together and commits by appending, which */
+	/* is what closed most of that gap. */
 	if (0 < (ret = dbconn_execute(db, "pragma journal_mode=wal")))
 		ret = ZBX_DB_OK;
 
 	if (ZBX_DB_OK != ret)
 		goto out;
 
-	if (0 < (ret = dbconn_execute(db, "pragma synchronous=normal")))
+	/* synchronous stays OFF, the throughput-first choice for a transient buffer that the server is the record for.  */
+	/* WAL with NORMAL was measured to halve the single-sender rate for a checkpoint fsync that buys only power-loss */
+	/* durability the buffer does not need; on an application crash WAL recovers cleanly at either setting. */
+	if (0 < (ret = dbconn_execute(db, "pragma synchronous=0")))
 		ret = ZBX_DB_OK;
 
 	if (ZBX_DB_OK != ret)
