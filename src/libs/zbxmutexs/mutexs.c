@@ -392,67 +392,6 @@ int	zbx_locks_create(char **error)
 void	zbx_locks_destroy(void)
 {
 }
-
-/* On Unix the workers fork and share these mutexes through a System V segment; here they are threads of one process, */
-/* so an in-process lock is enough. The port first used named kernel mutexes (CreateMutex): one kernel transition per */
-/* acquire and per release, fine uncontended but a lock convoy once several trapper threads write at once, which is   */
-/* why multi-sender ingest ran slower than a single sender. A CRITICAL_SECTION spins briefly in user space and enters */
-/* the kernel only when it has to wait - what the concurrent path needs.                                             */
-/*                                                                                                                    */
-/* A mutex is still identified by name: two translation units create ZBX_MUTEX_CACHE_IDS on their own and must end up */
-/* with the same lock. Named mutexes therefore live in a small registry keyed by name, and a second create of a name  */
-/* already present returns the same lock with a raised reference count. A NULL name (the OpenSSL per-lock array) is   */
-/* anonymous: always a fresh, unshared lock, never registered. The registry itself is guarded by its own critical    */
-/* section, brought up once however early the first mutex is created.                                                 */
-
-#define ZBX_WIN_MUTEX_SPIN	4000	/* user-space spins before a contended wait enters the kernel */
-#define ZBX_WIN_MUTEX_MAX	128	/* distinct named mutexes: the enum names plus dynamic shared-memory segments */
-
-struct zbx_win_mutex
-{
-	CRITICAL_SECTION	cs;
-	wchar_t			*name;		/* NULL for an anonymous lock, which the registry never holds */
-	int			refcount;	/* named locks: shared creates and the matching destroys */
-};
-
-static struct zbx_win_mutex	*win_mutex_registry[ZBX_WIN_MUTEX_MAX];
-static int			win_mutex_registry_num;
-static CRITICAL_SECTION		win_mutex_registry_cs;
-static INIT_ONCE		win_mutex_registry_once = INIT_ONCE_STATIC_INIT;
-
-static BOOL CALLBACK	win_mutex_registry_init(PINIT_ONCE once, PVOID param, PVOID *context)
-{
-	ZBX_UNUSED(once);
-	ZBX_UNUSED(param);
-	ZBX_UNUSED(context);
-
-	InitializeCriticalSectionAndSpinCount(&win_mutex_registry_cs, ZBX_WIN_MUTEX_SPIN);
-
-	return TRUE;
-}
-
-static struct zbx_win_mutex	*win_mutex_alloc(const wchar_t *name)
-{
-	struct zbx_win_mutex	*m;
-
-	m = (struct zbx_win_mutex *)zbx_malloc(NULL, sizeof(struct zbx_win_mutex));
-	InitializeCriticalSectionAndSpinCount(&m->cs, ZBX_WIN_MUTEX_SPIN);
-	m->refcount = 1;
-
-	if (NULL == name)
-	{
-		m->name = NULL;
-	}
-	else
-	{
-		size_t	len = wcslen(name) + 1;
-
-		m->name = (wchar_t *)zbx_malloc(NULL, len * sizeof(wchar_t));
-		memcpy(m->name, name, len * sizeof(wchar_t));
-	}
-
-	return m;
-}
 #endif	/* _WINDOWS */
 
 /******************************************************************************
@@ -470,46 +409,10 @@ static struct zbx_win_mutex	*win_mutex_alloc(const wchar_t *name)
 int	zbx_mutex_create(zbx_mutex_t *mutex, zbx_mutex_name_t name, char **error)
 {
 #ifdef _WINDOWS
-	ZBX_UNUSED(error);
-
-	if (NULL == name)
+	if (NULL == (*mutex = CreateMutex(NULL, FALSE, name)))
 	{
-		/* anonymous lock: never shared, so it is not registered */
-		*mutex = (zbx_mutex_t)win_mutex_alloc(NULL);
-	}
-	else
-	{
-		struct zbx_win_mutex	*m = NULL;
-		int			i;
-
-		InitOnceExecuteOnce(&win_mutex_registry_once, win_mutex_registry_init, NULL, NULL);
-		EnterCriticalSection(&win_mutex_registry_cs);
-
-		for (i = 0; i < win_mutex_registry_num; i++)
-		{
-			if (0 == wcscmp(win_mutex_registry[i]->name, name))
-			{
-				m = win_mutex_registry[i];
-				m->refcount++;
-				break;
-			}
-		}
-
-		if (NULL == m)
-		{
-			if (ZBX_WIN_MUTEX_MAX == win_mutex_registry_num)
-			{
-				LeaveCriticalSection(&win_mutex_registry_cs);
-				THIS_SHOULD_NEVER_HAPPEN;
-				exit(EXIT_FAILURE);
-			}
-
-			m = win_mutex_alloc(name);
-			win_mutex_registry[win_mutex_registry_num++] = m;
-		}
-
-		LeaveCriticalSection(&win_mutex_registry_cs);
-		*mutex = (zbx_mutex_t)m;
+		*error = zbx_dsprintf(*error, "error on mutex creating: %s", zbx_strerror_from_system(GetLastError()));
+		return FAIL;
 	}
 #else
 	ZBX_UNUSED(error);
@@ -538,6 +441,8 @@ void	__zbx_mutex_lock(const char *filename, int line, zbx_mutex_t mutex)
 #ifndef	HAVE_PTHREAD_PROCESS_SHARED
 	struct sembuf	sem_lock;
 #endif
+#else
+	DWORD   dwWaitResult;
 #endif
 
 	if (ZBX_MUTEX_NULL == mutex)
@@ -551,11 +456,21 @@ void	__zbx_mutex_lock(const char *filename, int line, zbx_mutex_t mutex)
 				filename, line, zbx_get_thread_id());
 		exit(EXIT_FAILURE);
 	}
-#else
-	ZBX_UNUSED(filename);
-	ZBX_UNUSED(line);
 #endif
-	EnterCriticalSection(&((struct zbx_win_mutex *)mutex)->cs);
+	dwWaitResult = WaitForSingleObject(mutex, INFINITE);
+
+	switch (dwWaitResult)
+	{
+		case WAIT_OBJECT_0:
+			break;
+		case WAIT_ABANDONED:
+			THIS_SHOULD_NEVER_HAPPEN;
+			exit(EXIT_FAILURE);
+		default:
+			zbx_error("[file:'%s',line:%d] lock failed: %s",
+				filename, line, zbx_strerror_from_system(GetLastError()));
+			exit(EXIT_FAILURE);
+	}
 #else
 #ifdef	HAVE_PTHREAD_PROCESS_SHARED
 	if (0 != locks_disabled)
@@ -604,10 +519,12 @@ void	__zbx_mutex_unlock(const char *filename, int line, zbx_mutex_t mutex)
 		return;
 
 #ifdef _WINDOWS
-	ZBX_UNUSED(filename);
-	ZBX_UNUSED(line);
-
-	LeaveCriticalSection(&((struct zbx_win_mutex *)mutex)->cs);
+	if (0 == ReleaseMutex(mutex))
+	{
+		zbx_error("[file:'%s',line:%d] unlock failed: %s",
+				filename, line, zbx_strerror_from_system(GetLastError()));
+		exit(EXIT_FAILURE);
+	}
 #else
 #ifdef	HAVE_PTHREAD_PROCESS_SHARED
 	if (0 != locks_disabled)
@@ -645,43 +562,11 @@ void	__zbx_mutex_unlock(const char *filename, int line, zbx_mutex_t mutex)
 void	zbx_mutex_destroy(zbx_mutex_t *mutex)
 {
 #ifdef _WINDOWS
-	struct zbx_win_mutex	*m = (struct zbx_win_mutex *)*mutex;
-
-	if (ZBX_MUTEX_NULL == m)
+	if (ZBX_MUTEX_NULL == *mutex)
 		return;
 
-	if (NULL == m->name)
-	{
-		/* anonymous lock: owned by its one caller, not in the registry */
-		DeleteCriticalSection(&m->cs);
-		zbx_free(m);
-	}
-	else
-	{
-		InitOnceExecuteOnce(&win_mutex_registry_once, win_mutex_registry_init, NULL, NULL);
-		EnterCriticalSection(&win_mutex_registry_cs);
-
-		/* the last holder frees it; the others just drop their reference */
-		if (0 == --m->refcount)
-		{
-			int	i;
-
-			for (i = 0; i < win_mutex_registry_num; i++)
-			{
-				if (win_mutex_registry[i] == m)
-				{
-					win_mutex_registry[i] = win_mutex_registry[--win_mutex_registry_num];
-					break;
-				}
-			}
-
-			DeleteCriticalSection(&m->cs);
-			zbx_free(m->name);
-			zbx_free(m);
-		}
-
-		LeaveCriticalSection(&win_mutex_registry_cs);
-	}
+	if (0 == CloseHandle(*mutex))
+		zbx_error("error on mutex destroying: %s", zbx_strerror_from_system(GetLastError()));
 #endif
 	*mutex = ZBX_MUTEX_NULL;
 }
