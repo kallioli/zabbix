@@ -57,6 +57,14 @@ rem stands down, exactly as MSVC's own headers coordinate.
 echo === guarding mode_t in the generated config header ===
 powershell -NoProfile -Command "$f='net-snmp\net-snmp-config.h'; $c=Get-Content $f -Raw; $c=$c -replace '(?m)^\s*typedef\s+unsigned\s+short\s+mode_t;\s*$', \"#ifndef _MODE_T_DEFINED`r`n#define _MODE_T_DEFINED`r`ntypedef unsigned short mode_t;`r`n#endif\"; Set-Content $f $c -NoNewline" || exit /b 1
 
+rem The proxy links the static C runtime (/MT) so the binary is self-contained.
+rem Net-SNMP's Configure defaults its Makefiles to the dynamic runtime (/MD),
+rem whose objects import the CRT from a DLL (__imp_ symbols); linking those into
+rem a /MT binary leaves setlocale, mktemp, putenv and friends unresolved. Force
+rem every generated Makefile to the static runtime so both agree.
+echo === forcing the static CRT (/MT) in the generated makefiles ===
+powershell -NoProfile -Command "Get-ChildItem -Path . -Recurse -Filter Makefile | ForEach-Object { $p=$_.FullName; $c=Get-Content $p -Raw; if ($c -match '/MDd|/MD') { $c=$c -replace '/MDd','/MTd' -replace '/MD','/MT'; Set-Content $p $c -NoNewline; Write-Host ('patched ' + $p) } }" || exit /b 1
+
 echo === building ===
 nmake || exit /b 1
 
