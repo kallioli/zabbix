@@ -44,8 +44,18 @@ cd net-snmp-%VER%\win32 || exit /b 1
 
 rem --config and --linktype are both required by Configure; omitting linktype
 rem makes it print usage and exit without generating a Makefile.
+rem --config and --linktype are both required by Configure; omitting linktype
+rem makes it print usage and exit without generating a Makefile.
 echo === configuring (static, release, no ssl) ===
 perl Configure --config=release --linktype=static --with-sdk --prefix="%PREFIX%" || exit /b 1
+
+rem Net-SNMP typedefs mode_t (unsigned short) under a bare WIN32 guard, while
+rem Zabbix typedefs it (int) behind _MODE_T_DEFINED. Whichever header lands
+rem second then redefines the type - error C2371. Teach the generated header
+rem the same _MODE_T_DEFINED guard so the first definition wins and the second
+rem stands down, exactly as MSVC's own headers coordinate.
+echo === guarding mode_t in the generated config header ===
+powershell -NoProfile -Command "$f='net-snmp\net-snmp-config.h'; $c=Get-Content $f -Raw; $c=$c -replace '(?m)^\s*typedef\s+unsigned\s+short\s+mode_t;\s*$', \"#ifndef _MODE_T_DEFINED`r`n#define _MODE_T_DEFINED`r`ntypedef unsigned short mode_t;`r`n#endif\"; Set-Content $f $c -NoNewline" || exit /b 1
 
 echo === building ===
 nmake || exit /b 1
@@ -53,19 +63,33 @@ nmake || exit /b 1
 echo === installing to %OUTDIR% ===
 nmake install || exit /b 1
 
-rem nmake install lays down the .exe tools, headers and MIBs but not the static
-rem library the proxy has to link. It stays somewhere in the build tree; find
-rem every .lib produced and copy them into the install prefix so the cache
-rem carries everything, and list them so their exact names are on record.
+rem nmake install lays down the .exe tools, MIBs and a couple of headers, but
+rem not the API header tree and not the static library the proxy links. Both
+rem have to be gathered by hand.
+rem
+rem Headers: the checked-in API headers live in the source include/net-snmp
+rem tree; Configure generated net-snmp-config.h (and a few others) under
+rem win32/net-snmp, which overlay the source copies.
+echo === assembling the header tree ===
+xcopy /e /i /y "..\include\net-snmp" "%OUTDIR%\include\net-snmp" >nul || exit /b 1
+xcopy /e /i /y "net-snmp" "%OUTDIR%\include\net-snmp" >nul || exit /b 1
+if not exist "%OUTDIR%\include\net-snmp\net-snmp-includes.h" (
+    echo ERROR: net-snmp-includes.h did not land in the include tree
+    exit /b 1
+)
+
+rem Library: the static netsnmp.lib is left in a component release directory,
+rem not installed. Copy every .lib produced into the prefix and list them.
 echo === all .lib produced under win32 ===
 dir /s /b *.lib
 if not exist "%OUTDIR%\lib" mkdir "%OUTDIR%\lib"
 for /r %%f in (*.lib) do copy /y "%%f" "%OUTDIR%\lib\" >nul
+if not exist "%OUTDIR%\lib\netsnmp.lib" (
+    echo ERROR: netsnmp.lib did not land in the lib directory
+    exit /b 1
+)
 
 echo === installed libraries ===
 dir /b "%OUTDIR%\lib"
-
-echo === installed tree ===
-dir /s /b "%OUTDIR%"
 
 endlocal
