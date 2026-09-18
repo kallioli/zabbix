@@ -87,19 +87,21 @@ rem under ..\include that both the tools and the proxy compile against.
 echo === matching the OpenSSL library names to vcpkg ===
 powershell -NoProfile -Command "Get-ChildItem -Path .. -Recurse -Include *.h,Makefile | ForEach-Object { $p=$_.FullName; $c=Get-Content $p -Raw; if ($c -match 'lib(crypto|ssl)64MT') { $c=$c -replace 'libcrypto64MT','libcrypto' -replace 'libssl64MT','libssl'; Set-Content $p $c -NoNewline; Write-Host ('patched ' + $p) } }" || exit /b 1
 
-echo === building ===
+rem Build only the core library, not the .exe tools. With OpenSSL, the tools
+rem link needs the Windows CryptoAPI that vcpkg's static OpenSSL pulls in
+rem (crypt32 and friends), which net-snmp's own tool link line omits. The proxy
+rem needs none of the tools, and it already links crypt32 itself, so building
+rem just libsnmp sidesteps the whole tools link. `nmake install` is skipped for
+rem the same reason; the headers and the library are gathered by hand below.
+echo === building netsnmp.lib only ===
+cd libsnmp || exit /b 1
 nmake || exit /b 1
+cd .. || exit /b 1
 
-echo === installing to %OUTDIR% ===
-nmake install || exit /b 1
-
-rem nmake install lays down the .exe tools, MIBs and a couple of headers, but
-rem not the API header tree and not the static library the proxy links. Both
-rem have to be gathered by hand.
-rem
-rem Headers: the checked-in API headers live in the source include/net-snmp
-rem tree; Configure generated net-snmp-config.h (and a few others) under
-rem win32/net-snmp, which overlay the source copies.
+rem The API header tree is not assembled by a plain library build. The
+rem checked-in headers live in the source include/net-snmp tree; Configure
+rem generated net-snmp-config.h (and a few others) under win32/net-snmp, which
+rem overlay the source copies.
 echo === assembling the header tree ===
 xcopy /e /i /y "..\include\net-snmp" "%OUTDIR%\include\net-snmp" >nul || exit /b 1
 xcopy /e /i /y "net-snmp" "%OUTDIR%\include\net-snmp" >nul || exit /b 1
