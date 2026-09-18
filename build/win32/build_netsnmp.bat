@@ -76,6 +76,17 @@ rem every generated Makefile to the static runtime so both agree.
 echo === forcing the static CRT (/MT) in the generated makefiles ===
 powershell -NoProfile -Command "Get-ChildItem -Path . -Recurse -Filter Makefile | ForEach-Object { $p=$_.FullName; $c=Get-Content $p -Raw; if ($c -match '/MDd|/MD') { $c=$c -replace '/MDd','/MTd' -replace '/MD','/MT'; Set-Content $p $c -NoNewline; Write-Host ('patched ' + $p) } }" || exit /b 1
 
+rem Net-SNMP asks the linker for OpenSSL as libcrypto64MT.lib / libssl64MT.lib
+rem (its own naming for a Win64 static-MT OpenSSL), through auto-link pragmas its
+rem objects carry. vcpkg names them libcrypto.lib / libssl.lib, and that pragma
+rem would go looking for the 64MT names at the proxy link too. Rewrite the names
+rem to vcpkg's in the generated headers and makefiles, so net-snmp and the proxy
+rem resolve OpenSSL from the one set of libraries.
+rem Patch the whole tree, not just win32: the pragma may sit in a source header
+rem under ..\include that both the tools and the proxy compile against.
+echo === matching the OpenSSL library names to vcpkg ===
+powershell -NoProfile -Command "Get-ChildItem -Path .. -Recurse -Include *.h,Makefile | ForEach-Object { $p=$_.FullName; $c=Get-Content $p -Raw; if ($c -match 'lib(crypto|ssl)64MT') { $c=$c -replace 'libcrypto64MT','libcrypto' -replace 'libssl64MT','libssl'; Set-Content $p $c -NoNewline; Write-Host ('patched ' + $p) } }" || exit /b 1
+
 echo === building ===
 nmake || exit /b 1
 
