@@ -17,12 +17,21 @@ setlocal enabledelayedexpansion
 
 set "VER=%~1"
 set "OUTDIR=%~2"
+set "VCPKG=%~3"
 
-if "%VER%"=="" ( echo usage: build_netsnmp.bat ^<version^> ^<install-dir^> & exit /b 2 )
-if "%OUTDIR%"=="" ( echo usage: build_netsnmp.bat ^<version^> ^<install-dir^> & exit /b 2 )
+if "%VER%"=="" ( echo usage: build_netsnmp.bat ^<version^> ^<install-dir^> ^<vcpkg-dir^> & exit /b 2 )
+if "%OUTDIR%"=="" ( echo usage: build_netsnmp.bat ^<version^> ^<install-dir^> ^<vcpkg-dir^> & exit /b 2 )
+if "%VCPKG%"=="" ( echo usage: build_netsnmp.bat ^<version^> ^<install-dir^> ^<vcpkg-dir^> & exit /b 2 )
 
-rem Net-SNMP wants a forward-slash prefix (README.win32).
+rem Net-SNMP wants forward-slash paths (README.win32).
 set "PREFIX=%OUTDIR:\=/%"
+set "SSLINC=%VCPKG:\=/%/include"
+set "SSLLIB=%VCPKG:\=/%/lib"
+
+if not exist "%VCPKG%\include\openssl\ssl.h" (
+    echo ERROR: OpenSSL headers not found under "%VCPKG%\include\openssl"
+    exit /b 1
+)
 
 rem The official release archives live on SourceForge; there is no GitHub
 rem release asset. curl -L follows the mirror redirects.
@@ -43,11 +52,13 @@ if not exist net-snmp-%VER%\win32\Configure (
 cd net-snmp-%VER%\win32 || exit /b 1
 
 rem --config and --linktype are both required by Configure; omitting linktype
-rem makes it print usage and exit without generating a Makefile.
-rem --config and --linktype are both required by Configure; omitting linktype
-rem makes it print usage and exit without generating a Makefile.
-echo === configuring (static, release, no ssl) ===
-perl Configure --config=release --linktype=static --with-sdk --prefix="%PREFIX%" || exit /b 1
+rem makes it print usage and exit without generating a Makefile. --with-ssl
+rem turns on the OpenSSL-backed SNMPv3 crypto (AES, SHA-2); the include and lib
+rem dirs point at the vcpkg OpenSSL the proxy also links.
+echo === configuring (static, release, ssl) ===
+perl Configure --config=release --linktype=static --with-sdk ^
+    --with-ssl --with-sslincdir="%SSLINC%" --with-ssllibdir="%SSLLIB%" ^
+    --prefix="%PREFIX%" || exit /b 1
 
 rem Net-SNMP typedefs mode_t (unsigned short) under a bare WIN32 guard, while
 rem Zabbix typedefs it (int) behind _MODE_T_DEFINED. Whichever header lands

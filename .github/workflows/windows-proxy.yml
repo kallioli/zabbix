@@ -14,14 +14,16 @@ jobs:
   # vcpkg has no net-snmp port, so the SNMP library the proxy needs is built
   # here from source with Net-SNMP's own win32 build system and cached, keyed on
   # the version and the build script. The proxy-building jobs restore this cache
-  # rather than rebuild it. This first cut only builds and lists the install
-  # tree, to pin the exact header and library paths before wiring the proxy.
+  # rather than rebuild it. It is built --with-ssl against the same vcpkg OpenSSL
+  # the proxy already links, so SNMPv3 gets AES and SHA-2 rather than only the
+  # built-in MD5/SHA1/DES.
   netsnmp:
     name: Net-SNMP built for MSVC
     runs-on: windows-latest
 
     env:
       NETSNMP_VERSION: 5.9.4
+      VCPKG_TRIPLET: x64-windows-static
 
     steps:
       - uses: actions/checkout@v4
@@ -31,7 +33,28 @@ jobs:
         uses: actions/cache@v4
         with:
           path: netsnmp_installed
-          key: netsnmp-${{ env.NETSNMP_VERSION }}-${{ hashFiles('build/win32/build_netsnmp.bat') }}
+          key: netsnmp-${{ env.NETSNMP_VERSION }}-${{ hashFiles('build/win32/build_netsnmp.bat', 'build/win32/vcpkg.json') }}
+
+      # OpenSSL for SNMPv3 crypto comes from the same vcpkg manifest and triplet
+      # (static CRT) the proxy uses, so net-snmp and the proxy agree on both the
+      # OpenSSL build and the runtime.
+      - name: Restore third-party libraries
+        if: steps.cache-netsnmp.outputs.cache-hit != 'true'
+        id: cache-vcpkg
+        uses: actions/cache/restore@v4
+        with:
+          path: vcpkg_installed
+          key: vcpkg-${{ env.VCPKG_TRIPLET }}-${{ hashFiles('build/win32/vcpkg.json') }}
+
+      - name: Install third-party libraries
+        if: steps.cache-netsnmp.outputs.cache-hit != 'true' && steps.cache-vcpkg.outputs.cache-hit != 'true'
+        shell: cmd
+        run: |
+          "%VCPKG_INSTALLATION_ROOT%\vcpkg" install ^
+            --triplet %VCPKG_TRIPLET% ^
+            --x-manifest-root=build/win32 ^
+            --x-install-root=%GITHUB_WORKSPACE%\vcpkg_installed
+          if errorlevel 1 exit /b 1
 
       - name: Build Net-SNMP
         if: steps.cache-netsnmp.outputs.cache-hit != 'true'
@@ -39,7 +62,8 @@ jobs:
         run: |
           for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set VSPATH=%%i
           call "%VSPATH%\VC\Auxiliary\Build\vcvars64.bat"
-          call build\win32\build_netsnmp.bat %NETSNMP_VERSION% "%GITHUB_WORKSPACE%\netsnmp_installed"
+          set VCPKG=%GITHUB_WORKSPACE%\vcpkg_installed\%VCPKG_TRIPLET%
+          call build\win32\build_netsnmp.bat %NETSNMP_VERSION% "%GITHUB_WORKSPACE%\netsnmp_installed" "%VCPKG%"
 
   linux:
     name: Linux build is not regressed
@@ -183,7 +207,7 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: netsnmp_installed
-          key: netsnmp-${{ env.NETSNMP_VERSION }}-${{ hashFiles('build/win32/build_netsnmp.bat') }}
+          key: netsnmp-${{ env.NETSNMP_VERSION }}-${{ hashFiles('build/win32/build_netsnmp.bat', 'build/win32/vcpkg.json') }}
           fail-on-cache-miss: true
 
       - name: Generate the database schema source
@@ -290,7 +314,7 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: netsnmp_installed
-          key: netsnmp-${{ env.NETSNMP_VERSION }}-${{ hashFiles('build/win32/build_netsnmp.bat') }}
+          key: netsnmp-${{ env.NETSNMP_VERSION }}-${{ hashFiles('build/win32/build_netsnmp.bat', 'build/win32/vcpkg.json') }}
           fail-on-cache-miss: true
 
       - name: List installed libraries
