@@ -32,13 +32,11 @@ Not included: IPMI, VMware and ODBC database monitor. Those checks are
 reported as unsupported rather than silently returning nothing.
 
 SNMP is built against Net-SNMP, which vcpkg does not carry, so it is compiled
-from source in CI and linked statically like everything else. SNMP v1 and v2c
-polling, get and walk, are driven end to end against a live agent. SNMPv3 is
-present but its authentication and privacy are not yet proven on this build:
-Net-SNMP is compiled here without OpenSSL for now, so v3 falls back to its
-built-in MD5/SHA1 and DES and the stronger protocols (AES, SHA-2) are absent
-until a later build wires in the OpenSSL that is already present for TLS. There
-is no MIB directory shipped; use numeric OIDs, or set MIBS/MIBDIRS if a host
+from source in CI and linked statically like everything else, and against the
+same OpenSSL the proxy uses for TLS. SNMP v1, v2c and v3 are driven end to end
+against a live agent, get and walk; v3 including authPriv with SHA
+authentication and AES privacy, since the OpenSSL-backed crypto is in. There is
+no MIB directory shipped; use numeric OIDs, or set MIBS/MIBDIRS if a host
 provides its own.
 
 ICMP ping (icmpping, icmppingsec, icmppingloss, icmppingretry and discovery
