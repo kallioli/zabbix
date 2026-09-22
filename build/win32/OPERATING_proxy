@@ -5,6 +5,10 @@ This is the operator's side of build\win32\README_proxy, which covers building.
 Here: installing, configuring, running, and reading what the proxy tells you
 when something is wrong.
 
+This is an unofficial community build, not affiliated with or endorsed by Zabbix
+SIA. "Zabbix" is their trademark. The source is licensed AGPLv3; the full source
+for this build is the branch linked in the release notes.
+
 Every message quoted below is one the proxy actually emits. When you meet one,
 searching this file for it is faster than reasoning about it.
 
@@ -13,7 +17,8 @@ What you get
 ------------
 
 Active and passive proxy, SQLite3 buffer, Zabbix agent checks, simple checks,
-ICMP ping, SNMP (v1 and v2c), trapper, preprocessing including JavaScript,
+ICMP ping, SNMP v1/v2c/v3 (including v3 authPriv, SHA + AES), trapper,
+preprocessing including JavaScript,
 data sender and housekeeper.
 
 Collection has been driven end to end, against a real server, for: agent checks
@@ -189,10 +194,22 @@ at that instant loses everything not yet written to the buffer. Measured, on
 this is how Zabbix acknowledges rather than anything this build does. Stop the
 service rather than killing it, and the values are flushed on the way out.
 
-The buffer itself survives the kill. SQLite's rollback journal is replayed at
+The buffer itself survives the kill. The proxy runs the SQLite buffer in WAL
+mode with `synchronous=OFF`. That is Zabbix's own default for its SQLite
+database, unchanged from the Linux proxy, not a choice specific to this build.
+On an application crash WAL recovers cleanly: the write-ahead log is replayed at
 the next start, `pragma integrity_check` answers ok, and everything already
-written is delivered - measured with the process killed in the middle of a
+committed is delivered - measured with the process killed in the middle of a
 write, under load.
+
+Durability trade to be aware of: `synchronous=OFF` does not protect against an
+operating-system crash or a power loss. The last writes not yet flushed to disk
+can be lost then. This is a deliberate throughput-first setting for a transient
+buffer whose values the server, not the proxy, is the record for; raising it to
+`synchronous=NORMAL` was measured to roughly halve single-sender throughput for
+durability the buffer does not need. If a deployment must survive power loss with
+zero loss of buffered-but-unsent values, that guarantee does not hold for any
+Zabbix proxy on SQLite, this build included.
 
 
 Encryption
