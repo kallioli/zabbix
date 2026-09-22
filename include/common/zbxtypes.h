@@ -203,6 +203,9 @@ zbx_uint128_t;
 
 #if defined(_WINDOWS) || defined(__MINGW32__)
 	#define localtime_r(x, y)	localtime_s(y, x)
+	/* MSVC has no gmtime_r; gmtime_s takes (dest, src) like localtime_s and the */
+	/* callers ignore the return value, so the same mapping holds. */
+	#define gmtime_r(x, y)		gmtime_s(y, x)
 #endif
 
 typedef struct zbx_variant zbx_variant_t;
