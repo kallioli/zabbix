@@ -17,7 +17,8 @@ What you get
 ------------
 
 Active and passive proxy, SQLite3 buffer, Zabbix agent checks, simple checks,
-ICMP ping, SNMP v1/v2c/v3 (including v3 authPriv, SHA + AES), trapper,
+ICMP ping, SNMP v1/v2c/v3 (including v3 authPriv, SHA + AES), SSH checks (via
+libssh2), ODBC database monitor (via the Windows ODBC Driver Manager), trapper,
 preprocessing including JavaScript,
 data sender and housekeeper.
 
@@ -33,8 +34,13 @@ ExternalScripts in this file, and remote commands want AllowKey=system.run[*] on
 the agent that runs them. A log item must have its value type set to Log; given
 a numeric type it stays silent and reports nothing wrong.
 
-Not included: IPMI, VMware and ODBC database monitor. Those checks are
-reported as unsupported rather than silently returning nothing.
+Not included: IPMI and VMware. Those checks are reported as unsupported rather
+than silently returning nothing.
+
+ODBC database monitor uses the ODBC Driver Manager that Windows ships (odbc32),
+so no extra library is bundled; install the per-database ODBC driver you need
+(SQL Server, PostgreSQL, MySQL, ...) exactly as you would unixODBC drivers on
+Linux. SSH checks use libssh2 with password and key authentication.
 
 SNMP is built against Net-SNMP, which vcpkg does not carry, so it is compiled
 from source in CI and linked statically like everything else, and against the
