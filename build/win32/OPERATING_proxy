@@ -44,7 +44,8 @@ so no extra library is bundled; install the per-database ODBC driver you need
 Linux. SSH checks use libssh2 with password and key authentication. VMware
 monitoring is compiled in but its collectors are off until you set
 StartVMwareCollectors, exactly as on Linux; it has been built and linked in CI
-but not yet driven against a live vCenter or ESXi.
+but not yet driven against a live vCenter or ESXi. The LDAP simple check and
+LDAP network discovery use the Windows WinLDAP library, no extra install.
 
 SNMP is built against Net-SNMP, which vcpkg does not carry, so it is compiled
 from source in CI and linked statically like everything else, and against the
