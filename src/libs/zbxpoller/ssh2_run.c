@@ -16,6 +16,13 @@
 
 #include "ssh_run.h"
 
+/* ssh_run.h has already brought in Zabbix's ssize_t (zbxtypes.h via zbxcommon.h). */
+/* Under MSVC libssh2.h would typedef ssize_t again unless HAVE_SSIZE_T is set,     */
+/* which collides with Zabbix's definition (C2371); set it so libssh2 keeps ours.   */
+#ifdef _WINDOWS
+#	define HAVE_SSIZE_T
+#endif
+
 #include <libssh2.h>
 
 #include "zbxcacheconfig.h"
