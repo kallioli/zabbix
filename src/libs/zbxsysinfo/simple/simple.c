@@ -35,10 +35,16 @@
 
 #ifdef HAVE_LDAP
 
+#ifdef _WINDOWS
+/* Windows has no OpenLDAP; the SDK's WinLDAP exposes the same RFC 1823 C API. */
+#	include <winldap.h>
+#	include <winber.h>
+#else
 #include <ldap.h>
 
 #ifdef HAVE_LBER_H
 #	include <lber.h>
+#endif
 #endif
 
 static int	check_ldap(const char *host, unsigned short port, int timeout, int *value_int)
@@ -77,6 +83,7 @@ static int	check_ldap(const char *host, unsigned short port, int timeout, int *v
 		}
 	}
 #endif
+#ifdef LDAP_OPT_NETWORK_TIMEOUT
 	tm.tv_sec = timeout;
 	tm.tv_usec = 0;
 
@@ -85,6 +92,10 @@ static int	check_ldap(const char *host, unsigned short port, int timeout, int *v
 		zabbix_log(LOG_LEVEL_DEBUG, "LDAP - failed to set network timeout [%s]", ldap_err2string(ldapErr));
 		goto lbl_ret;
 	}
+#else
+	ZBX_UNUSED(timeout);
+	ZBX_UNUSED(tm);
+#endif
 
 	if (LDAP_SUCCESS != (ldapErr = ldap_search_s(ldap, "", LDAP_SCOPE_BASE, "(objectClass=*)", attrs, 0, &res)))
 	{

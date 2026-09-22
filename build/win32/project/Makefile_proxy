@@ -421,4 +421,5 @@ LIBS = ws2_32.lib psapi.lib pdh.lib Wldap32.lib advapi32.lib uuid.lib Iphlpapi.l
 !INCLUDE Makefile_odbc.inc
 !INCLUDE Makefile_ssh.inc
 !INCLUDE Makefile_xml.inc
+!INCLUDE Makefile_ldap.inc
 !INCLUDE Makefile_proxy_targets.inc

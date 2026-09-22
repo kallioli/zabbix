@@ -47,7 +47,11 @@
 #endif
 
 #ifdef HAVE_LDAP
-#	include <ldap.h>
+#	ifdef _WINDOWS
+#		include <winldap.h>
+#	else
+#		include <ldap.h>
+#	endif
 #endif
 
 static zbx_get_progname_f	zbx_get_progname_cb = NULL;
