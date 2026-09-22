@@ -283,6 +283,7 @@ OBJS = \
 	..\..\..\src\libs\zbxpoller\checks_simple_vmware.o \
 	..\..\..\src\libs\zbxpoller\checks_snmp.o \
 	..\..\..\src\libs\zbxpoller\checks_ssh.o \
+	..\..\..\src\libs\zbxpoller\ssh2_run.o \
 	..\..\..\src\libs\zbxpoller\checks_telnet.o \
 	..\..\..\src\libs\zbxpoller\poller.o \
 	..\..\..\src\libs\zbxpoller\poller_thread.o \
@@ -417,4 +418,6 @@ LIBS = ws2_32.lib psapi.lib pdh.lib Wldap32.lib advapi32.lib uuid.lib Iphlpapi.l
 !INCLUDE Makefile_libevent.inc
 !INCLUDE Makefile_curl.inc
 !INCLUDE Makefile_snmp.inc
+!INCLUDE Makefile_odbc.inc
+!INCLUDE Makefile_ssh.inc
 !INCLUDE Makefile_proxy_targets.inc

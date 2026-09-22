@@ -8,6 +8,7 @@
     "pcre2",
     "libevent",
     "sqlite3",
+    "libssh2",
     {
       "name": "curl",
       "default-features": false,

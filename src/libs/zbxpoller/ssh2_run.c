@@ -12,6 +12,8 @@
 ** If not, see <https://www.gnu.org/licenses/>.
 **/
 
+#ifdef HAVE_SSH2
+
 #include "ssh_run.h"
 
 #include <libssh2.h>
@@ -570,3 +572,5 @@ ret_label:
 	return ret;
 #undef DATA_BUFFER_SIZE
 }
+
+#endif	/* HAVE_SSH2 */

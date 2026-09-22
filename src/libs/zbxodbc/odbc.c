@@ -23,6 +23,12 @@
 #include "zbxstr.h"
 #include "zbxexpr.h"
 
+#ifdef _WINDOWS
+/* the Windows SDK sql.h/sqlext.h build on types from windows.h (RETCODE, the */
+/* SQL* handles), so it must be included first; on Unix these headers stand    */
+/* alone. */
+#	include <windows.h>
+#endif
 #include <sql.h>
 #include <sqlext.h>
 

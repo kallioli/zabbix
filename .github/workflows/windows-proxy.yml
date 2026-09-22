@@ -235,7 +235,8 @@ jobs:
             LIBEVENTINCDIR=%VCPKG%\include LIBEVENTLIBDIR=%VCPKG%\lib ^
             CURLINCDIR=%VCPKG%\include CURLLIBDIR=%VCPKG%\lib ^
             ZLIBINCDIR=%VCPKG%\include ZLIBLIBDIR=%VCPKG%\lib ^
-            SNMPINCDIR=%NETSNMP%\include SNMPLIBDIR=%NETSNMP%\lib
+            SNMPINCDIR=%NETSNMP%\include SNMPLIBDIR=%NETSNMP%\lib ^
+            SSHINCDIR=%VCPKG%\include SSHLIBDIR=%VCPKG%\lib
 
       # An instrumented binary loads the sanitizer runtime at start-up, and it
       # does not sit anywhere the loader looks by default.
@@ -349,7 +350,8 @@ jobs:
             LIBEVENTINCDIR=%VCPKG%\include LIBEVENTLIBDIR=%VCPKG%\lib ^
             CURLINCDIR=%VCPKG%\include CURLLIBDIR=%VCPKG%\lib ^
             ZLIBINCDIR=%VCPKG%\include ZLIBLIBDIR=%VCPKG%\lib ^
-            SNMPINCDIR=%NETSNMP%\include SNMPLIBDIR=%NETSNMP%\lib
+            SNMPINCDIR=%NETSNMP%\include SNMPLIBDIR=%NETSNMP%\lib ^
+            SSHINCDIR=%VCPKG%\include SSHLIBDIR=%VCPKG%\lib
 
       # Starting is not collecting. This drives a value the whole way:
       # configuration sync, scheduling, polling, preprocessing, the history
