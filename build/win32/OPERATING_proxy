@@ -17,10 +17,10 @@ What you get
 ------------
 
 Active and passive proxy, SQLite3 buffer, Zabbix agent checks, simple checks,
-ICMP ping, SNMP v1/v2c/v3 (including v3 authPriv, SHA + AES), SSH checks (via
-libssh2), ODBC database monitor (via the Windows ODBC Driver Manager), VMware
-monitoring (via libxml2 and libcurl), trapper, preprocessing including
-JavaScript and XML XPath,
+ICMP ping, SNMP v1/v2c/v3 (including v3 authPriv, SHA + AES), SNMP trap
+reception (via a bundled snmptrapd service), SSH checks (via libssh2), ODBC
+database monitor (via the Windows ODBC Driver Manager), VMware monitoring (via
+libxml2 and libcurl), trapper, preprocessing including JavaScript and XML XPath,
 data sender and housekeeper.
 
 Collection has been driven end to end, against a real server, for: agent checks
@@ -54,6 +54,33 @@ against a live agent, get and walk; v3 including authPriv with SHA
 authentication and AES privacy, since the OpenSSL-backed crypto is in. There is
 no MIB directory shipped; use numeric OIDs, or set MIBS/MIBDIRS if a host
 provides its own.
+
+SNMP trap reception works the way it does on Linux: the proxy does not listen on
+UDP 162 itself, it reads a file that a trap daemon writes. Zabbix ships a Perl
+receiver for that on Unix; there is no Perl here, so the package instead bundles
+Net-SNMP's snmptrapd.exe and drives it from snmptrapd.conf's format directives,
+no script involved. The installer registers it as the auto-start Windows service
+"Net-SNMP Trap Handler", started with -n, appending traps to
+C:\ProgramData\Zabbix Proxy\zabbix_traps.tmp, and sets StartSNMPTrapper=1 and
+SNMPTrapperFile to that path in zabbix_proxy.conf, so reception is on by default.
+The pieces:
+
+  * The receiver service is registered but, like the proxy, not started by the
+    install. Start it now with:  net start "Net-SNMP Trap Handler"  (it comes up
+    on its own from the next boot). Opening UDP 162 needs the Windows Firewall to
+    allow it; add a rule if traps do not arrive.
+  * Edit the community. snmptrapd.conf ships accepting community "public"; change
+    the authCommunity line to your devices' community, or add SNMPv3 users, then
+    restart the service. The file is next to the proxy in Program Files, copied
+    once from snmptrapd.conf.example (upgrades refresh the sample, not your copy).
+  * Matching to hosts. The address written after the ZBXTRAP marker is the
+    sender's, which the proxy matches to a host's SNMP interface. Confirm it
+    matches your equipment; a trap that matches nothing lands on an
+    snmptrap.fallback item if you define one, and is otherwise logged.
+  * To turn reception off: set StartSNMPTrapper=0 in zabbix_proxy.conf (or delete
+    the line), and  sc config "Net-SNMP Trap Handler" start= disabled  then stop
+    it. The trap file grows as traps arrive and nothing rotates it here; delete
+    or truncate it when the service is stopped if it gets large.
 
 ICMP ping (icmpping, icmppingsec, icmppingloss, icmppingretry and discovery
 ICMP checks) does not use fping here - there is none on Windows. The proxy

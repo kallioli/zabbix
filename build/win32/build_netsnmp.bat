@@ -1,17 +1,18 @@
 @echo off
-rem Build Net-SNMP as a static library for the MSVC x64 proxy.
+rem Build Net-SNMP (static, MSVC x64) for the Windows proxy: the netsnmp.lib the
+rem proxy's SNMP checks link, and snmptrapd.exe, which the package ships as the
+rem trap receiver.
 rem
 rem vcpkg has no net-snmp port, so the library the proxy's SNMP checks need is
 rem built here from source with Net-SNMP's own Perl/nmake win32 system. Run from
 rem a shell where vcvars64 has already set up the MSVC environment; Strawberry
 rem Perl (on the GitHub runners) provides the perl that Configure is written in.
 rem
-rem   build_netsnmp.bat <version> <install-dir>
+rem   build_netsnmp.bat <version> <install-dir> <vcpkg-dir>
 rem
-rem Milestone 1 is SNMPv1/v2c: Configure runs without --with-ssl, so no OpenSSL
-rem wiring is in play. USM symbols are still compiled, so the proxy links; only
-rem the SNMPv3 privacy and authentication protocols are absent until a later
-rem pass adds --with-ssl against the OpenSSL that vcpkg already provides.
+rem Configure runs --with-ssl against the vcpkg OpenSSL, so SNMPv3 gets AES and
+rem SHA-2 rather than only the built-in MD5/SHA1/DES. The install tree left under
+rem <install-dir> holds include\, lib\netsnmp.lib and bin\snmptrapd.exe.
 
 setlocal enabledelayedexpansion
 
@@ -87,14 +88,34 @@ rem under ..\include that both the tools and the proxy compile against.
 echo === matching the OpenSSL library names to vcpkg ===
 powershell -NoProfile -Command "Get-ChildItem -Path .. -Recurse -Include *.h,Makefile | ForEach-Object { $p=$_.FullName; $c=Get-Content $p -Raw; if ($c -match 'lib(crypto|ssl)64MT') { $c=$c -replace 'libcrypto64MT','libcrypto' -replace 'libssl64MT','libssl'; Set-Content $p $c -NoNewline; Write-Host ('patched ' + $p) } }" || exit /b 1
 
-rem Build only the core library, not the .exe tools. With OpenSSL, the tools
-rem link needs the Windows CryptoAPI that vcpkg's static OpenSSL pulls in
-rem (crypt32 and friends), which net-snmp's own tool link line omits. The proxy
-rem needs none of the tools, and it already links crypt32 itself, so building
-rem just libsnmp sidesteps the whole tools link. `nmake install` is skipped for
-rem the same reason; the headers and the library are gathered by hand below.
-echo === building netsnmp.lib only ===
-cd libsnmp || exit /b 1
+rem The proxy links only netsnmp.lib, but the Windows package also ships
+rem snmptrapd.exe as the trap receiver (Zabbix's SNMP trapper is a file tailer;
+rem something has to write the traps into that file, and there is no perl on
+rem Windows for the usual receiver script). snmptrapd links netsnmp.lib plus the
+rem agent, MIB-module and trap-daemon libraries, so those four are built first.
+rem Build each subdirectory the same way the proven libsnmp build does
+rem (cd <dir> & nmake), in the dependency order the top-level Makefile's "libs"
+rem target uses, rather than relying on the aggregate target and top Makefile.
+echo === building the static libraries ===
+for %%d in (libagent libsnmp libnetsnmptrapd netsnmpmibs) do (
+    echo --- %%d ---
+    cd %%d || exit /b 1
+    nmake || exit /b 1
+    cd .. || exit /b 1
+)
+
+rem net-snmp's stock snmptrapd link line lists only advapi32/ws2_32/kernel32/
+rem user32 - fine for its own internal-crypto build, but this tree is
+rem --with-ssl against vcpkg's static OpenSSL, which resolves through crypt32 and
+rem bcrypt (exactly what the proxy's own OpenSSL link adds). The OpenSSL import
+rem libraries are named and their directory put on the link path here too, rather
+rem than trusting the auto-link pragma alone. Inject all of it into the generated
+rem snmptrapd Makefile before building the daemon.
+echo === adding OpenSSL/crypt32/bcrypt to the snmptrapd link line ===
+powershell -NoProfile -Command "$f='snmptrapd\Makefile'; $c=Get-Content $f -Raw; $add='netsnmptrapd.lib crypt32.lib bcrypt.lib \"%VCPKG%\lib\libcrypto.lib\" \"%VCPKG%\lib\libssl.lib\" /libpath:\"%VCPKG%\lib\" advapi32.lib'; $n=$c -replace 'netsnmptrapd\.lib advapi32\.lib', $add; if ($n -eq $c) { Write-Error 'snmptrapd link-line anchor not found; net-snmp Makefile layout changed'; exit 1 }; Set-Content $f $n -NoNewline" || exit /b 1
+
+echo === building snmptrapd.exe ===
+cd snmptrapd || exit /b 1
 nmake || exit /b 1
 cd .. || exit /b 1
 
@@ -123,5 +144,17 @@ if not exist "%OUTDIR%\lib\netsnmp.lib" (
 
 echo === installed libraries ===
 dir /b "%OUTDIR%\lib"
+
+rem The trap receiver. Configure with --config=release leaves it in win32\bin\
+rem release; hand it to the install tree so the MSI can pick it up beside the
+rem proxy. Its winservice.obj lets it register as a Windows service on its own.
+echo === collecting snmptrapd.exe ===
+if not exist "%OUTDIR%\bin" mkdir "%OUTDIR%\bin"
+for /r %%f in (snmptrapd.exe) do copy /y "%%f" "%OUTDIR%\bin\" >nul
+if not exist "%OUTDIR%\bin\snmptrapd.exe" (
+    echo ERROR: snmptrapd.exe was not built
+    exit /b 1
+)
+dir /b "%OUTDIR%\bin"
 
 endlocal

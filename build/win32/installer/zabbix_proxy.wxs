@@ -81,7 +81,7 @@
     <SetProperty Id="GenerateConfig"
                  Before="GenerateConfig"
                  Sequence="execute"
-                 Value="&quot;[System64Folder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command &quot;$ErrorActionPreference='Stop'; $p='[INSTALLFOLDER]zabbix_proxy.conf'; if (-not (Test-Path -LiteralPath $p)) [\{] @('# Written by the Zabbix Proxy installer. Edit freely: upgrades keep this file.','# The full list of options is in zabbix_proxy.conf.example next to it.','','ProxyMode=0','Server=[SERVER]','Hostname=[HOSTNAME]','ListenPort=[LISTENPORT]','DBName=[DataFolder]zabbix_proxy.db','SocketDir=[DataFolder]','LogType=file','LogFile=[DataFolder]zabbix_proxy.log','LogFileSize=10') | Set-Content -LiteralPath $p -Encoding ASCII [\}]&quot;" />
+                 Value="&quot;[System64Folder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command &quot;$ErrorActionPreference='Stop'; $p='[INSTALLFOLDER]zabbix_proxy.conf'; if (-not (Test-Path -LiteralPath $p)) [\{] @('# Written by the Zabbix Proxy installer. Edit freely: upgrades keep this file.','# The full list of options is in zabbix_proxy.conf.example next to it.','','ProxyMode=0','Server=[SERVER]','Hostname=[HOSTNAME]','ListenPort=[LISTENPORT]','DBName=[DataFolder]zabbix_proxy.db','SocketDir=[DataFolder]','LogType=file','LogFile=[DataFolder]zabbix_proxy.log','LogFileSize=10','StartSNMPTrapper=1','SNMPTrapperFile=[DataFolder]zabbix_traps.tmp') | Set-Content -LiteralPath $p -Encoding ASCII [\}]; $s='[INSTALLFOLDER]snmptrapd.conf'; if (-not (Test-Path -LiteralPath $s)) [\{] Copy-Item -LiteralPath '[INSTALLFOLDER]snmptrapd.conf.example' -Destination $s [\}]&quot;" />
 
     <CustomAction Id="GenerateConfig"
                   BinaryRef="Wix4UtilCA_X64"
@@ -90,9 +90,60 @@
                   Impersonate="no"
                   Return="check" />
 
+    <!--
+      snmptrapd registers itself as a Windows service through its own -register
+      option (Net-SNMP's winservice): CreateService with a hard-coded name,
+      "Net-SNMP Trap Handler", ImagePath ending in -service, and the runtime
+      options stored under the service's Parameters registry key. A plain WiX
+      ServiceInstall pointed at the exe would not work - the daemon only enters
+      service mode when started as "...snmptrapd.exe -service" and reads its
+      arguments back from that Parameters key, not from the command line - so we
+      let snmptrapd do the registering and only invoke it here.
+
+      -unregister first makes the action idempotent: a re-install or an upgrade
+      that left the service behind is cleaned up before it is created again. The
+      service is auto-start (the only type -register offers) and runs as
+      LocalSystem, so it comes up on the next boot; the guide gives the one line
+      to start it now. Return="ignore" keeps a trap-receiver hiccup from rolling
+      back the proxy install - the proxy is the product, the receiver auxiliary.
+
+      -A must precede -Lf (append rather than truncate the trap file); the trap
+      file lives beside the proxy's log and buffer under ProgramData, which both
+      LocalSystem services can write.
+    -->
+    <SetProperty Id="RegisterTrapReceiver"
+                 Before="RegisterTrapReceiver"
+                 Sequence="execute"
+                 Value="&quot;[System64Folder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command &quot;&amp; '[INSTALLFOLDER]snmptrapd.exe' -unregister -quiet 2&gt;$null; &amp; '[INSTALLFOLDER]snmptrapd.exe' -register -quiet -A -Lf '[DataFolder]zabbix_traps.tmp' -c '[INSTALLFOLDER]snmptrapd.conf' -n udp:162&quot;" />
+
+    <CustomAction Id="RegisterTrapReceiver"
+                  BinaryRef="Wix4UtilCA_X64"
+                  DllEntry="WixQuietExec64"
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="ignore" />
+
+    <SetProperty Id="UnregisterTrapReceiver"
+                 Before="UnregisterTrapReceiver"
+                 Sequence="execute"
+                 Value="&quot;[System64Folder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command &quot;&amp; '[INSTALLFOLDER]snmptrapd.exe' -unregister -quiet&quot;" />
+
+    <CustomAction Id="UnregisterTrapReceiver"
+                  BinaryRef="Wix4UtilCA_X64"
+                  DllEntry="WixQuietExec64"
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="ignore" />
+
     <InstallExecuteSequence>
       <!-- After the files are laid down, before the service is started. -->
       <Custom Action="GenerateConfig" After="InstallFiles" Condition="NOT REMOVE" />
+      <!-- After GenerateConfig, so snmptrapd.conf has been written from the
+           sample by the time the receiver is registered against it. -->
+      <Custom Action="RegisterTrapReceiver" After="GenerateConfig" Condition="NOT REMOVE" />
+      <!-- On the way out, remove the service while snmptrapd.exe is still on
+           disk to run -unregister. -->
+      <Custom Action="UnregisterTrapReceiver" Before="RemoveFiles" Condition="REMOVE" />
     </InstallExecuteSequence>
 
     <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
@@ -266,6 +317,26 @@
       <Component Id="ProxyOperatingGuide" Guid="8a5d0c72-4f19-4b6e-a3c8-71e59d2b04f6">
         <File Id="OPERATING.txt" Name="OPERATING.txt"
               Source="..\OPERATING_proxy" KeyPath="yes" />
+      </Component>
+
+      <!--
+        The SNMP trap receiver. The proxy's own "SNMP trapper" only reads a
+        file; something has to receive the traps on UDP 162 and write that file,
+        and on Unix that is Net-SNMP's snmptrapd plus a Perl receiver script.
+        There is no Perl on Windows, so we ship snmptrapd.exe (built alongside
+        netsnmp.lib) and drive it entirely from snmptrapd.conf's format
+        directives instead. RegisterTrapReceiver below turns it into a service.
+      -->
+      <Component Id="TrapReceiverExe" Guid="2f7b1a3c-6d94-4e58-8c17-0a3e9b5d24f1">
+        <File Id="snmptrapd.exe" Source="$(BinDir)\snmptrapd.exe" KeyPath="yes" />
+      </Component>
+
+      <!-- Reference copy, refreshed on upgrade like the proxy's own .example.
+           GenerateConfig copies it to snmptrapd.conf on first install only, so
+           an operator's edits (community strings above all) survive upgrades. -->
+      <Component Id="TrapReceiverConfSample" Guid="3a8c2b4d-7e05-4f69-9d28-1b4f0c6e35a2">
+        <File Id="snmptrapd.conf.example" Name="snmptrapd.conf.example"
+              Source="$(ConfDir)\snmptrapd.conf" KeyPath="yes" />
       </Component>
     </ComponentGroup>
 

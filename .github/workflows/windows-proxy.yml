@@ -370,6 +370,28 @@ jobs:
           build/win32/tests/service_check.ps1
           -Exe (Resolve-Path bin/win64/zabbix_proxy.exe).Path
 
+      # The package ships snmptrapd.exe as the SNMP trap receiver. It is built by
+      # the netsnmp job into the cached install tree; bring it beside the proxy
+      # so wix can pack it, and prove the binary actually loads and that its
+      # self-registration (the mechanism the MSI relies on) works, since the
+      # installer's own register step is Return="ignore" and would hide a break.
+      - name: Place the trap receiver beside the proxy for packaging
+        shell: cmd
+        run: |
+          copy /y "%GITHUB_WORKSPACE%\netsnmp_installed\bin\snmptrapd.exe" bin\win64\ >nul
+          if errorlevel 1 (echo snmptrapd.exe missing from the netsnmp cache & exit /b 1)
+          dir /b bin\win64\snmptrapd.exe
+
+      - name: Smoke-test the trap receiver
+        shell: cmd
+        run: |
+          bin\win64\snmptrapd.exe -register -quiet -A -Lf "%TEMP%\zbx_traps.tmp" -n udp:10162
+          if errorlevel 1 (echo snmptrapd -register failed - binary or winservice broken & exit /b 1)
+          sc query "Net-SNMP Trap Handler" | findstr /i "STATE" || (echo trap service not registered & exit /b 1)
+          bin\win64\snmptrapd.exe -unregister -quiet
+          if errorlevel 1 (echo snmptrapd -unregister failed & exit /b 1)
+          echo trap receiver registers and unregisters cleanly
+
       - name: Build the installer
         shell: cmd
         run: |
