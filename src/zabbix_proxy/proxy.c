@@ -598,7 +598,17 @@ static void	zbx_set_defaults(void)
 		zbx_db_config->dbhost = zbx_strdup(zbx_db_config->dbhost, "localhost");
 
 	if (NULL == zbx_config_snmptrap_file)
+	{
+#if defined(_WINDOWS)
+		/* there is no /tmp on Windows; the MSI writes an explicit SNMPTrapperFile */
+		/* under ProgramData, and this fallback matches that location for a proxy  */
+		/* run by hand without one set.                                            */
+		zbx_config_snmptrap_file = zbx_strdup(zbx_config_snmptrap_file,
+				"C:\\ProgramData\\Zabbix Proxy\\zabbix_traps.tmp");
+#else
 		zbx_config_snmptrap_file = zbx_strdup(zbx_config_snmptrap_file, "/tmp/zabbix_traps.tmp");
+#endif
+	}
 
 	if (NULL == zbx_config_pid_file)
 		zbx_config_pid_file = zbx_strdup(zbx_config_pid_file, "/tmp/zabbix_proxy.pid");

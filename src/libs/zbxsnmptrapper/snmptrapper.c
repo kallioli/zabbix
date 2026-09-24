@@ -33,6 +33,7 @@
 #include "zbxcrypto.h"
 #include "zbxhash.h"
 #include "zbxexpr.h"
+#include "zbxfile.h"
 
 static int	trap_fd = -1;
 static off_t	trap_lastsize;
@@ -607,7 +608,10 @@ static int	open_trap_file(const char *config_snmptrap_file)
 	zbx_stat_t	file_buf;
 	char		*error = NULL;
 
-	if (-1 == (trap_fd = open(config_snmptrap_file, O_RDONLY)))
+	/* zbx_open forces O_BINARY on Windows; a text-mode open would translate CRLF */
+	/* and stop at the first 0x1A byte, corrupting the byte-offset accounting this */
+	/* file keeps in trap_lastsize/lseek. On Unix zbx_open is a plain open().      */
+	if (-1 == (trap_fd = zbx_open(config_snmptrap_file, O_RDONLY)))
 	{
 		if (ENOENT != errno)	/* file exists but cannot be opened */
 		{
