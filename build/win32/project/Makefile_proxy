@@ -81,6 +81,7 @@ OBJS = \
 	..\..\..\src\libs\zbxcacheconfig\inventory.o \
 	..\..\..\src\libs\zbxcacheconfig\item.o \
 	..\..\..\src\libs\zbxcacheconfig\macro_ctx.o \
+	..\..\..\src\libs\zbxcacheconfig\macrotags.o \
 	..\..\..\src\libs\zbxcacheconfig\proxy_group.o \
 	..\..\..\src\libs\zbxcacheconfig\trigger.o \
 	..\..\..\src\libs\zbxcacheconfig\user_macro.o \
