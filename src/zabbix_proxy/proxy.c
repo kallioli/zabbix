@@ -27,6 +27,9 @@
 #include "zbxmodules.h"
 
 #include "zbxnix.h"
+#if defined(_WINDOWS)
+#	include "zbxwin32.h"
+#endif
 #include "zbxself.h"
 #include "zbxpoller.h"
 #include "zbxhttppoller.h"
@@ -1381,6 +1384,11 @@ int	main(int argc, char **argv)
 	/* initialize libraries before using */
 	zbx_init_library_common(zbx_log_impl, get_zbx_progname, zbx_backtrace);
 	zbx_init_library_nix(get_zbx_progname, get_process_info_by_thread);
+#if defined(_WINDOWS)
+	/* the crash handler's backtrace calls the progname callback this sets; */
+	/* the agent initialises it, the proxy did not                          */
+	zbx_init_library_win32(get_zbx_progname);
+#endif
 	zbx_init_library_dbupgrade(get_zbx_program_type, get_zbx_config_timeout);
 	zbx_init_library_dbwrap(NULL, zbx_preprocess_item_value, zbx_preprocessor_flush);
 	zbx_init_library_icmpping(&config_icmpping);

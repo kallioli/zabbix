@@ -42,7 +42,7 @@ static void	print_fatal_info(CONTEXT *pctx)
 	zabbix_log(LOG_LEVEL_CRIT, "====== Fatal information: ======");
 
 #ifdef _M_X64
-	zabbix_log(LOG_LEVEL_CRIT, "Program counter: 0x%08lx", pctx->Rip);
+	zabbix_log(LOG_LEVEL_CRIT, "Program counter: 0x%016I64x", pctx->Rip);
 #else
 	zabbix_log(LOG_LEVEL_CRIT, "Program counter: 0x%04x", pctx->Eip);
 #endif
@@ -144,7 +144,9 @@ static void	print_backtrace(CONTEXT *pctx)
 
 		process_name = zbx_unicode_to_utf8(szProcessName);
 
-		if (NULL != (ptr = strstr(process_name, get_progname_cb())))
+		/* get_progname_cb is only set by zbx_init_library_win32(); calling it */
+		/* unset jumps to address 0 from inside the crash handler               */
+		if (NULL != get_progname_cb && NULL != (ptr = strstr(process_name, get_progname_cb())))
 			zbx_strncpy_alloc(&process_path, &path_alloc, &path_offset, process_name, ptr - process_name);
 	}
 
@@ -178,15 +180,19 @@ static void	print_backtrace(CONTEXT *pctx)
 #endif
 
 	/* get number of frames, ctxcount may be modified during StackWalk64() calls */
-	while (TRUE == StackWalk64(ZBX_IMAGE_FILE_MACHINE, hProcess, hThread, &scount, &ctxcount, NULL, NULL, NULL,
-			NULL))
+	/* x64 unwinding needs the function tables, so name the DbgHelp helpers */
+	/* rather than leaving them NULL and depending on SymInitialize() having */
+	/* succeeded                                                             */
+	while (TRUE == StackWalk64(ZBX_IMAGE_FILE_MACHINE, hProcess, hThread, &scount, &ctxcount, NULL,
+			SymFunctionTableAccess64, SymGetModuleBase64, NULL))
 	{
 		if (0 == scount.AddrReturn.Offset)
 			break;
 		nframes++;
 	}
 
-	while (TRUE == StackWalk64(ZBX_IMAGE_FILE_MACHINE, hProcess, hThread, &s, &ctx, NULL, NULL, NULL, NULL))
+	while (TRUE == StackWalk64(ZBX_IMAGE_FILE_MACHINE, hProcess, hThread, &s, &ctx, NULL,
+			SymFunctionTableAccess64, SymGetModuleBase64, NULL))
 	{
 		file_name = process_name;
 		frame_offset = 0;
@@ -215,7 +221,7 @@ static void	print_backtrace(CONTEXT *pctx)
 					if (0 != GetModuleFileNameA(hm, path, sizeof(path)))
 						file_name = path;
 				}
-				zbx_snprintf_alloc(&frame, &frame_alloc, &frame_offset, "%s+0x%lx",
+				zbx_snprintf_alloc(&frame, &frame_alloc, &frame_offset, "%s+0x%I64x",
 						pSym->Name, offset);
 			}
 
@@ -228,7 +234,7 @@ static void	print_backtrace(CONTEXT *pctx)
 			zbx_chrcpy_alloc(&frame, &frame_alloc, &frame_offset, ')');
 		}
 
-		zabbix_log(LOG_LEVEL_CRIT, "%d: %s%s [0x%lx]",
+		zabbix_log(LOG_LEVEL_CRIT, "%d: %s%s [0x%I64x]",
 				nframes--, NULL == file_name ? "(unknown)" : file_name, frame, s.AddrPC.Offset);
 
 		if (0 == s.AddrReturn.Offset)
@@ -252,6 +258,15 @@ void	zbx_init_library_win32(zbx_get_progname_f get_progname)
 
 static void	zbx_win_exception_filter(struct _EXCEPTION_POINTERS *ep, const char *msg)
 {
+	static volatile LONG	in_handler = 0;
+
+	/* A fault inside this handler raises a nested exception that the same */
+	/* __except filter catches, which re-enters here. Left unchecked that  */
+	/* loops until the stack overflows, no backtrace is ever written and   */
+	/* the recorded crash site is the handler's, not the real one.         */
+	if (0 != InterlockedCompareExchange(&in_handler, 1, 0))
+		return;
+
 	zabbix_log(LOG_LEVEL_CRIT, msg, ep->ExceptionRecord->ExceptionCode, ep->ExceptionRecord->ExceptionAddress);
 
 	print_fatal_info(ep->ContextRecord);
