@@ -323,9 +323,11 @@ void	dc_update_host_proxy(const char *host_old, const char *host_new)
 			&hpi_local)))
 	{
 		dc_strpool_release(hpi->host);
+		/* hpi is the hashset entry: take host_proxy out of it before */
+		/* zbx_hashset_remove_direct() frees it                        */
+		hpi_local.host_proxy = hpi->host_proxy;
 		zbx_hashset_remove_direct(&get_dc_config()->host_proxy_index, hpi);
 
-		hpi_local.host_proxy = hpi->host_proxy;
 		hpi_local.host = dc_strpool_intern(host_new);
 		zbx_hashset_insert(&get_dc_config()->host_proxy_index, &hpi_local, sizeof(hpi_local));
 	}

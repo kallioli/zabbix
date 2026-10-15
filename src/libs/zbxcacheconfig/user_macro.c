@@ -1483,8 +1483,12 @@ void	um_cache_remove_hosts(zbx_um_cache_t *cache, const zbx_vector_uint64_t *hos
 
 		if (NULL != (phost = (zbx_um_host_t **)zbx_hashset_search(&cache->hosts, &phostid)))
 		{
+			zbx_um_host_t	*host = *phost;
+
+			/* phost points into the hashset entry that zbx_hashset_remove_direct() */
+			/* frees, so it must be read before the removal, not after               */
 			zbx_hashset_remove_direct(&cache->hosts, phost);
-			um_host_release(*phost);
+			um_host_release(host);
 		}
 	}
 }

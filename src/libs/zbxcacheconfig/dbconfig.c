@@ -1784,9 +1784,10 @@ static void	DCsync_hosts(zbx_dbsync_t *sync, zbx_uint64_t revision, zbx_vector_u
 #endif
 		zbx_vector_ptr_destroy(&host->interfaces_v);
 		zbx_hashset_destroy(&host->items);
-		zbx_hashset_remove_direct(&config->hosts, host);
-
+		/* host is the hashset entry itself: release what it owns before */
+		/* zbx_hashset_remove_direct() frees it                           */
 		zbx_vector_dc_httptest_ptr_destroy(&host->httptests);
+		zbx_hashset_remove_direct(&config->hosts, host);
 	}
 
 	zbx_vector_dc_host_ptr_destroy(&proxy_hosts);
