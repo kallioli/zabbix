@@ -120,7 +120,13 @@ static void	__mem_free(zbx_shmem_info_t *info, void *ptr);
 /* reported where it happens rather than as a crash somewhere else later. The   */
 /* links themselves stay readable: the allocator follows them. A normal build   */
 /* compiles this out.                                                           */
-#if defined(__SANITIZE_ADDRESS__)
+/*                                                                              */
+/* Windows only, where every worker is a thread of one process. Where workers   */
+/* are forked processes the sanitizer's shadow memory is private to each of     */
+/* them: a chunk one process allocates (and unpoisons) stays poisoned in every  */
+/* other process's shadow, so a perfectly valid read of the cache trips, as the */
+/* data sender did on the first run of this under Linux.                        */
+#if defined(__SANITIZE_ADDRESS__) && defined(_WINDOWS)
 #	include <sanitizer/asan_interface.h>
 
 #define SHMEM_LINKS_SIZE	(2 * ZBX_PTR_SIZE)
