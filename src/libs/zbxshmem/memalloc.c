@@ -113,6 +113,38 @@ static void	__mem_free(zbx_shmem_info_t *info, void *ptr);
 #define SHMEM_MIN_SIZE		__UINT64_C(128)
 #define SHMEM_MAX_SIZE		__UINT64_C(0x1000000000)	/* 64 GB */
 
+/* Under AddressSanitizer a stale pointer into this segment goes unnoticed: the */
+/* segment is one live allocation, so reading a chunk after it was freed never  */
+/* trips. Poison a free chunk beyond its two list links when it joins a bucket  */
+/* and unpoison it when it leaves, so a use after free inside the segment is    */
+/* reported where it happens rather than as a crash somewhere else later. The   */
+/* links themselves stay readable: the allocator follows them. A normal build   */
+/* compiles this out.                                                           */
+#if defined(__SANITIZE_ADDRESS__)
+#	include <sanitizer/asan_interface.h>
+
+#define SHMEM_LINKS_SIZE	(2 * ZBX_PTR_SIZE)
+
+static void	mem_poison_free_chunk(void *chunk)
+{
+	zbx_uint64_t	size = CHUNK_SIZE(chunk);
+
+	if (size > SHMEM_LINKS_SIZE)
+	{
+		__asan_poison_memory_region((char *)chunk + SHMEM_SIZE_FIELD + SHMEM_LINKS_SIZE,
+				(size_t)(size - SHMEM_LINKS_SIZE));
+	}
+}
+
+static void	mem_unpoison_chunk(void *chunk)
+{
+	__asan_unpoison_memory_region((char *)chunk + SHMEM_SIZE_FIELD, (size_t)CHUNK_SIZE(chunk));
+}
+#else
+#	define mem_poison_free_chunk(chunk)
+#	define mem_unpoison_chunk(chunk)
+#endif
+
 /* helper functions */
 
 static void	*ALIGN4(void *ptr)
@@ -208,6 +240,8 @@ static void	mem_link_chunk(zbx_shmem_info_t *info, void *chunk)
 	mem_set_next_chunk(chunk, info->buckets[index]);
 
 	info->buckets[index] = chunk;
+
+	mem_poison_free_chunk(chunk);
 }
 
 /******************************************************************************
@@ -251,6 +285,8 @@ static void	mem_unlink_chunk(zbx_shmem_info_t *info, void *chunk)
 	*next_in_prev_chunk = next_chunk;
 	if (NULL != prev_in_next_chunk)
 		*prev_in_next_chunk = prev_chunk;
+
+	mem_unpoison_chunk(chunk);
 }
 
 /* private memory functions */

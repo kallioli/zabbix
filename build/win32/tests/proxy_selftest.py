@@ -189,8 +189,11 @@ class Schema:
                 "data": [[r.get(f, self._default(name, f)) for f in fields] for r in rows]}
 
 
-def build_config(schema, trapper_port, checks):
+def build_config(schema, trapper_port, checks, rename=None):
+    """The configuration for these checks; rename maps a host number to a new host name."""
     s = schema
+    names = {h: HOSTS[h][2] for h in HOSTS}
+    names.update(rename or {})
     # Sending hosts commits to sending its companions: the proxy refuses the
     # whole payload if one is absent, even empty. It fills in the httptest
     # family itself. hostmacro drags hosts_templates along the same way.
@@ -205,7 +208,7 @@ def build_config(schema, trapper_port, checks):
     used = sorted({c.get("host", 1) for c in checks})
 
     config["hosts"] = s.table("hosts", [
-        {"hostid": HOSTS[h][0], "host": HOSTS[h][2], "name": HOSTS[h][2], "status": 0}
+        {"hostid": HOSTS[h][0], "host": names[h], "name": names[h], "status": 0}
         for h in used])
 
     config["interface"] = s.table("interface", [
@@ -283,6 +286,10 @@ class Session:
         self.checks = {c["itemid"]: c for c in checks}
         self.keys = {c["itemid"]: c["key"] for c in checks}
         self.revision = 1
+        self.served = 0
+        # the items the current configuration still carries; complete() waits
+        # on these alone, so a value from an item since removed cannot count
+        self.alive = set(self.keys)
         self.values = {itemid: [] for itemid in self.keys}
         self.configs = 0
         self.datas = 0
@@ -292,11 +299,32 @@ class Session:
         with self.lock:
             self.configs += 1
             n = self.configs
+            revision, config = self.revision, self.config
         seen = int(message.get("config_revision", 0))
-        if seen >= self.revision:
-            return {"config_revision": self.revision}
-        print(f"<- proxy config #{n}: sending {len(self.keys)} items", flush=True)
-        return {"config_revision": self.revision, "full_sync": 1, "data": self.config}
+        if seen >= revision:
+            return {"config_revision": revision}
+        print(f"<- proxy config #{n}: sending revision {revision}, "
+              f"{len(config['items']['data'])} items", flush=True)
+        with self.lock:
+            self.served = revision
+        return {"config_revision": revision, "full_sync": 1, "data": config}
+
+    def churn(self, config, alive):
+        """Serve a new configuration, and wait afresh on the items it keeps.
+
+        Removing hosts and renaming one takes the configuration syncer down
+        the paths that free cache entries - user macro hosts, the host table
+        and the host-proxy index - where a value read from an entry after it
+        has been freed went unnoticed for as long as the freed memory held
+        still. Under the sanitizer build the freed chunks are poisoned, so
+        this is where such a read is caught.
+        """
+        with self.lock:
+            self.config = config
+            self.revision += 1
+            self.alive = set(alive)
+            for itemid in self.alive:
+                self.values[itemid] = []
 
     def on_data(self, message):
         with self.lock:
@@ -311,7 +339,11 @@ class Session:
 
     def complete(self):
         with self.lock:
-            return all(self.values[i] for i in self.keys)
+            return all(self.values[i] for i in self.alive)
+
+    def resynced(self):
+        with self.lock:
+            return self.served >= self.revision
 
     def report(self):
         print(f"\nconfig requests: {self.configs}   data requests: {self.datas}\n", flush=True)
@@ -386,6 +418,44 @@ REFUSALS = (
     "Invalid parameters",
     "Cannot perform runtime control command",
 )
+
+
+def check_config_churn(proxy, session, schema, args, checks):
+    """Remove a host and rename the other; the proxy must take it and go on.
+
+    This is what the configuration syncer does when the server moves hosts
+    between the proxies of a group, and it is the path that crashed the
+    7.4.15 build: entries were read back out of the cache after being freed.
+    """
+    print("\nconfiguration churn, a host removed and one renamed:", flush=True)
+
+    kept = [c for c in checks if c.get("host", 1) != 2]
+    if len(kept) == len(checks):
+        print("  skip  needs a check on the second host", flush=True)
+        return []
+
+    config = build_config(schema, args.trapper_port, kept,
+                          rename={1: HOSTS[1][2] + "-renamed"})
+    session.churn(config, [c["itemid"] for c in kept])
+
+    # ProxyConfigFrequency is 10, so the new revision is asked for within that,
+    # and the surviving items report again a few polls later.
+    deadline = time.monotonic() + 45
+    while time.monotonic() < deadline:
+        if proxy.poll() is not None:
+            print(f"  FAIL  proxy exited with code {proxy.returncode} after the new configuration",
+                  flush=True)
+            return [f"proxy exited with code {proxy.returncode}"]
+        if session.resynced() and session.complete():
+            print(f"  ok    new configuration taken, {len(kept)} items reporting again", flush=True)
+            return []
+        time.sleep(0.5)
+
+    if not session.resynced():
+        print("  FAIL  the proxy never asked for the new configuration", flush=True)
+        return ["new configuration never requested"]
+    print("  FAIL  new configuration taken but the kept items went quiet", flush=True)
+    return ["kept items stopped reporting after the new configuration"]
 
 
 def check_runtime_control(exe, conf):
@@ -496,8 +566,10 @@ def main():
         print(f"nothing matches --only {args.only!r}", file=sys.stderr)
         return 2
 
-    config = build_config(Schema(args.schema), args.trapper_port, checks)
+    schema = Schema(args.schema)
+    config = build_config(schema, args.trapper_port, checks)
     session = Session(config, checks)
+    churn_failures = []
 
     bad_config_failures = check_invalid_config(exe, workdir)
 
@@ -535,6 +607,12 @@ def main():
                     break
                 time.sleep(0.5)
 
+            # Now take a host away and rename the other, the way a server does
+            # when it moves hosts between proxies, and expect the proxy to
+            # survive it and keep reporting for the host it still has.
+            if proxy.poll() is None and session.complete():
+                churn_failures = check_config_churn(proxy, session, schema, args, checks)
+
             if proxy.poll() is None:
                 rtc_failures = check_runtime_control(exe, conf)
 
@@ -549,7 +627,8 @@ def main():
 
     status = session.report()
 
-    for label, failures in (("runtime control", rtc_failures),
+    for label, failures in (("configuration churn", churn_failures),
+                            ("runtime control", rtc_failures),
                             ("invalid configuration", bad_config_failures)):
         if failures:
             status = status or 1
