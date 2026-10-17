@@ -2328,9 +2328,15 @@ int	MAIN_ZABBIX_ENTRY(int flags)
 out:
 	zbx_log_exit_signal();
 
+#ifndef _WINDOWS
 	if (SUCCEED == ZBX_EXIT_STATUS())
 		zbx_rtc_shutdown_subs(&rtc);
-
+#else
+	/* The shutdown broadcast tells the workers that subscribed to runtime control to wind down; on Unix */
+	/* they are still running at this point, waiting for it. Here every worker shares ZBX_IS_RUNNING()  */
+	/* and has already left or is leaving on its own, so the broadcast finds nobody: it would only log a */
+	/* warning per subscriber and, for a service whose port is gone, wait a minute for it to come back.  */
+#endif
 	zbx_on_exit(ZBX_EXIT_STATUS(), &exit_args);
 
 	return SUCCEED;

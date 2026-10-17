@@ -760,8 +760,11 @@ int	zbx_shmem_create_min(zbx_shmem_info_t **info, zbx_uint64_t size, const char 
 void	zbx_shmem_destroy(zbx_shmem_info_t *info)
 {
 #ifdef _WINDOWS
-	/* the segment is heap here, allocated in zbx_shmem_create_ext() */
-	zbx_free(info->base);
+	/* The segment is heap here, allocated in zbx_shmem_create(), and the descriptor itself lives at the   */
+	/* start of it. Nothing may touch the descriptor once the block is freed: zbx_free() would write NULL */
+	/* into info->base, inside memory the heap has already taken back (for a cache of some megabytes the  */
+	/* pages are gone at once), which is an access violation on every shutdown.                          */
+	free(info->base);
 #else
 	(void)shmdt(info->base);
 #endif

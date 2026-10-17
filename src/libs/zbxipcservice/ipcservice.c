@@ -27,6 +27,9 @@
 #include "zbxstr.h"
 #include "zbxtime.h"
 #include "zbxlog.h"
+#ifdef _WINDOWS
+#	include "zbxwinservice.h"
+#endif
 
 #define ZBX_IPC_DATA_DUMP_SIZE		128
 
@@ -1386,6 +1389,14 @@ int	zbx_ipc_socket_open(zbx_ipc_socket_t *csocket, const char *service_name, int
 
 		ipc_socket_close_fd(csocket->fd);
 		csocket->fd = -1;
+
+		/* once a stop has been requested a service that is not listening has left and will not be back */
+		if (0 == ZBX_IS_RUNNING())
+		{
+			*error = zbx_dsprintf(*error, "Cannot connect to service \"%s\": the program is stopping.",
+					service_name);
+			goto out;
+		}
 #else
 		if (0 == connect(csocket->fd, (struct sockaddr *)&addr, sizeof(addr)))
 			break;
