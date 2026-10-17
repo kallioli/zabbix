@@ -302,8 +302,6 @@ out:
 	return ret;
 }
 
-static int	sleep_remains;
-
 /******************************************************************************
  *                                                                            *
  * Purpose: sleeping process                                                  *
@@ -314,6 +312,12 @@ static int	sleep_remains;
  ******************************************************************************/
 void	zbx_sleep_loop(const zbx_thread_info_t *info, int sleeptime)
 {
+	/* The remaining time used to be a file-scope static, which is private to each forked worker on Unix */
+	/* but shared by every worker thread of the Windows build: a thread setting it for its own sleep cut  */
+	/* another thread's sleep short or stretched it, and the self-monitoring collector, which relies on   */
+	/* waking once a second, drifted with it. A local keeps each thread's count to itself.                */
+	int	sleep_remains;
+
 	if (0 >= sleeptime)
 		return;
 

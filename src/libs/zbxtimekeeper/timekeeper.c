@@ -104,9 +104,19 @@ struct zbx_timekeeper
 static clock_t	zbx_times(void)
 {
 #if defined(_WINDOWS)
-	/* times() reports elapsed real time in ticks, not consumed CPU time; the millisecond tick count carries the */
-	/* same meaning */
-	return (clock_t)GetTickCount64();
+	/* times() reports elapsed real time in ticks, not consumed CPU time; the tick count carries the same      */
+	/* meaning. It is scaled to the 100 ticks a second Unix reports: the statistics take the difference of two */
+	/* samples a minute apart as an unsigned short, so a minute has to fit in 65535 ticks, which milliseconds  */
+	/* do not leave room for once the collector runs a few seconds late. Counting from the first call keeps   */
+	/* the 32-bit clock_t away from the wrap of the system tick count for the first 248 days of the process.  */
+	static volatile LONG64	origin;
+	LONG64			now = (LONG64)GetTickCount64();
+
+	/* the first caller sets the origin; a thread racing it keeps the one that won */
+	if (0 == origin)
+		InterlockedCompareExchange64(&origin, now, 0);
+
+	return (clock_t)((now - origin) / 10);
 #elif !defined(TIMES_NULL_ARG)
 	struct tms	buf;
 
@@ -226,7 +236,7 @@ zbx_timekeeper_t	*zbx_timekeeper_create_ext(int units_num, zbx_timekeeper_sync_t
 	timekeeper->first = 0;
 	timekeeper->count = 0;
 #ifdef _WINDOWS
-	timekeeper->ticks_per_sec = 1000;	/* zbx_times() counts milliseconds */
+	timekeeper->ticks_per_sec = 100;	/* zbx_times() counts hundredths of a second */
 #else
 	timekeeper->ticks_per_sec = sysconf(_SC_CLK_TCK);
 #endif
