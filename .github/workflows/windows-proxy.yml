@@ -370,6 +370,15 @@ jobs:
           build/win32/tests/service_check.ps1
           -Exe (Resolve-Path bin/win64/zabbix_proxy.exe).Path
 
+      # An operator's Stop-Service has to be a stop, not a crash the service
+      # manager recovers from. Nothing else drives the stop path of a running
+      # service, so it gets its own check against the real service manager.
+      - name: Stop the running service cleanly
+        shell: pwsh
+        run: >
+          build/win32/tests/service_stop_check.ps1
+          -Exe (Resolve-Path bin/win64/zabbix_proxy.exe).Path
+
       # The package ships snmptrapd.exe as the SNMP trap receiver. It is built by
       # the netsnmp job into the cached install tree; bring it beside the proxy
       # so wix can pack it, and prove the binary actually loads and that its
@@ -513,6 +522,15 @@ jobs:
         shell: pwsh
         run: >
           build/win32/tests/service_check.ps1
+          -Exe (Resolve-Path bin/win64/zabbix_proxy.exe).Path
+
+      # An operator's Stop-Service has to be a stop, not a crash the service
+      # manager recovers from. Nothing else drives the stop path of a running
+      # service, so it gets its own check against the real service manager.
+      - name: Stop the running service cleanly
+        shell: pwsh
+        run: >
+          build/win32/tests/service_stop_check.ps1
           -Exe (Resolve-Path bin/win64/zabbix_proxy.exe).Path
 
       - name: Install the package and take it apart again
