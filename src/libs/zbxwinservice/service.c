@@ -14,6 +14,7 @@
 
 #include "zbxwinservice.h"
 
+#include "zbxwin32.h"
 #include "zbxstr.h"
 #include "zbxcfg.h"
 #include "zbxlog.h"
@@ -174,6 +175,26 @@ static VOID WINAPI	ServiceCtrlHandler(DWORD ctrlCode)
 	}
 }
 
+/******************************************************************************
+ *                                                                            *
+ * Purpose: runs the program's main entry under the same exception filter as  *
+ *          its worker threads, so that a fault on the main thread (for       *
+ *          example during the shutdown it carries out) is written to the log *
+ *          with a backtrace before the process goes down                     *
+ *                                                                            *
+ ******************************************************************************/
+static void	main_entry_guarded(int flags)
+{
+	__try
+	{
+		MAIN_ZABBIX_ENTRY(flags);
+	}
+	__except (zbx_win_seh_handler(GetExceptionInformation()))
+	{
+		/* the filter logs and lets the exception continue to the system, so this is not reached */
+	}
+}
+
 static VOID WINAPI	ServiceEntry(DWORD argc, wchar_t **argv)
 {
 	wchar_t	*wservice_name;
@@ -203,7 +224,7 @@ static VOID WINAPI	ServiceEntry(DWORD argc, wchar_t **argv)
 	serviceStatus.dwWaitHint	= 0;
 	SetServiceStatus(serviceHandle, &serviceStatus);
 
-	MAIN_ZABBIX_ENTRY(0);
+	main_entry_guarded(0);
 
 	/* only a program that stops from its main thread gets here: its shutdown is complete, the service is */
 	/* stopped, and StartServiceCtrlDispatcher() returns in main() so that the process exits with status 0 */
@@ -218,7 +239,7 @@ void	zbx_service_start(int flags)
 
 	if (0 != (flags & ZBX_TASK_FLAG_FOREGROUND))
 	{
-		MAIN_ZABBIX_ENTRY(flags);
+		main_entry_guarded(flags);
 		return;
 	}
 

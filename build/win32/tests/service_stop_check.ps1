@@ -55,6 +55,35 @@ $log = Join-Path $work 'zabbix_proxy.log'
 
 $failures = @()
 
+# A process that dies during the stop leaves no trace in the proxy log beyond
+# its last line. Ask Windows Error Reporting for a dump of it, and read the
+# dump back with cdb when the debugging tools are on the machine.
+$dumps = Join-Path ([IO.Path]::GetTempPath()) 'zbx_stop_dumps'
+New-Item -ItemType Directory -Force -Path $dumps | Out-Null
+$werKey = 'HKLM:\SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps\zabbix_proxy.exe'
+$werKeyExisted = Test-Path $werKey
+New-Item -Path $werKey -Force | Out-Null
+Set-ItemProperty -Path $werKey -Name DumpFolder -Value $dumps -Type ExpandString
+Set-ItemProperty -Path $werKey -Name DumpType -Value 2 -Type DWord
+Set-ItemProperty -Path $werKey -Name DumpCount -Value 3 -Type DWord
+
+function Read-Dump($dump) {
+	$cdb = @(
+		'C:\Program Files (x86)\Windows Kits\Debuggersd\cdb.exe'
+		'C:\Program Files\Windows Kits\Debuggersd\cdb.exe'
+	) | Where-Object { Test-Path $_ } | Select-Object -First 1
+	if (-not $cdb) {
+		Write-Host '    (cdb.exe not on this machine; the dump is kept for analysis elsewhere)'
+		return
+	}
+	$symdir = Split-Path -Parent $Exe
+	& $cdb -z $dump -y "$symdir;srv*https://msdl.microsoft.com/download/symbols" -i $symdir `
+		-c '.ecxr; .lines; kv 40; q' 2>&1 |
+		Select-String -Pattern 'ExceptionAddress|ExceptionCode|^\s*[0-9a-f]{2} |Child-SP|zabbix_proxy!|KERNELBASE!|ntdll!|ucrtbase' |
+		Select-Object -First 70 |
+		ForEach-Object { Write-Host "    $($_.Line)" }
+}
+
 function Note($ok, $what, $detail) {
 	if ($ok) {
 		Write-Host "  ok    $what"
@@ -141,6 +170,16 @@ try {
 
 	$logText = if (Test-Path $log) { Get-Content $log -Raw } else { '' }
 	$logLines = @($logText -split "`r?`n")
+	$dumpFiles = @(Get-ChildItem -Path $dumps -Filter '*.dmp' -ErrorAction SilentlyContinue)
+	if ($dumpFiles.Count -gt 0) {
+		Write-Host ''
+		Write-Host '  crash dump(s) written during the stop:'
+		foreach ($d in $dumpFiles) {
+			Write-Host "    $($d.Name) ($([int]($d.Length / 1MB)) MB)"
+			Read-Dump $d.FullName
+		}
+	}
+
 	Write-Host ''
 	Write-Host '  proxy log, from the stop request:'
 	$fromStop = $logLines | Select-String -Pattern 'received stop request' -SimpleMatch -List
@@ -149,6 +188,9 @@ try {
 		Where-Object { $_ -and $_ -notmatch ' In | End of |__zbx_|zbx_setproctitle' } |
 		Select-Object -First 120 |
 		ForEach-Object { Write-Host "    $_" }
+	Write-Host ''
+	Write-Host '  proxy log, last lines as written:'
+	$logLines | Where-Object { $_ } | Select-Object -Last 25 | ForEach-Object { Write-Host "    $_" }
 	Write-Host ''
 
 	# ------------------------------------------------------------ verdicts
@@ -163,6 +205,7 @@ try {
 	Note ($logText -match "$name stopped\. Zabbix") "log ends with '$name stopped'" 'not logged'
 	Note ($logText -notmatch 'terminated unexpectedly') 'no worker reported as terminated unexpectedly'
 	Note ($logText -notmatch 'Unhandled exception') 'no exception during the stop'
+	Note ($dumpFiles.Count -eq 0) 'no crash dump written' "$($dumpFiles.Count) in $dumps"
 	Note ($elapsed -lt 60000) 'stopped within a minute' "$elapsed ms"
 } finally {
 	foreach ($p in Proxy-Processes) {
@@ -171,6 +214,7 @@ try {
 	}
 	& $Exe -c $conf -d *> $null
 	Remove-Item -Recurse -Force $work -ErrorAction SilentlyContinue
+	if (-not $werKeyExisted) { Remove-Item -Path $werKey -Recurse -Force -ErrorAction SilentlyContinue }
 }
 
 if ($failures.Count -gt 0) {

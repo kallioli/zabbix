@@ -379,6 +379,14 @@ jobs:
           build/win32/tests/service_stop_check.ps1
           -Exe (Resolve-Path bin/win64/zabbix_proxy.exe).Path
 
+      - name: Keep the crash dump of a stop that went wrong
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zabbix_proxy-stop-dump-${{ runner.os }}-${{ github.job }}-${{ strategy.job-index }}
+          path: ${{ runner.temp }}/../zbx_stop_dumps/*.dmp
+          if-no-files-found: ignore
+
       # The package ships snmptrapd.exe as the SNMP trap receiver. It is built by
       # the netsnmp job into the cached install tree; bring it beside the proxy
       # so wix can pack it, and prove the binary actually loads and that its
@@ -532,6 +540,14 @@ jobs:
         run: >
           build/win32/tests/service_stop_check.ps1
           -Exe (Resolve-Path bin/win64/zabbix_proxy.exe).Path
+
+      - name: Keep the crash dump of a stop that went wrong
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zabbix_proxy-stop-dump-${{ runner.os }}-${{ github.job }}-${{ strategy.job-index }}
+          path: ${{ runner.temp }}/../zbx_stop_dumps/*.dmp
+          if-no-files-found: ignore
 
       - name: Install the package and take it apart again
         shell: pwsh
