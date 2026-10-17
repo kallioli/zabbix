@@ -361,6 +361,12 @@ jobs:
       - name: Collect through a stand-in server
         run: python build/win32/tests/proxy_selftest.py --timeout 120
 
+      # Thirty ICMP hosts on one pinger, a few of them down, must leave the
+      # pinger mostly idle: a production proxy with 27 hosts and three pingers
+      # once sat at half busy because every host was pinged in a run of its own.
+      - name: Ping thirty hosts on one pinger
+        run: python build/win32/tests/pinger_load_check.py --hosts 30 --dead 3 --pingers 1 --minutes 4
+
       # Registering a service needs an elevated prompt, which is why this went
       # unchecked long enough for the proxy to install one the service manager
       # refused to start. Runners are elevated, so it can be checked here.
