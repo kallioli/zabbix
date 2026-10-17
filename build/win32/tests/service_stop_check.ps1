@@ -58,7 +58,7 @@ $failures = @()
 # A process that dies during the stop leaves no trace in the proxy log beyond
 # its last line. Ask Windows Error Reporting for a dump of it, and read the
 # dump back with cdb when the debugging tools are on the machine.
-$dumps = Join-Path ([IO.Path]::GetTempPath()) 'zbx_stop_dumps'
+$dumps = Join-Path $(if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { [IO.Path]::GetTempPath() }) 'zbx_stop_dumps'
 New-Item -ItemType Directory -Force -Path $dumps | Out-Null
 $werKey = 'HKLM:\SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps\zabbix_proxy.exe'
 $werKeyExisted = Test-Path $werKey
@@ -69,8 +69,8 @@ Set-ItemProperty -Path $werKey -Name DumpCount -Value 3 -Type DWord
 
 function Read-Dump($dump) {
 	$cdb = @(
-		'C:\Program Files (x86)\Windows Kits\Debuggersd\cdb.exe'
-		'C:\Program Files\Windows Kits\Debuggersd\cdb.exe'
+		'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\cdb.exe'
+		'C:\Program Files\Windows Kits\10\Debuggers\x64\cdb.exe'
 	) | Where-Object { Test-Path $_ } | Select-Object -First 1
 	if (-not $cdb) {
 		Write-Host '    (cdb.exe not on this machine; the dump is kept for analysis elsewhere)'

@@ -384,7 +384,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: zabbix_proxy-stop-dump-${{ runner.os }}-${{ github.job }}-${{ strategy.job-index }}
-          path: ${{ runner.temp }}/../zbx_stop_dumps/*.dmp
+          path: ${{ runner.temp }}/zbx_stop_dumps/*.dmp
           if-no-files-found: ignore
 
       # The package ships snmptrapd.exe as the SNMP trap receiver. It is built by
@@ -546,7 +546,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: zabbix_proxy-stop-dump-${{ runner.os }}-${{ github.job }}-${{ strategy.job-index }}
-          path: ${{ runner.temp }}/../zbx_stop_dumps/*.dmp
+          path: ${{ runner.temp }}/zbx_stop_dumps/*.dmp
           if-no-files-found: ignore
 
       - name: Install the package and take it apart again
