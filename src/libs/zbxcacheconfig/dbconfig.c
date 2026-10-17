@@ -651,7 +651,19 @@ static zbx_uint64_t	get_item_nextcheck_seed(ZBX_DC_ITEM *item, zbx_uint64_t inte
 				SUCCEED == cmp_key_id(key, ZBX_SERVER_ICMPPINGLOSS_KEY) ||
 				SUCCEED == cmp_key_id(key, ZBX_SERVER_ICMPPINGRETRY_KEY))
 		{
+#ifdef _WINDOWS
+			/* On Unix the ICMP items of one interface share a seed so that one fping run covers  */
+			/* the host, and hosts are spread over the interval: an fping run for the one or two  */
+			/* hosts due at each wake-up, each costing (count - 1) * period plus the last wait,   */
+			/* two seconds and more with the defaults, whatever the number of hosts. A few dozen  */
+			/* hosts keep a pinger busy for most of every minute. The Windows build pings a whole */
+			/* batch concurrently through the ICMP driver, so every ICMP item with the same       */
+			/* interval is due at the same second and one call covers all the hosts: the cost of  */
+			/* a minute is that of one run.                                                       */
+			return 0;
+#else
 			return interfaceid;
+#endif
 		}
 	}
 

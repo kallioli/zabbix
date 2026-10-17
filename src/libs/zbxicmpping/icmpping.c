@@ -30,8 +30,10 @@ ZBX_VECTOR_IMPL(fping_host, zbx_fping_host_t)
 #ifdef _WINDOWS
 /* On Unix ICMP checks drive the external fping utility. It has no Windows port, so this build talks to the ICMP */
 /* driver through iphlpapi (IcmpSendEcho2Ex/Icmp6SendEcho2) instead, keeping fping's option semantics: requests   */
-/* are sent in rounds separated by the period, each round completes within the per-packet timeout, and a reply    */
-/* arriving from an address other than the target counts as a response only when redirects are allowed.           */
+/* are sent in rounds, the period is measured from one round's sends to the next round's sends (fping's -p, so a  */
+/* target that never answers costs no more than the period between its packets), each round completes within the */
+/* per-packet timeout, and a reply arriving from an address other than the target counts as a response only when  */
+/* redirects are allowed.                                                                                          */
 
 #include <iphlpapi.h>
 #include <icmpapi.h>
@@ -317,14 +319,25 @@ int	zbx_ping(zbx_fping_host_t *hosts, int hosts_count, int requests_count, int p
 	if (0 > retries)
 	{
 		/* fping -C mode: a fixed number of rounds, statistics per request */
-		int	round;
+		int		round;
+		ULONGLONG	round_start = 0;
 
 		for (round = 0; round < requests_count; round++)
 		{
 			int	indexes_count = 0;
 
 			if (0 < round)
-				Sleep((DWORD)period);
+			{
+				/* the next packets go out one period after the previous ones went out, not one */
+				/* period after the previous round finished waiting: a target that does not     */
+				/* answer must not stretch the run by its timeout at every round                */
+				ULONGLONG	now = GetTickCount64(), next = round_start + (ULONGLONG)period;
+
+				if (now < next)
+					Sleep((DWORD)(next - now));
+			}
+
+			round_start = GetTickCount64();
 
 			for (i = 0; i < hosts_count; i++)
 			{

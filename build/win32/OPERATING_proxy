@@ -90,6 +90,24 @@ on a fast LAN reads as 0.5 ms rather than its true sub-millisecond value, and
 no fping binary or FpingLocation setting is involved. SourceIP is honoured.
 No elevation is needed; the ICMP driver is open to ordinary processes.
 
+ICMP checks are scheduled differently from a Unix proxy, and this changes how
+many pingers are needed. A Unix proxy spreads hosts over the minute and runs
+fping for whichever hosts are due when a pinger wakes up, usually one or two;
+each run lasts (count - 1) x interval plus the last reply, two seconds and
+more with the template defaults (3 packets, 1 s apart), so thirty hosts keep
+one pinger busy for most of every minute and the
+"utilization of icmp pinger processes over 75%" trigger fires on a nearly
+idle proxy. Here every ICMP item with the same update interval is due at the
+same second and one call to the driver pings all those hosts at once (up to
+128 items, forty-odd hosts with the three template items, per call). The
+pinger is busy for one run per minute, a few percent, however many hosts
+there are. Past forty-odd hosts the calls follow each other; raise
+StartPingers when a pinger stays above a quarter busy or when the queue
+shows ICMP items more than ten seconds late. Item parameters (count,
+interval, size, timeout, icmppingretry's retries and backoff) are applied as
+fping would apply them: the interval is the time between two packets to the
+same host, and a host that never answers costs the run no more than that.
+
 The workers Zabbix forks on Unix are threads here, in one process. Practical
 consequences: one entry in Task Manager rather than fifty, shared memory that is
 ordinary heap, and a runtime control target that cannot be narrowed to a single
