@@ -152,6 +152,21 @@ running whichever way you installed:
 
 That restarts the service twice, a minute apart, before giving up.
 
+Stopping is ordinary: Stop-Service, sc stop or a reboot. The proxy answers the
+request on its main thread the way the Unix build answers SIGTERM: the workers
+are told to finish, the history cache is written to the buffer, and the log
+closes with
+
+    Zabbix Proxy received stop request.
+    ...
+    Zabbix Proxy stopped. Zabbix 7.4.15 (revision ...).
+
+Only then does the service report itself stopped, so the System log carries
+event 7036 "entered the stopped state" and nothing else. If you ever see event
+7031 "terminated unexpectedly" for a stop you asked for, the proxy died during
+its shutdown: the log above tells where, and the recovery actions, if
+configured, will have restarted it.
+
 
 Where things live
 -----------------
