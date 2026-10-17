@@ -1971,5 +1971,5 @@ ZBX_THREAD_ENTRY(zbx_discoverer_thread, args)
 #endif
 	zbx_setproctitle("%s #%d [terminated]", get_process_type_string(info->process_type), info->process_num);
 
-	exit(EXIT_SUCCESS);
+	zbx_worker_exit(EXIT_SUCCESS);
 }

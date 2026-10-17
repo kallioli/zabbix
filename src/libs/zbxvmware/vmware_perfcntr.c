@@ -15,6 +15,7 @@
 #include "vmware_perfcntr.h"
 
 #include "zbxcommon.h"
+#include "zbxthreads.h"
 
 #if defined(HAVE_LIBXML2) && defined(HAVE_LIBCURL)
 
@@ -1531,7 +1532,7 @@ out:
 				" up to " ZBX_FS_UI64 " bytes of free VMwareCache memory. Available " ZBX_FS_UI64
 				" bytes. Increase value of VMwareCacheSize", perf_data_sz,
 				vmware_shmem_get_vmware_mem()->free_size);
-		exit(EXIT_SUCCESS);
+		zbx_worker_exit(EXIT_SUCCESS);
 	}
 	else
 	{

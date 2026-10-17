@@ -76,6 +76,16 @@
 	#define zbx_thread_kill_fatal(h)	kill(h, SIGHUP)
 #endif	/* _WINDOWS */
 
+/* Ends a worker that has finished on its own: a process on Unix, where this is exit(), and a thread on      */
+/* Windows, where exit() would end the whole program, every other worker and the service with it. Unlike      */
+/* zbx_thread_exit() it keeps exit()'s semantics on Unix and can be used at any depth of the worker, as both   */
+/* forms are declared noreturn.                                                                                */
+#if defined(_WINDOWS) || defined(__MINGW32__)
+	#define zbx_worker_exit(status)		_endthreadex((unsigned int)(status))
+#else
+	#define zbx_worker_exit(status)		exit((int)(status))
+#endif
+
 typedef struct
 {
 	unsigned char	program_type;

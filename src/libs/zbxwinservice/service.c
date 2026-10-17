@@ -24,6 +24,7 @@
 
 static	SERVICE_STATUS		serviceStatus;
 static	SERVICE_STATUS_HANDLE	serviceHandle;
+static	CRITICAL_SECTION	serviceStatus_lock;	/* the handler thread and the stopping thread both report */
 
 #define ZBX_APP_STOPPED	0
 #define ZBX_APP_RUNNING	1
@@ -50,6 +51,54 @@ void	ZBX_DO_EXIT(void)
 /* free resources allocated by MAIN_ZABBIX_ENTRY() */
 void	zbx_free_service_resources(void);
 
+/* How a stop request is carried out. By default (the agent) the control handler tears the program down   */
+/* itself through zbx_free_service_resources() and reports the service stopped, while MAIN_ZABBIX_ENTRY() */
+/* never returns. A program whose MAIN_ZABBIX_ENTRY() returns once ZBX_IS_RUNNING() is cleared (the      */
+/* proxy) selects the other mode: the handler only flags the stop and returns, the main thread runs the   */
+/* ordinary shutdown on its way out of MAIN_ZABBIX_ENTRY(), and ServiceEntry() reports the service       */
+/* stopped once it is back. The process exits through main() with status 0.                              */
+static int	stop_from_main_thread = 0;
+
+#define ZBX_SERVICE_STOP_WAIT_HINT	30000	/* ms the service manager is told a stop may take */
+
+void	zbx_service_stop_from_main_thread(void)
+{
+	stop_from_main_thread = 1;
+}
+
+/******************************************************************************
+ *                                                                            *
+ * Purpose: tells the service manager that a stop in progress is still        *
+ *          making progress                                                   *
+ *                                                                            *
+ * Comments: meant for the thread carrying out the stop, between its phases;  *
+ *           a no-op when the program is not running as a service             *
+ *                                                                            *
+ ******************************************************************************/
+void	zbx_service_report_stop_pending(void)
+{
+	if (NULL == serviceHandle)
+		return;
+
+	EnterCriticalSection(&serviceStatus_lock);
+	serviceStatus.dwCurrentState = SERVICE_STOP_PENDING;
+	serviceStatus.dwCheckPoint++;
+	serviceStatus.dwWaitHint = ZBX_SERVICE_STOP_WAIT_HINT;
+	SetServiceStatus(serviceHandle, &serviceStatus);
+	LeaveCriticalSection(&serviceStatus_lock);
+}
+
+static void	service_report_stopped(void)
+{
+	EnterCriticalSection(&serviceStatus_lock);
+	serviceStatus.dwCurrentState	= SERVICE_STOPPED;
+	serviceStatus.dwWaitHint	= 0;
+	serviceStatus.dwCheckPoint	= 0;
+	serviceStatus.dwWin32ExitCode	= 0;
+	SetServiceStatus(serviceHandle, &serviceStatus);
+	LeaveCriticalSection(&serviceStatus_lock);
+}
+
 static void	parent_signal_handler(int sig)
 {
 	switch (sig)
@@ -58,31 +107,27 @@ static void	parent_signal_handler(int sig)
 		case SIGTERM:
 			ZBX_DO_EXIT();
 			zabbix_log(LOG_LEVEL_INFORMATION, "Got signal. Exiting ...");
-			zbx_on_exit_cb(SUCCEED, NULL);
+
+			/* in the foreground the same split applies as for a service stop: the console thread */
+			/* only flags the stop, the main thread runs the shutdown on its way out              */
+			if (0 == stop_from_main_thread)
+				zbx_on_exit_cb(SUCCEED, NULL);
 			break;
 	}
 }
 
 static VOID WINAPI	ServiceCtrlHandler(DWORD ctrlCode)
 {
-	serviceStatus.dwServiceType		= SERVICE_WIN32_OWN_PROCESS;
-	serviceStatus.dwCurrentState		= SERVICE_RUNNING;
-	serviceStatus.dwControlsAccepted	= SERVICE_ACCEPT_STOP | SERVICE_ACCEPT_SHUTDOWN;
-	serviceStatus.dwWin32ExitCode		= 0;
-	serviceStatus.dwServiceSpecificExitCode	= 0;
-	serviceStatus.dwCheckPoint		= 0;
-	serviceStatus.dwWaitHint		= 0;
-
 	switch (ctrlCode)
 	{
 		case SERVICE_CONTROL_STOP:
-			zabbix_log(LOG_LEVEL_INFORMATION, "Zabbix Agent received stop request.");
+			zabbix_log(LOG_LEVEL_INFORMATION, "%s received stop request.", get_zbx_service_name_cb());
 			break;
 		case SERVICE_CONTROL_SHUTDOWN:
-			zabbix_log(LOG_LEVEL_INFORMATION, "Zabbix Agent received shutdown request.");
+			zabbix_log(LOG_LEVEL_INFORMATION, "%s received shutdown request.", get_zbx_service_name_cb());
 			break;
 		default:
-			zabbix_log(LOG_LEVEL_DEBUG, "Zabbix Agent received request:%u.", ctrlCode);
+			zabbix_log(LOG_LEVEL_DEBUG, "%s received request:%u.", get_zbx_service_name_cb(), ctrlCode);
 			break;
 	}
 
@@ -90,25 +135,43 @@ static VOID WINAPI	ServiceCtrlHandler(DWORD ctrlCode)
 	{
 		case SERVICE_CONTROL_STOP:
 		case SERVICE_CONTROL_SHUTDOWN:
+			EnterCriticalSection(&serviceStatus_lock);
+
+			if (SERVICE_STOP_PENDING == serviceStatus.dwCurrentState)
+			{
+				/* asked again while already stopping: say so, do not start over */
+				serviceStatus.dwCheckPoint++;
+				SetServiceStatus(serviceHandle, &serviceStatus);
+				LeaveCriticalSection(&serviceStatus_lock);
+				return;
+			}
+
 			serviceStatus.dwCurrentState	= SERVICE_STOP_PENDING;
-			serviceStatus.dwWaitHint	= 4000;
+			serviceStatus.dwCheckPoint	= 0;
+			serviceStatus.dwWaitHint	= 0 != stop_from_main_thread ? ZBX_SERVICE_STOP_WAIT_HINT : 4000;
 			SetServiceStatus(serviceHandle, &serviceStatus);
+			LeaveCriticalSection(&serviceStatus_lock);
 
 			/* notify other threads and allow them to terminate */
 			ZBX_DO_EXIT();
+
+			/* the main thread carries out the stop and ServiceEntry() reports it; this handler */
+			/* has to be back within the service manager's 30 second limit whatever the shutdown */
+			/* takes, so it does not wait here                                                   */
+			if (0 != stop_from_main_thread)
+				return;
+
 			zbx_free_service_resources();
 
-			serviceStatus.dwCurrentState	= SERVICE_STOPPED;
-			serviceStatus.dwWaitHint	= 0;
-			serviceStatus.dwCheckPoint	= 0;
-			serviceStatus.dwWin32ExitCode	= 0;
-
-			break;
+			service_report_stopped();
+			return;
 		default:
-			break;
+			/* report the state as it is, which is RUNNING or a stop in progress */
+			EnterCriticalSection(&serviceStatus_lock);
+			SetServiceStatus(serviceHandle, &serviceStatus);
+			LeaveCriticalSection(&serviceStatus_lock);
+			return;
 	}
-
-	SetServiceStatus(serviceHandle, &serviceStatus);
 }
 
 static VOID WINAPI	ServiceEntry(DWORD argc, wchar_t **argv)
@@ -117,6 +180,8 @@ static VOID WINAPI	ServiceEntry(DWORD argc, wchar_t **argv)
 
 	ZBX_UNUSED(argc);
 	ZBX_UNUSED(argv);
+
+	InitializeCriticalSection(&serviceStatus_lock);
 
 	wservice_name = zbx_utf8_to_unicode(get_zbx_service_name_cb());
 	serviceHandle = RegisterServiceCtrlHandler(wservice_name, ServiceCtrlHandler);
@@ -139,6 +204,11 @@ static VOID WINAPI	ServiceEntry(DWORD argc, wchar_t **argv)
 	SetServiceStatus(serviceHandle, &serviceStatus);
 
 	MAIN_ZABBIX_ENTRY(0);
+
+	/* only a program that stops from its main thread gets here: its shutdown is complete, the service is */
+	/* stopped, and StartServiceCtrlDispatcher() returns in main() so that the process exits with status 0 */
+	if (0 != stop_from_main_thread)
+		service_report_stopped();
 }
 
 void	zbx_service_start(int flags)

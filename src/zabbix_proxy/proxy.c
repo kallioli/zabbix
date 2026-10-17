@@ -1235,23 +1235,17 @@ static void	zbx_free_config(void)
 #ifdef _WINDOWS
 /******************************************************************************
  *                                                                            *
- * Purpose: releases what MAIN_ZABBIX_ENTRY() allocated                       *
+ * Purpose: hook the service control handler calls to tear a program down     *
  *                                                                            *
- * Comments: the service control handler calls this after ZBX_DO_EXIT(), so   *
- *           that the workers finish before the service reports itself        *
- *           stopped. The rest of the teardown happens in zbx_on_exit(), on   *
- *           the way out of MAIN_ZABBIX_ENTRY().                              *
+ * Comments: the proxy stops from its main thread instead (see                *
+ *           zbx_service_stop_from_main_thread()): the handler only clears    *
+ *           ZBX_IS_RUNNING(), the main loop ends and zbx_on_exit() runs the  *
+ *           ordinary shutdown, so there is nothing to release here. The      *
+ *           symbol is kept because the shared service code links against it. *
  *                                                                            *
  ******************************************************************************/
 void	zbx_free_service_resources(void)
 {
-	if (NULL != zbx_threads)
-	{
-		zbx_threads_kill_and_wait(zbx_threads, threads_flags, zbx_threads_num, SUCCEED);
-
-		zbx_free(zbx_threads);
-		zbx_free(threads_flags);
-	}
 }
 #endif
 
@@ -1272,6 +1266,10 @@ static void	zbx_on_exit(int ret, void *on_exit_args)
 #ifdef HAVE_PTHREAD_PROCESS_SHARED
 	zbx_locks_disable();
 #endif
+#ifdef _WINDOWS
+	/* the workers are gone; the history cache flush below is the other long phase of the stop */
+	zbx_service_report_stop_pending();
+#endif
 	zbx_free_metrics();
 	zbx_ipc_service_free_env();
 
@@ -1281,6 +1279,9 @@ static void	zbx_on_exit(int ret, void *on_exit_args)
 	zbx_pb_destroy();
 	zbx_free_configuration_cache();
 	zbx_db_close();
+#ifdef _WINDOWS
+	zbx_service_report_stop_pending();
+#endif
 
 	zbx_db_deinit();
 
@@ -1317,7 +1318,21 @@ static void	zbx_on_exit(int ret, void *on_exit_args)
 	zbx_config_tls_free(zbx_config_tls);
 	zbx_db_config_free(zbx_db_config);
 
+#ifdef _WINDOWS
+	/* A stop asked for by the operator (service control or Ctrl+C) ends by returning: MAIN_ZABBIX_ENTRY() */
+	/* hands back to ServiceEntry(), which reports the service stopped, and the process leaves through     */
+	/* main() with status 0. Calling exit() here instead would end the process before that report and the */
+	/* service manager would log the stop as a crash and run its recovery actions.                         */
+	/* An exit the operator did not ask for (a worker died, an initialisation that gave up) still exits    */
+	/* with a failure status, so that the service manager does treat it as a crash and can restart the    */
+	/* proxy.                                                                                              */
+	if (SUCCEED == ret && 0 == ZBX_IS_RUNNING())
+		return;
+
+	exit(EXIT_FAILURE);
+#else
 	exit(EXIT_SUCCESS);
+#endif
 }
 
 /******************************************************************************
@@ -1558,6 +1573,9 @@ int	main(int argc, char **argv)
 #ifdef _WINDOWS
 	zbx_service_init(get_zbx_service_name, get_zbx_event_source);
 
+	/* a stop request only clears ZBX_IS_RUNNING(); the main loop below then runs zbx_on_exit() itself */
+	zbx_service_stop_from_main_thread();
+
 	switch (t.task)
 	{
 		case ZBX_TASK_INSTALL_SERVICE:
@@ -1678,7 +1696,7 @@ int	MAIN_ZABBIX_ENTRY(int flags)
 	zbx_socket_t				listen_sock = {0};
 	char					*error = NULL;
 	int					i;
-	pid_t					pid;
+	pid_t					pid = 0;	/* only waitpid() assigns it; the Windows loop never does */
 	zbx_rtc_t				rtc;
 	zbx_timespec_t				rtc_timeout = {1, 0};
 	zbx_on_exit_args_t			exit_args = {.rtc = NULL, .listen_sock = NULL};
@@ -2261,7 +2279,9 @@ int	MAIN_ZABBIX_ENTRY(int flags)
 #ifdef _WINDOWS
 		/* A worker that has exited leaves its thread signalled, which is what waitpid() reports on the other */
 		/* platform. Polling each handle rather than WaitForMultipleObjects() avoids its limit of 64 objects, */
-		/* which a proxy can exceed. */
+		/* which a proxy can exceed. Once a stop has been requested the workers are expected to exit, so they */
+		/* are no longer polled: the loop condition ends the loop and zbx_on_exit() joins them. */
+		if (ZBX_IS_RUNNING())
 		{
 			int	n;
 

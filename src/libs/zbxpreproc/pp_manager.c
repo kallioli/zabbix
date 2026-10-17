@@ -1535,7 +1535,7 @@ ZBX_THREAD_ENTRY(zbx_pp_manager_thread, args)
 
 	zbx_setproctitle("%s #%d [terminated]", get_process_type_string(process_type), process_num);
 
-	exit(EXIT_SUCCESS);
+	zbx_worker_exit(EXIT_SUCCESS);
 #undef STAT_INTERVAL
 #undef PP_MANAGER_DELAY_SEC
 #undef PP_MANAGER_DELAY_NS

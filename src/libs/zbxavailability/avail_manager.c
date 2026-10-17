@@ -588,7 +588,7 @@ ZBX_THREAD_ENTRY(zbx_availability_manager_thread, args)
 
 	zbx_setproctitle("%s #%d [terminated]", get_process_type_string(process_type), process_num);
 
-	exit(EXIT_SUCCESS);
+	zbx_worker_exit(EXIT_SUCCESS);
 #undef STAT_INTERVAL
 #undef AVAILABILITY_MANAGER_DELAY
 #undef AVAILABILITY_MANAGER_FLUSH_DELAY_SEC
