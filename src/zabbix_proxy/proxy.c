@@ -2607,33 +2607,6 @@ int	MAIN_ZABBIX_ENTRY(int flags)
 
 #ifdef _WINDOWS
 		/* A worker that has exited leaves its thread signalled, which is what waitpid() reports on the other */
-		/* platform. Polling each handle rather than WaitForMultipleObjects() avoids its limit of 64 objects, */
-		/* which a proxy can exceed. Once a stop has been requested the workers are expected to exit, so they */
-		/* are no longer polled: the loop condition ends the loop and zbx_on_exit() joins them. */
-		if (ZBX_IS_RUNNING())
-		{
-			int	n;
-
-			for (n = 0; n < zbx_threads_num; n++)
-			{
-				if (ZBX_THREAD_HANDLE_NULL == zbx_threads[n])
-					continue;
-
-				if (WAIT_OBJECT_0 == WaitForSingleObject(zbx_threads[n], 0))
-				{
-					zabbix_log(LOG_LEVEL_CRIT, "worker thread #%d has terminated"
-							" unexpectedly", n);
-					zbx_set_exiting_with_fail();
-					break;
-				}
-			}
-
-			if (n < zbx_threads_num)
-				break;
-		}
-#else
-#ifdef _WINDOWS
-		/* A worker that has exited leaves its thread signalled, which is what waitpid() reports on the other */
 		/* platform. Once a stop has been requested the workers are expected to exit, so they are no longer    */
 		/* polled: the loop condition ends the loop and zbx_on_exit() joins them.                              */
 		if (ZBX_IS_RUNNING() && SUCCEED == zbx_waitpid_nohang(zbx_threads, zbx_threads_num))
@@ -2651,7 +2624,6 @@ int	MAIN_ZABBIX_ENTRY(int flags)
 				break;
 			}
 		}
-#endif
 #endif
 
 		if (-1 == pid && EINTR != errno)

@@ -429,6 +429,8 @@
 
 #ifdef HAVE_SETJMP_H
 #	include <setjmp.h>
+#endif
+
 #ifdef _WINDOWS
 /* rpcndr.h, reached through winsock2.h and Iphlpapi.h, defines 'interface' as a macro. Zabbix uses that word as an */
 /* identifier in about a thousand places - zbx_dc_interface_t interface; and the like - which the substitution turns */
