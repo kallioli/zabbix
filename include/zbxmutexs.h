@@ -38,6 +38,7 @@
 #	define ZBX_MUTEX_REMOTE_COMMANDS	zbx_mutex_create_per_process_name(L"ZBX_MUTEX_REMOTE_COMMANDS")
 #	define ZBX_MUTEX_PROXY_BUFFER		zbx_mutex_create_per_process_name(L"ZBX_MUTEX_PROXY_BUFFER")
 #	define ZBX_MUTEX_VPS_MONITOR		zbx_mutex_create_per_process_name(L"ZBX_MUTEX_VPS_MONITOR")
+#	define ZBX_MUTEX_DBCONN_POOL		zbx_mutex_create_per_process_name(L"ZBX_MUTEX_DBCONN_POOL")
 
 typedef wchar_t * zbx_mutex_name_t;
 typedef HANDLE zbx_mutex_t;

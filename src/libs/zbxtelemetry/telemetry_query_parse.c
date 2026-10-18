@@ -85,10 +85,11 @@ static int	tq_read_int_enum(const char *p, char **buf, size_t *buf_alloc, tq_int
 	return SUCCEED;
 }
 
-#define TQ_INT_ENUM_SET_FUNC_DEF(__set_func_name, __match_func, __type)	\
-static int	__set_func_name(int __x, void *__out)		\
+/* the parameter names keep clear of the double underscore: __out is an SAL annotation macro in the MSVC headers */
+#define TQ_INT_ENUM_SET_FUNC_DEF(set_func_name_, match_func_, type_)	\
+static int	set_func_name_(int x_, void *out_)			\
 {								\
-	return (int)(*(__type *)__out = __match_func(__x));	\
+	return (int)(*(type_ *)out_ = match_func_(x_));		\
 }
 
 static zbx_tq_signal_type_t	tq_match_signal_type(int x)

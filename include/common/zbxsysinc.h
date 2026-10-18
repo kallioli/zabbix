@@ -469,6 +469,9 @@ typedef int	pid_t;
 
 /* implemented in src/libs/zbxwin/posix_win.c */
 struct timeval;
+#	define CLOCK_REALTIME	0
+#	define CLOCK_MONOTONIC	1
+int		clock_gettime(int clk_id, struct timespec *tp);
 int		nanosleep(const struct timespec *req, struct timespec *rem);
 unsigned int	sleep(unsigned int seconds);
 int		gettimeofday(struct timeval *tv, void *tz);

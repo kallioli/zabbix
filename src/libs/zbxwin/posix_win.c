@@ -78,6 +78,51 @@ int	gettimeofday(struct timeval *tv, void *tz)
 
 /******************************************************************************
  *                                                                            *
+ * Purpose: the two clocks Zabbix reads through clock_gettime()               *
+ *                                                                            *
+ * Comments: CLOCK_MONOTONIC is the boot-relative tick count, which does not  *
+ *           move with the wall clock; CLOCK_REALTIME is the system time.     *
+ *           Both are good to the millisecond, which is what the callers      *
+ *           (the trends cache, the expression evaluator's timers) need.      *
+ *                                                                            *
+ ******************************************************************************/
+int	clock_gettime(int clk_id, struct timespec *tp)
+{
+	if (NULL == tp)
+	{
+		errno = EFAULT;
+		return -1;
+	}
+
+	if (CLOCK_MONOTONIC == clk_id)
+	{
+		ULONGLONG	ms = GetTickCount64();
+
+		tp->tv_sec = (time_t)(ms / 1000);
+		tp->tv_nsec = (long)(ms % 1000) * 1000000L;
+
+		return 0;
+	}
+
+	if (CLOCK_REALTIME == clk_id)
+	{
+		struct timeval	tv;
+
+		if (0 != gettimeofday(&tv, NULL))
+			return -1;
+
+		tp->tv_sec = tv.tv_sec;
+		tp->tv_nsec = tv.tv_usec * 1000L;
+
+		return 0;
+	}
+
+	errno = EINVAL;
+	return -1;
+}
+
+/******************************************************************************
+ *                                                                            *
  * Purpose: parses a time according to a format string                        *
  *                                                                            *
  * Comments: covers the conversions this tree actually uses - %Y %m %d %H %M  *
