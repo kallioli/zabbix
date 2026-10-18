@@ -9,7 +9,7 @@ Most of the metrics are collected in one go, thanks to Zabbix bulk data collecti
 
 ## Requirements
 
-Zabbix version: 7.4 and higher.
+Zabbix version: 8.0 and higher.
 
 ## Tested versions
 
@@ -18,7 +18,7 @@ This template has been tested on:
 
 ## Configuration
 
-> Zabbix should be configured according to the instructions in the [Templates out of the box](https://www.zabbix.com/documentation/7.4/manual/config/templates_out_of_the_box) section.
+> Zabbix should be configured according to the instructions in the [Templates out of the box](https://www.zabbix.com/documentation/8.0/manual/config/templates_out_of_the_box) section.
 
 ## Setup
 
@@ -33,9 +33,9 @@ You must set {$TRAVIS.API.TOKEN} and {$TRAVIS.API.URL} macros.
 
 |Name|Description|Default|
 |----|-----------|-------|
-|{$TRAVIS.API.TOKEN}|<p>Travis API Token</p>||
-|{$TRAVIS.API.URL}|<p>Travis API URL</p>|`api.travis-ci.com`|
-|{$TRAVIS.BUILDS.SUCCESS.PERCENT}|<p>Percent of successful builds in the repo (for trigger expression)</p>|`80`|
+|{$TRAVIS.API.TOKEN}|<p>Travis API Token.</p>||
+|{$TRAVIS.API.URL}|<p>Travis API URL.</p>|`api.travis-ci.com`|
+|{$TRAVIS.BUILDS.SUCCESS.PERCENT}|<p>Percent of successful builds in the repo (for trigger expression).</p>|`80`|
 
 ### Items
 

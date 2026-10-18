@@ -185,7 +185,7 @@ static zbx_timekeeper_sync_t	*timekeeper_create_thread_sync(void)
 	if (0 != (err = zbx_tk_mutex_init(mutex)))
 	{
 		zabbix_log(LOG_LEVEL_CRIT, "cannot initialize timekeeper mutex: %s", zbx_strerror(err));
-		exit(EXIT_FAILURE);
+		zbx_exit(EXIT_FAILURE);
 	}
 
 	zbx_timekeeper_sync_init(sync, timekeeper_thread_lock, timekeeper_thread_unlock, (void *)mutex);
@@ -324,9 +324,14 @@ zbx_uint64_t	zbx_timekeeper_update(zbx_timekeeper_t *timekeeper, int index, unsi
 
 	if (0 == unit->cache.ticks_flush)
 	{
+		timekeeper->sync->lock(timekeeper->sync->data);
+
 		unit->cache.ticks_flush = ticks;
 		unit->cache.state = state;
 		unit->cache.ticks = ticks;
+
+		timekeeper->sync->unlock(timekeeper->sync->data);
+
 		return 0;
 	}
 
@@ -419,15 +424,17 @@ void	zbx_timekeeper_collect(zbx_timekeeper_t *timekeeper)
 
 		if (unit->cache.ticks_flush < timekeeper->ticks_sync)
 		{
+			volatile unsigned char	state = unit->cache.state;
+
 			/* If the process local cache was not flushed during the last timekeeper       */
 			/* data collection interval update the process statistics based on the current */
 			/* process state and ticks passed during the collection interval.              */
 			/* This will serve as good estimate until the timekeeper cache is flushed and  */
 			/* its counters adjusted by those values.                                      */
-			unit->counter[unit->cache.state] += (zbx_uint64_t)ticks_done;
+			unit->counter[state] += (zbx_uint64_t)ticks_done;
 
 			/* store the estimated ticks to adjust the counters when flushing local cache */
-			unit->counter_used[unit->cache.state] += (zbx_uint64_t)ticks_done;
+			unit->counter_used[state] += (zbx_uint64_t)ticks_done;
 		}
 
 		for (int s = 0; s < ZBX_PROCESS_STATE_COUNT; s++)
@@ -627,7 +634,6 @@ out:
 	return ret;
 }
 
-
 /******************************************************************************
  *                                                                            *
  * Purpose: get raw counters for all processes/threads                        *
@@ -668,4 +674,19 @@ zbx_timekeeper_state_t	*zbx_timekeeper_get_counters(zbx_timekeeper_t *timekeeper
 		zbx_free(units);
 
 	return units;
+}
+
+/******************************************************************************
+ *                                                                            *
+ * Purpose: reset timekeeper unit at specified index                          *
+ *                                                                            *
+ * Parameters: timekeeper - [IN] timekeeper data                              *
+ *             index      - [IN] unit index to reset                          *
+ *                                                                            *
+ ******************************************************************************/
+void	zbx_timekeeper_reset(zbx_timekeeper_t *timekeeper, int index)
+{
+	timekeeper->sync->lock(timekeeper->sync->data);
+	memset(&timekeeper->units[index], 0, sizeof(zbx_timekeeper_unit_t));
+	timekeeper->sync->unlock(timekeeper->sync->data);
 }

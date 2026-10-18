@@ -27,6 +27,7 @@ final class CHistFunctionData {
 
 	/**
 	 * Known history functions along with definition of parameters.
+	 * If updated, must be aligned with CTriggerConditionFunctionData.
 	 *
 	 * @var array
 	 */
@@ -121,6 +122,11 @@ final class CHistFunctionData {
 		],
 		'item_count' => [
 			['rules' => [['type' => 'query']]]
+		],
+		'jsonpath' => [
+			['rules' => [['type' => 'query']]],
+			['rules' => [['type' => 'period', 'mode' => self::PERIOD_MODE_DEFAULT]]],
+			[]
 		],
 		'kurtosis' => [
 			['rules' => [['type' => 'query']]],
@@ -301,6 +307,11 @@ final class CHistFunctionData {
 		'varsamp' => [
 			['rules' => [['type' => 'query']]],
 			['rules' => [['type' => 'period', 'mode' => self::PERIOD_MODE_DEFAULT]]]
+		],
+		'xmlxpath' => [
+			['rules' => [['type' => 'query']]],
+			['rules' => [['type' => 'period', 'mode' => self::PERIOD_MODE_DEFAULT]]],
+			[]
 		]
 	];
 
@@ -349,6 +360,22 @@ final class CHistFunctionData {
 			]
 		],
 		'exists_foreach' => [
+			[
+				'type' => 'require_math_parent',
+				'in' => ['avg', 'kurtosis', 'mad', 'max', 'min', 'skewness', 'stddevpop', 'stddevsamp', 'sum',
+					'sumofsquares', 'varpop', 'varsamp'
+				],
+				'parameters' => ['count' => 1],
+				'position' => 0
+			],
+			[
+				'type' => 'require_math_parent',
+				'in' => ['count'],
+				'parameters' => ['min' => 1, 'max' => 3],
+				'position' => 0
+			]
+		],
+		'jsonpath' => [
 			[
 				'type' => 'require_math_parent',
 				'in' => ['avg', 'kurtosis', 'mad', 'max', 'min', 'skewness', 'stddevpop', 'stddevsamp', 'sum',
@@ -427,6 +454,22 @@ final class CHistFunctionData {
 				'parameters' => ['min' => 1, 'max' => 3],
 				'position' => 0
 			]
+		],
+		'xmlxpath' => [
+			[
+				'type' => 'require_math_parent',
+				'in' => ['avg', 'kurtosis', 'mad', 'max', 'min', 'skewness', 'stddevpop', 'stddevsamp', 'sum',
+					'sumofsquares', 'varpop', 'varsamp'
+				],
+				'parameters' => ['count' => 1],
+				'position' => 0
+			],
+			[
+				'type' => 'require_math_parent',
+				'in' => ['count'],
+				'parameters' => ['min' => 1, 'max' => 3],
+				'position' => 0
+			]
 		]
 	];
 
@@ -453,6 +496,7 @@ final class CHistFunctionData {
 	private const ITEM_VALUE_TYPES_ALL = [ITEM_VALUE_TYPE_FLOAT, ITEM_VALUE_TYPE_UINT64, ITEM_VALUE_TYPE_STR,
 		ITEM_VALUE_TYPE_TEXT, ITEM_VALUE_TYPE_LOG
 	];
+	private const ITEM_VALUE_TYPES_STRING = [ITEM_VALUE_TYPE_STR, ITEM_VALUE_TYPE_LOG, ITEM_VALUE_TYPE_TEXT];
 
 	/**
 	 * Known history functions along with supported item value types.
@@ -476,6 +520,7 @@ final class CHistFunctionData {
 		'forecast' => self::ITEM_VALUE_TYPES_NUM,
 		'fuzzytime' => self::ITEM_VALUE_TYPES_NUM,
 		'item_count' => self::ITEM_VALUE_TYPES_ALL,
+		'jsonpath' => self::ITEM_VALUE_TYPES_STRING,
 		'kurtosis' => self::ITEM_VALUE_TYPES_NUM,
 		'last' => self::ITEM_VALUE_TYPES_ALL,
 		'lastclock' => self::ITEM_VALUE_TYPES_ALL,
@@ -510,7 +555,8 @@ final class CHistFunctionData {
 		'trendstl' => self::ITEM_VALUE_TYPES_NUM,
 		'trendsum' => self::ITEM_VALUE_TYPES_NUM,
 		'varpop' => self::ITEM_VALUE_TYPES_NUM,
-		'varsamp' => self::ITEM_VALUE_TYPES_NUM
+		'varsamp' => self::ITEM_VALUE_TYPES_NUM,
+		'xmlxpath' => self::ITEM_VALUE_TYPES_STRING
 	];
 
 	/**

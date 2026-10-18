@@ -633,7 +633,8 @@ class testFormItemPrototype extends CLegacyWebTest {
 				'Calculated',
 				'Dependent item',
 				'Script',
-				'Browser'
+				'Browser',
+				'Telemetry query'
 			]);
 			if (isset($data['type'])) {
 				$type_field->select($data['type']);
@@ -906,14 +907,17 @@ class testFormItemPrototype extends CLegacyWebTest {
 				$this->assertFalse($form->getField('Update interval')->isDisplayed());
 		}
 
-		$value_types = ($type === 'Dependent item')
-			? ['Numeric (unsigned)', 'Numeric (float)', 'Character', 'Log', 'Text', 'Binary']
-			: ['Numeric (unsigned)', 'Numeric (float)', 'Character', 'Log', 'Text'];
+		$value_types = ($type === 'Dependent item') ?
+				['Numeric (unsigned)', 'Numeric (float)', 'Character', 'Log', 'Text', 'Binary', 'JSON']
+				: (($type === 'Calculated')
+					? ['Numeric (unsigned)', 'Numeric (float)', 'Character', 'Log', 'Text']
+					: ['Numeric (unsigned)', 'Numeric (float)', 'Character', 'Log', 'Text', 'JSON']
+				);
 
 		if (!isset($templateid)) {
 			$this->assertEquals($value_types, $form->getField('Type of information')->asDropdown()->getOptions()->asText());
 
-			foreach (['Numeric (unsigned)', 'Numeric (float)', 'Character', 'Log', 'Text'] as $info_type) {
+			foreach ($value_types as $info_type) {
 				$this->zbxTestIsEnabled('//*[@id="value_type"]//li[text()='.CXPathHelper::escapeQuotes($info_type).']');
 			}
 		}
@@ -1099,15 +1103,23 @@ class testFormItemPrototype extends CLegacyWebTest {
 				$this->zbxTestAssertAttribute("//z-select[@id='preprocessing_".($itemPreproc['step']-1)."_type']", 'readonly');
 				$this->zbxTestDropdownAssertSelected("preprocessing_".($itemPreproc['step']-1)."_type", $preprocessing_type);
 				if ((1 <= $itemPreproc['type']) && ($itemPreproc['type'] <= 4)) {
-					$this->zbxTestAssertAttribute("//input[@id='preprocessing_".($itemPreproc['step']-1)."_params_0']", 'readonly');
-					$this->zbxTestAssertElementValue("preprocessing_".($itemPreproc['step']-1)."_params_0", $itemPreproc['params']);
+					$this->zbxTestAssertAttribute('//z-textarea-flexible[@id="preprocessing_'.($itemPreproc['step']-1).
+							'_params_0"]', 'readonly'
+					);
+					$this->zbxTestAssertElementValue('preprocessing_'.($itemPreproc['step']-1).'_params_0',
+							$itemPreproc['params']
+					);
 				}
 				elseif ($itemPreproc['type'] == 5) {
 					$reg_exp = preg_split("/\n/", $itemPreproc['params']);
-					$this->zbxTestAssertAttribute("//input[@id='preprocessing_".($itemPreproc['step']-1)."_params_0']", 'readonly');
-					$this->zbxTestAssertAttribute("//input[@id='preprocessing_".($itemPreproc['step']-1)."_params_1']", 'readonly');
-					$this->zbxTestAssertElementValue("preprocessing_".($itemPreproc['step']-1)."_params_0", $reg_exp[0]);
-					$this->zbxTestAssertElementValue("preprocessing_".($itemPreproc['step']-1)."_params_1", $reg_exp[1]);
+					$this->zbxTestAssertAttribute('//z-textarea-flexible[@id="preprocessing_'.($itemPreproc['step']-1).
+							'_params_0"]', 'readonly'
+					);
+					$this->zbxTestAssertAttribute('//z-textarea-flexible[@id="preprocessing_'.($itemPreproc['step']-1).
+							'_params_1"]', 'readonly'
+					);
+					$this->zbxTestAssertElementValue('preprocessing_'.($itemPreproc['step']-1).'_params_0', $reg_exp[0]);
+					$this->zbxTestAssertElementValue('preprocessing_'.($itemPreproc['step']-1).'_params_1', $reg_exp[1]);
 				}
 			}
 		}
@@ -2267,23 +2279,17 @@ class testFormItemPrototype extends CLegacyWebTest {
 		}
 
 		if (isset($data['name'])) {
-			$this->zbxTestInputTypeWait('name', $data['name']);
-			if ($data['name'] != $this->zbxTestGetValue("//input[@id='name']")) {
-				$this->zbxTestInputTypeOverwrite('name', $data['name']);
-			}
+			$form->getField('Name')->fill($data['name']);
 			$this->zbxTestAssertElementValue('name', $data['name']);
 		}
 
 		if (isset($data['key'])) {
-			$this->zbxTestInputTypeOverwrite('key', $data['key']);
-			if ($data['key'] != $this->zbxTestGetValue("//input[@id='key']")) {
-				$this->zbxTestInputTypeOverwrite('key', $data['key']);
-			}
+			$form->getField('Key')->fill($data['key']);
 			$this->zbxTestAssertElementValue('key', $data['key']);
 		}
 
 		if (isset($data['username'])) {
-			$this->zbxTestInputType('username', $data['username']);
+			$form->getField('User name')->fill($data['username']);
 		}
 
 		if (isset($data['password'])) {
@@ -2291,8 +2297,7 @@ class testFormItemPrototype extends CLegacyWebTest {
 		}
 
 		if (isset($data['ipmi_sensor'])) {
-				$this->zbxTestInputType('ipmi_sensor', $data['ipmi_sensor']);
-				$ipmi_sensor = $this->zbxTestGetValue("//input[@id='ipmi_sensor']");
+			$form->getField('IPMI sensor')->fill($data['ipmi_sensor']);
 		}
 
 		if (isset($data['script'])) {
@@ -2304,7 +2309,7 @@ class testFormItemPrototype extends CLegacyWebTest {
 		}
 
 		if (isset($data['allowed_hosts'])) {
-			$this->zbxTestInputType('trapper_hosts', $data['allowed_hosts']);
+			$form->getField('Allowed hosts')->fill($data['allowed_hosts']);
 		}
 
 		if (isset($data['params_ap'])) {
@@ -2324,8 +2329,8 @@ class testFormItemPrototype extends CLegacyWebTest {
 			$this->zbxTestInputTypeOverwrite('delay', $data['delay']);
 		}
 
-		if (array_key_exists('snmp_oid', $data))	{
-			$this->zbxTestInputTypeOverwrite('snmp_oid', $data['snmp_oid']);
+		if (array_key_exists('snmp_oid', $data)) {
+			$form->getField('SNMP OID')->fill($data['snmp_oid']);
 		}
 
 		// Check hidden update and custom interval for mqtt.get key.
@@ -2431,7 +2436,8 @@ class testFormItemPrototype extends CLegacyWebTest {
 		if (isset($data['formCheck'])) {
 			$this->zbxTestOpen(self::HOST_LIST_PAGE);
 			$this->filterEntriesAndOpenDiscovery($this->host);
-			$this->zbxTestClickLinkTextWait($this->discoveryRule);
+			$this->query('tag:table')->waitUntilPresent()->asTable()->one()->findRow('Name', $this->discoveryRule)
+					->query('link:Item prototypes')->waitUntilClickable()->one()->click();
 			$this->zbxTestClickLinkTextWait('Item prototypes');
 			$this->zbxTestCheckHeader('Item prototypes');
 
@@ -2489,8 +2495,8 @@ class testFormItemPrototype extends CLegacyWebTest {
 			$this->zbxTestAssertElementPresentXpath("//z-select[@id='value_type']//li[text()='$value_type']");
 
 			if (isset($data['ipmi_sensor'])) {
-				$ipmiValue = $this->zbxTestGetValue("//input[@id='ipmi_sensor']");
-				$this->assertEquals($ipmi_sensor, $ipmiValue);
+				$ipmiValue = $this->zbxTestGetValue("//z-textarea-flexible[@id='ipmi_sensor']");
+				$this->assertEquals($data['ipmi_sensor'], $ipmiValue);
 			}
 
 			if (isset($data['allowed_hosts'])) {
@@ -2525,8 +2531,8 @@ class testFormItemPrototype extends CLegacyWebTest {
 
 			$this->zbxTestOpen(self::HOST_LIST_PAGE);
 			$this->filterEntriesAndOpenDiscovery($this->host);
-			$this->zbxTestClickLinkTextWait($this->discoveryRule);
-			$this->zbxTestClickLinkTextWait('Item prototypes');
+			$this->query('tag:table')->waitUntilPresent()->asTable()->one()->findRow('Name', $this->discoveryRule)
+					->query('link:Item prototypes')->waitUntilClickable()->one()->click();
 
 			$this->zbxTestCheckboxSelect("itemids_$itemId");
 			$this->query('button:Delete')->one()->click();
@@ -2543,7 +2549,7 @@ class testFormItemPrototype extends CLegacyWebTest {
 	 */
 	private function filterEntriesAndOpenDiscovery($name) {
 		$form = $this->query('name:zbx_filter')->asForm()->waitUntilReady()->one();
-		$table = $this->query('xpath:(//table[@class="list-table"])[1]')->asTable()->one();
+		$table = $this->query('id:datatable-hosts')->asDatatable()->one();
 		$form->fill(['Name' => $name]);
 		$this->query('button:Apply')->one()->waitUntilClickable()->click();
 		$table->waitUntilReloaded();

@@ -18,7 +18,7 @@ class CFieldMultiselect extends CField {
 	init() {
 		super.init();
 
-		$('button, input[type="text"]', this._field.parentNode).on('blur', () => {
+		$(this._field.parentNode).on('blur', 'button, input[type="text"]', () => {
 			this.validate_if_no_focus = setTimeout(() => {
 				if (!this._field.isConnected || $(this._field).multiSelect('getOption', 'disabled') === true) {
 					return;
@@ -34,7 +34,7 @@ class CFieldMultiselect extends CField {
 			}, 250);
 		});
 
-		$('input[type="text"]', this._field.parentNode).on('focusin', () => {
+		$(this._field.parentNode).on('focusin', 'input[type="text"]', () => {
 			clearTimeout(this.validate_if_no_focus);
 			this.validate_if_no_focus = null;
 		});
@@ -67,6 +67,16 @@ class CFieldMultiselect extends CField {
 		return $(this._field).multiSelect('getOption', 'name').replace(/\[\]$/, '');
 	}
 
+	getNameNew() {
+		const name = this.getName();
+
+		if (name.endsWith(']')) {
+			return name.slice(0, -1) + '_new]';
+		}
+
+		return name + '_new';
+	}
+
 	getValue() {
 		return this.getExtraFields();
 	}
@@ -77,7 +87,7 @@ class CFieldMultiselect extends CField {
 		values[this.getName()] = return_id ? null : [];
 
 		if ($(this._field).multiSelect('getOption', 'addNew')) {
-			values[this.getName() + '_new'] = return_id ? null : [];
+			values[this.getNameNew()] = return_id ? null : [];
 		}
 
 		if (this.isDisabled()) {
@@ -85,7 +95,7 @@ class CFieldMultiselect extends CField {
 		}
 
 		$(this._field).multiSelect('getData').forEach((value) => {
-			const field_name = value.isNew ? this.getName() + '_new' : this.getName();
+			const field_name = value.isNew ? this.getNameNew() : this.getName();
 
 			if (!return_id) {
 				values[field_name].push(value.id);
@@ -113,5 +123,25 @@ class CFieldMultiselect extends CField {
 	focusErrorField() {
 		super.focusErrorField();
 		$('input[type="text"]', this._field).focus();
+	}
+
+	lock() {
+		const res = super.lock();
+
+		if (res) {
+			$(this._field).multiSelect('disable');
+		}
+
+		return res;
+	}
+
+	unlock() {
+		const res = super.unlock();
+
+		if (res) {
+			$(this._field).multiSelect('enable');
+		}
+
+		return res;
 	}
 }

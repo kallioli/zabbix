@@ -23,41 +23,70 @@ class CControllerValidateApiExists extends CController {
 	}
 
 	private static function getValidationRules(): array {
-		$api_services = ['host', 'template', 'item', 'itemprototype'];
+		$api_services = ['host', 'template', 'item', 'itemprototype', 'discoveryrule', 'discoveryruleprototype',
+			'hostgroup', 'templategroup', 'iconmap', 'image', 'mediatype', 'proxy', 'proxygroup', 'regexp', 'sla',
+			'token', 'user', 'role', 'usergroup', 'hostprototype', 'maintenance', 'connector', 'correlation',
+			'graph', 'graphprototype', 'report', 'script', 'drule', 'ceprule'
+		];
 
 		return ['object', 'fields' => [
-			'validations' => ['objects', 'required', 'not_empty', 'fields' => [
-				'api' => ['string', 'required', 'in' => $api_services],
-				'method' => ['string', 'required', 'in' => ['get']],
-				'field' => ['string', 'required'],
-				'options' => ['object', 'required', 'fields' => [
-					'filter' => [
-						['object', 'fields' => [
-							'name' => ['string'],
-							'host' => ['string']
-						], 'when' => ['../api', 'in' => ['host', 'template']]],
-						['object', 'fields' => [
-							'key_' => ['string', 'required', 'not_empty'],
-							'hostid' => ['id', 'required']
-						], 'when' => ['../api', 'in' => ['item', 'itemprototype']]]
-					]
-				]],
-				'exclude_id' => ['id'],
-				'error_msg' => ['string']
-			]]
+			'validations' => ['objects', 'required', 'not_empty',
+				'fields' => [
+					'api' => ['string', 'required', 'in' => $api_services],
+					'method' => ['string', 'required', 'in' => ['get']],
+					'field' => ['string', 'required'],
+					'options' => ['object', 'required', 'fields' => [
+						'filter' => [
+							['object', 'fields' => [
+								'name' => ['string'],
+								'host' => ['string']
+							], 'when' => ['../api', 'in' => ['host', 'template', 'hostprototype']]],
+							['object', 'fields' => [
+								'key_' => ['string', 'required', 'not_empty'],
+								'hostid' => ['id', 'required']
+							], 'when' => ['../api', 'in' => ['item', 'itemprototype', 'discoveryrule',
+								'discoveryruleprototype'
+							]]],
+							['object', 'fields' => [
+								'name' => ['string', 'required', 'not_empty'],
+								'hostid' => ['id', 'required']
+							], 'when' => ['../api', 'in' => ['graph', 'graphprototype']]],
+							['object', 'fields' => [
+								'name' => ['string', 'required', 'not_empty'],
+								'userid' => ['id', 'required']
+							], 'when' => ['../api', 'in' => ['token']]],
+							['object', 'fields' => [
+								'name' => ['string', 'required', 'not_empty'],
+								'menu_path' => ['string']
+							], 'when' => ['../api', 'in' => ['script']]],
+							['object', 'fields' => [
+								'name' => ['string', 'required', 'not_empty']
+							], 'when' => ['../api', 'in' => ['hostgroup', 'templategroup', 'iconmap', 'image', 'mediatype',
+								'proxy', 'proxygroup', 'regexp', 'sla', 'role', 'maintenance', 'connector', 'correlation',
+								'usergroup', 'report', 'drule', 'ceprule'
+							]]],
+							['object', 'fields' => [
+								'username' => ['string', 'required', 'not_empty']
+							], 'when' => ['../api', 'in' => ['user']]]
+						],
+						'discoveryids' => ['id', 'required', 'when' => ['../api', 'in' => ['hostprototype']]]
+					]],
+					'exclude_id' => ['id'],
+					'error_msg' => ['string']
+				],
+				'count_values' => ['field_rules' => ['api'], 'max' => 20]
+			]
 		]];
 	}
 
-	protected function checkInput(): bool {
-		$ret = $this->validateInput(self::getValidationRules()) && $this->validateApiCount();
+	protected function checkInput() {
+		$ret = $this->validateInput(self::getValidationRules());
 
 		if (!$ret) {
 			$this->setResponse(
 				(new CControllerResponseData(['main_block' => json_encode([
 					'error' => [
-						'messages' => array_merge($this->getValidationError(),
-							array_column(get_and_clear_messages(), 'message')
-						)
+						'messages' => $this->getValidationError()
 					]
 				])]))->disableView()
 			);
@@ -77,13 +106,15 @@ class CControllerValidateApiExists extends CController {
 		try {
 			foreach ($this->getInput('validations') as $validation) {
 				$object_exists = CFormValidator::existsAPIObject($validation['api'], $validation['options'],
-					array_key_exists('exclude_id', $validation) ? $validation['exclude_id'] : null);
+					array_key_exists('exclude_id', $validation) ? $validation['exclude_id'] : null
+				);
 
 				if ($object_exists) {
 					$errors[] = [
 						'field' => $validation['field'],
-						'message' => array_key_exists('error_msg', $validation) ? $validation['error_msg']:
-							_('This object already exists.')
+						'message' => array_key_exists('error_msg', $validation)
+							? $validation['error_msg']
+							: _('This object already exists.')
 					];
 				}
 			}
@@ -108,15 +139,5 @@ class CControllerValidateApiExists extends CController {
 		}
 
 		$this->setResponse(new CControllerResponseData(['main_block' => json_encode($response)]));
-	}
-
-	protected function validateApiCount(): bool {
-		if (count($this->getInput('validations', [])) > 20) {
-			error(_s('No more than %1$d items based on field "%2$s" rules', '20', 'api'));
-
-			return false;
-		}
-
-		return true;
 	}
 }

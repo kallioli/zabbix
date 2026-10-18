@@ -126,7 +126,7 @@ $(RESOURCE_RES): $(RESOURCE_RC) $(RESOURCE_H) $(DESC_H)
 {..\..\..\src\libs\zbxexpr}.c{..\..\..\src\libs\zbxexpr}.o:
 	$(CC) $? /Fo"$@" $(CFLAGS)
 
-{..\..\..\src\libs\zbxexpression}.c{..\..\..\src\libs\zbxexpression}.o:
+{..\..\..\src\libs\zbxcalc}.c{..\..\..\src\libs\zbxcalc}.o:
 	$(CC) $? /Fo"$@" $(CFLAGS)
 
 {..\..\..\src\libs\zbxfile}.c{..\..\..\src\libs\zbxfile}.o:
@@ -341,6 +341,27 @@ $(RESOURCE_RES): $(RESOURCE_RC) $(RESOURCE_H) $(DESC_H)
 	$(CC) $? /Fo"$@" $(CFLAGS)
 
 {..\..\..\src\zabbix_proxy\trapper}.c{..\..\..\src\zabbix_proxy\trapper}.o:
+	$(CC) $? /Fo"$@" $(CFLAGS)
+
+{..\..\..\src\libs\zbxapm_client}.c{..\..\..\src\libs\zbxapm_client}.o:
+	$(CC) $? /Fo"$@" $(CFLAGS)
+
+{..\..\..\src\libs\zbxcep_client}.c{..\..\..\src\libs\zbxcep_client}.o:
+	$(CC) $? /Fo"$@" $(CFLAGS)
+
+{..\..\..\src\libs\zbxmw}.c{..\..\..\src\libs\zbxmw}.o:
+	$(CC) $? /Fo"$@" $(CFLAGS)
+
+{..\..\..\src\libs\zbxsnmp}.c{..\..\..\src\libs\zbxsnmp}.o:
+	$(CC) $? /Fo"$@" $(CFLAGS)
+
+{..\..\..\src\libs\zbxsupervisor}.c{..\..\..\src\libs\zbxsupervisor}.o:
+	$(CC) $? /Fo"$@" $(CFLAGS)
+
+{..\..\..\src\libs\zbxsupervisor_client}.c{..\..\..\src\libs\zbxsupervisor_client}.o:
+	$(CC) $? /Fo"$@" $(CFLAGS)
+
+{..\..\..\src\libs\zbxtelemetry}.c{..\..\..\src\libs\zbxtelemetry}.o:
 	$(CC) $? /Fo"$@" $(CFLAGS)
 
 {$(PROJECTDIR)}.c{$(PROJECTDIR)}.o:

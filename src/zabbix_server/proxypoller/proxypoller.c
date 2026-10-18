@@ -14,11 +14,11 @@
 
 #include "proxypoller.h"
 
-#include "proxyconfigread/proxyconfigread.h"
-#include "trapper/trapper_server.h"
-#include "cachehistory/cachehistory_server.h"
-#include "discovery/discovery_server.h"
-#include "autoreg/autoreg_server.h"
+#include "zabbix_server/proxyconfigread/proxyconfigread.h"
+#include "zabbix_server/trapper/trapper_server.h"
+#include "zabbix_server/cachehistory/cachehistory_server.h"
+#include "zabbix_server/discovery/discovery_server.h"
+#include "zabbix_server/autoreg/autoreg_server.h"
 
 #include "zbxtimekeeper.h"
 #include "zbxdbwrap.h"
@@ -38,6 +38,9 @@
 #include "zbxipcservice.h"
 #include "zbxjson.h"
 #include "zbxautoreg.h"
+#ifdef HAVE_ARES_QUERY_CACHE
+#include "zbxresolver.h"
+#endif
 
 static zbx_get_program_type_f		zbx_get_program_type_cb = NULL;
 
@@ -80,7 +83,7 @@ static int	connect_to_proxy(const zbx_dc_proxy_t *proxy, zbx_socket_t *sock, int
 	}
 
 	if (FAIL == (ret = zbx_tcp_connect(sock, config_source_ip, proxy->addr, proxy->port, timeout,
-			proxy->tls_connect, tls_arg1, tls_arg2)))
+			proxy->tls_connect, tls_arg1, tls_arg2, ZBX_DNS_FAILOVER_ENABLED)))
 	{
 		zabbix_log(LOG_LEVEL_ERR, "cannot connect to proxy \"%s\": %s", proxy->name, zbx_socket_strerror());
 		ret = NETWORK_ERROR;
@@ -238,13 +241,14 @@ out:
  *                                                                            *
  * Purpose: sends configuration data to proxy                                 *
  *                                                                            *
- * Parameters: proxy                    - [IN/OUT] proxy data                 *
- *             config_vault             - [IN]                                *
- *             config_trapper_timeout   - [IN]                                *
- *             config_source_ip         - [IN]                                *
- *             config_ssl_ca_location   - [IN]                                *
- *             config_ssl_cert_location - [IN]                                *
- *             config_ssl_key_location  - [IN]                                *
+ * Parameters: proxy                     - [IN/OUT] proxy data                *
+ *             config_vault              - [IN]                               *
+ *             config_trapper_timeout    - [IN]                               *
+ *             config_source_ip          - [IN]                               *
+ *             config_ssl_ca_location    - [IN]                               *
+ *             config_ssl_cert_location  - [IN]                               *
+ *             config_ssl_key_location   - [IN]                               *
+ *             vault_ret                 - [OUT]                              *
  *                                                                            *
  * Return value: SUCCEED - processed successfully                             *
  *               other code - an error occurred                               *
@@ -255,7 +259,8 @@ out:
  ******************************************************************************/
 static int	proxy_send_configuration(zbx_dc_proxy_t *proxy, const zbx_config_vault_t *config_vault,
 		int config_trapper_timeout, const char *config_source_ip, const char *config_ssl_ca_location,
-		const char *config_ssl_cert_location, const char *config_ssl_key_location)
+		const char *config_ssl_cert_location, const char *config_ssl_key_location,
+		int *vault_ret)
 {
 	char				*error = NULL, *buffer = NULL;
 	int				ret, flags = ZBX_TCP_PROTOCOL | ZBX_TCP_COMPRESS, loglevel;
@@ -264,7 +269,6 @@ static int	proxy_send_configuration(zbx_dc_proxy_t *proxy, const zbx_config_vaul
 	struct zbx_json_parse		jp;
 	size_t				buffer_size, reserved = 0;
 	zbx_proxyconfig_status_t	status = ZBX_PROXYCONFIG_STATUS_DATA;
-
 
 	zbx_json_init(&j, 512 * ZBX_KIBIBYTE);
 	zbx_json_addstring(&j, ZBX_PROTO_TAG_REQUEST, ZBX_PROTO_VALUE_PROXY_CONFIG, ZBX_JSON_TYPE_STRING);
@@ -289,10 +293,11 @@ static int	proxy_send_configuration(zbx_dc_proxy_t *proxy, const zbx_config_vaul
 		goto clean;
 	}
 
-	zbx_json_clean(&j);
+	zbx_json_reset(&j);
 
 	if (SUCCEED != (ret = zbx_proxyconfig_get_data(proxy, &jp, &j, &status, config_vault, config_source_ip,
-			config_ssl_ca_location, config_ssl_cert_location, config_ssl_key_location, &error)))
+			config_ssl_ca_location, config_ssl_cert_location, config_ssl_key_location,
+			vault_ret, &error)))
 	{
 		zabbix_log(LOG_LEVEL_ERR, "cannot collect configuration data for proxy \"%s\": %s",
 				proxy->name, error);
@@ -363,7 +368,8 @@ out:
  *                                                                            *
  * Purpose: processes proxy data request                                      *
  *                                                                            *
- * Parameters: proxy               - [IN/OUT] proxy data                      *
+ * Parameters: rtc                 - [IN] RTC socket                          *
+ *             proxy               - [IN/OUT] proxy data                      *
  *             answer              - [IN] data received from proxy            *
  *             ts                  - [IN] timestamp when the proxy connection *
  *                                        was established                     *
@@ -378,8 +384,8 @@ out:
  *           sent by proxy.                                                   *
  *                                                                            *
  ******************************************************************************/
-static int	proxy_process_proxy_data(zbx_dc_proxy_t *proxy, const char *answer, zbx_timespec_t *ts,
-		const zbx_events_funcs_t *events_cbs, int proxydata_frequency, int *more)
+static int	proxy_process_proxy_data(zbx_ipc_async_socket_t *rtc, zbx_dc_proxy_t *proxy, const char *answer,
+		zbx_timespec_t *ts, const zbx_events_funcs_t *events_cbs, int proxydata_frequency, int *more)
 {
 	struct zbx_json_parse	jp;
 	char			*error = NULL, *version_str = NULL;
@@ -414,7 +420,7 @@ static int	proxy_process_proxy_data(zbx_dc_proxy_t *proxy, const char *answer, z
 		goto out;
 	}
 
-	if (SUCCEED != (ret = zbx_process_proxy_data(proxy, &jp, ts, PROXY_OPERATING_MODE_PASSIVE, events_cbs,
+	if (SUCCEED != (ret = zbx_process_proxy_data(rtc, proxy, &jp, ts, PROXY_OPERATING_MODE_PASSIVE, events_cbs,
 			proxydata_frequency, zbx_discovery_update_host_server, zbx_discovery_update_hosts_server,
 			zbx_discovery_update_service_server, zbx_discovery_update_service_down_server,
 			zbx_discovery_find_host_server, zbx_discovery_update_drule_server,
@@ -438,7 +444,8 @@ out:
  *                                                                            *
  * Purpose: gets data from proxy ('proxy data' request)                       *
  *                                                                            *
- * Parameters: proxy                  - [IN/OUT] proxy data                   *
+ * Parameters: rtc                    - [IN] RTC socket                       *
+ *             proxy                  - [IN/OUT] proxy data                   *
  *             config_timeout         - [IN]                                  *
  *             config_trapper_timeout - [IN]                                  *
  *             events_cbs             - [IN]                                  *
@@ -453,8 +460,9 @@ out:
  *           properties.                                                      *
  *                                                                            *
  ******************************************************************************/
-static int	proxy_get_data(zbx_dc_proxy_t *proxy, int config_timeout, int config_trapper_timeout,
-		const zbx_events_funcs_t *events_cbs, int proxydata_frequency, const char *config_source_ip, int *more)
+static int	proxy_get_data(zbx_ipc_async_socket_t *rtc, zbx_dc_proxy_t *proxy, int config_timeout,
+		int config_trapper_timeout, const zbx_events_funcs_t *events_cbs, int proxydata_frequency,
+		const char *config_source_ip, int *more)
 {
 	char		*answer = NULL;
 	int		ret;
@@ -479,7 +487,7 @@ static int	proxy_get_data(zbx_dc_proxy_t *proxy, int config_timeout, int config_
 	}
 
 	proxy->lastaccess = time(NULL);
-	ret = proxy_process_proxy_data(proxy, answer, &ts, events_cbs, proxydata_frequency, more);
+	ret = proxy_process_proxy_data(rtc, proxy, answer, &ts, events_cbs, proxydata_frequency, more);
 	zbx_free(answer);
 out:
 	if (SUCCEED == ret)
@@ -494,7 +502,8 @@ out:
  *                                                                            *
  * Purpose: gets data from proxy ('proxy data' request)                       *
  *                                                                            *
- * Parameters: proxy                  - [IN/OUT] proxy data                   *
+ * Parameters: rtc                    - [IN] RTC socket                       *
+ *             proxy                  - [IN/OUT] proxy data                   *
  *             config_timeout         - [IN]                                  *
  *             config_trapper_timeout - [IN]                                  *
  *             config_source_ip       - [IN]                                  *
@@ -508,8 +517,9 @@ out:
  *           properties.                                                      *
  *                                                                            *
  ******************************************************************************/
-static int	proxy_get_tasks(zbx_dc_proxy_t *proxy, int config_timeout, int config_trapper_timeout,
-		const char *config_source_ip, const zbx_events_funcs_t *events_cbs, int proxydata_frequency)
+static int	proxy_get_tasks(zbx_ipc_async_socket_t *rtc, zbx_dc_proxy_t *proxy, int config_timeout,
+		int config_trapper_timeout, const char *config_source_ip, const zbx_events_funcs_t *events_cbs,
+		int proxydata_frequency)
 {
 	char		*answer = NULL;
 	int		ret = FAIL, more;
@@ -535,7 +545,7 @@ static int	proxy_get_tasks(zbx_dc_proxy_t *proxy, int config_timeout, int config
 
 	proxy->lastaccess = time(NULL);
 
-	ret = proxy_process_proxy_data(proxy, answer, &ts, events_cbs, proxydata_frequency, &more);
+	ret = proxy_process_proxy_data(rtc, proxy, answer, &ts, events_cbs, proxydata_frequency, &more);
 
 	zbx_free(answer);
 out:
@@ -549,10 +559,11 @@ out:
  * Purpose: retrieve values of metrics from monitored hosts                   *
  *                                                                            *
  ******************************************************************************/
-static int	process_proxy(const zbx_config_vault_t *config_vault, int config_timeout, int config_trapper_timeout,
-		const char *config_source_ip, const char *config_ssl_ca_location, const char *config_ssl_cert_location,
-		const char *config_ssl_key_location, const zbx_events_funcs_t *events_cbs, int proxyconfig_frequency,
-		int proxydata_frequency)
+static int	process_proxy(zbx_ipc_async_socket_t *rtc, const zbx_config_vault_t *config_vault, int config_timeout,
+		int config_trapper_timeout, const char *config_source_ip, const char *config_ssl_ca_location,
+		const char *config_ssl_cert_location, const char *config_ssl_key_location,
+		const zbx_events_funcs_t *events_cbs, int proxyconfig_frequency, int proxydata_frequency,
+		int *vault_ret)
 {
 	zbx_dc_proxy_t		proxy, proxy_old;
 	int			num, i;
@@ -608,7 +619,7 @@ static int	process_proxy(const zbx_config_vault_t *config_vault, int config_time
 			{
 				if (SUCCEED != (ret = proxy_send_configuration(&proxy, config_vault,
 						config_trapper_timeout, config_source_ip, config_ssl_ca_location,
-						config_ssl_cert_location, config_ssl_key_location)))
+						config_ssl_cert_location, config_ssl_key_location, vault_ret)))
 				{
 					goto error;
 				}
@@ -624,18 +635,23 @@ static int	process_proxy(const zbx_config_vault_t *config_vault, int config_time
 
 				do
 				{
-					if (FAIL == zbx_hc_check_proxy(proxy.proxyid) ||
-							SUCCEED == zbx_vps_monitor_capped())
+					if (SUCCEED == zbx_vps_monitor_capped())
+						break;
+
+					if (FAIL == zbx_hc_check_proxy(proxy.proxyid, proxy.pending_history))
 					{
 						break;
 					}
 
-					if (SUCCEED != (ret = proxy_get_data(&proxy, config_timeout,
+					if (SUCCEED != (ret = proxy_get_data(rtc, &proxy, config_timeout,
 							config_trapper_timeout, events_cbs, proxydata_frequency,
 							config_source_ip, &more)))
 					{
 						goto error;
 					}
+
+					proxy.pending_history = (ZBX_PROXY_DATA_MORE == more ?
+							ZBX_PROXY_PENDING_HISTORY_YES : ZBX_PROXY_PENDING_HISTORY_NO);
 
 					check_tasks = 0;
 				}
@@ -644,8 +660,9 @@ static int	process_proxy(const zbx_config_vault_t *config_vault, int config_time
 
 			if (1 == check_tasks)
 			{
-				if (SUCCEED != (ret = proxy_get_tasks(&proxy, config_timeout, config_trapper_timeout,
-						config_source_ip, events_cbs, proxydata_frequency)))
+				if (SUCCEED != (ret = proxy_get_tasks(rtc, &proxy, config_timeout,
+						config_trapper_timeout, config_source_ip, events_cbs,
+						proxydata_frequency)))
 				{
 					goto error;
 				}
@@ -654,15 +671,19 @@ static int	process_proxy(const zbx_config_vault_t *config_vault, int config_time
 error:
 		zbx_free(proxy.addr);
 		if (0 != strcmp(proxy_old.version_str, proxy.version_str) ||
-				proxy_old.lastaccess != proxy.lastaccess)
+				proxy_old.lastaccess != proxy.lastaccess ||
+				proxy_old.pending_history != proxy.pending_history)
 		{
-			zbx_update_proxy_data(&proxy_old, proxy.version_str, proxy.version_int, proxy.lastaccess, 0);
+			zbx_update_proxy_data(&proxy_old, proxy.version_str, proxy.version_int, proxy.lastaccess,
+					proxy.pending_history, ZBX_FLAGS_PROXY_DIFF_UPDATE_PENDING_HISTORY);
 		}
 
 		zbx_dc_requeue_proxy(proxy.proxyid, update_nextcheck, ret, proxyconfig_frequency, proxydata_frequency);
 	}
 
 	zbx_dc_close_user_macros(um_handle);
+
+	zbx_dc_proxy_clear(&proxy);
 exit:
 	zabbix_log(LOG_LEVEL_DEBUG, "End of %s()", __func__);
 
@@ -681,7 +702,7 @@ ZBX_THREAD_ENTRY(proxypoller_thread, args)
 	int				server_num = ((zbx_thread_args_t *)args)->info.server_num;
 	int				process_num = ((zbx_thread_args_t *)args)->info.process_num;
 	unsigned char			process_type = ((zbx_thread_args_t *)args)->info.process_type;
-	zbx_uint32_t			rtc_msgs[] = {ZBX_RTC_PROXYPOLLER_PROCESS};
+	zbx_uint32_t			rtc_msgs[] = {ZBX_RTC_PROXYPOLLER_PROCESS, ZBX_RTC_VAULT_NEW_TOKEN};
 
 	zbx_get_program_type_cb = proxy_poller_args_in->zbx_get_program_type_cb_arg;
 
@@ -693,6 +714,9 @@ ZBX_THREAD_ENTRY(proxypoller_thread, args)
 #define STAT_INTERVAL	5	/* if a process is busy and does not sleep then update status not faster than */
 				/* once in STAT_INTERVAL seconds */
 
+#ifdef HAVE_ARES_QUERY_CACHE
+	zbx_ares_library_init();
+#endif
 #if defined(HAVE_GNUTLS) || defined(HAVE_OPENSSL)
 	zbx_tls_init_child(proxy_poller_args_in->config_tls, zbx_get_program_type_cb, zbx_dc_get_psk_by_identity);
 #endif
@@ -708,6 +732,7 @@ ZBX_THREAD_ENTRY(proxypoller_thread, args)
 	{
 		zbx_uint32_t	rtc_cmd;
 		unsigned char	*rtc_data;
+		int		vault_ret = SUCCEED;
 
 		sec = zbx_time();
 		zbx_update_env(get_process_type_string(process_type), sec);
@@ -719,13 +744,23 @@ ZBX_THREAD_ENTRY(proxypoller_thread, args)
 					old_processed, old_total_sec, zbx_vps_monitor_status());
 		}
 
-		processed += process_proxy(proxy_poller_args_in->config_vault, proxy_poller_args_in->config_timeout,
-				proxy_poller_args_in->config_trapper_timeout, proxy_poller_args_in->config_source_ip,
+		processed += process_proxy(&rtc, proxy_poller_args_in->config_vault,
+				proxy_poller_args_in->config_timeout, proxy_poller_args_in->config_trapper_timeout,
+				proxy_poller_args_in->config_source_ip,
 				proxy_poller_args_in->config_ssl_ca_location,
 				proxy_poller_args_in->config_ssl_cert_location,
 				proxy_poller_args_in->config_ssl_key_location,
 				proxy_poller_args_in->events_cbs, proxy_poller_args_in->proxyconfig_frequency,
-				proxy_poller_args_in->proxydata_frequency);
+				proxy_poller_args_in->proxydata_frequency,
+				&vault_ret);
+
+		if (SUCCEED != vault_ret && NULL != proxy_poller_args_in->config_vault->token)
+		{
+			zbx_ipc_async_socket_send(&rtc, ZBX_RTC_VAULT_RELOGIN,
+					(unsigned char *)proxy_poller_args_in->config_vault->token,
+					(zbx_uint32_t)strlen(proxy_poller_args_in->config_vault->token) + 1);
+		}
+
 		total_sec += zbx_time() - sec;
 
 		nextcheck = zbx_dc_config_get_proxypoller_nextcheck();
@@ -754,8 +789,16 @@ ZBX_THREAD_ENTRY(proxypoller_thread, args)
 
 		if (SUCCEED == zbx_rtc_wait(&rtc, info, &rtc_cmd, &rtc_data, sleeptime) && 0 != rtc_cmd)
 		{
-			if (ZBX_RTC_SHUTDOWN == rtc_cmd)
+			if (ZBX_RTC_VAULT_NEW_TOKEN == rtc_cmd)
+			{
+				proxy_poller_args_in->config_vault->token =
+						zbx_strdup(proxy_poller_args_in->config_vault->token,
+						(const char *)rtc_data);
+			}
+			else if (ZBX_RTC_SHUTDOWN == rtc_cmd)
 				break;
+
+			zbx_free(rtc_data);
 		}
 	}
 

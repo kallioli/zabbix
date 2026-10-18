@@ -251,7 +251,6 @@ switch ($data['type']) {
 					->setWidth(ZBX_TEXTAREA_MEDIUM_WIDTH)
 					->setId('value');
 
-				$inline_js .= $new_condition_value->getPostJS();
 
 				$form_grid
 					->addItem([
@@ -277,9 +276,6 @@ switch ($data['type']) {
 				$new_condition_value = (new CTextAreaFlexible('value'))
 					->setWidth(ZBX_TEXTAREA_MEDIUM_WIDTH)
 					->setId('value');
-
-				$inline_js .= $new_condition_value2->getPostJS();
-				$inline_js .= $new_condition_value->getPostJS();
 
 				$form_grid
 					->addItem([
@@ -548,13 +544,49 @@ switch ($data['type']) {
 
 				break;
 
+			// Proxy group form elements.
+			case ZBX_CONDITION_TYPE_PROXY_GROUP:
+				$operator = (new CRadioButtonList('operator', CONDITION_OPERATOR_EQUAL))->setModern(true);
+				foreach ($operators_by_condition[ZBX_CONDITION_TYPE_PROXY_GROUP] as $key => $value) {
+					$operator->addValue($value, $key);
+				}
+
+				$proxygroup_multiselect = (new CMultiSelect([
+					'name' => 'value',
+					'object_name' => 'proxy_groups',
+					'multiple' => false,
+					'default_value' => 0,
+					'popup' => [
+						'parameters' => [
+							'srctbl' => 'proxy_groups',
+							'srcfld1' => 'proxy_groupid',
+							'dstfrm' => $form->getName(),
+							'dstfld1' => 'proxygroup_new_condition'
+						]
+					]
+				]))
+					->setId('proxygroup_new_condition')
+					->setWidth(ZBX_TEXTAREA_MEDIUM_WIDTH);
+
+				$inline_js .= $proxygroup_multiselect->getPostJS();
+
+				$form_grid
+					->addItem([
+						new CLabel(_('Operator')),
+						new CFormField($operator)
+					])
+					->addItem([
+						(new CLabel(_('Proxy group'), 'proxygroup_new_condition_ms'))->setAsteriskMark(),
+						new CFormField($proxygroup_multiselect)
+					]);
+
+				break;
+
 			// Received value form elements.
 			case ZBX_CONDITION_TYPE_DVALUE:
 				$new_condition_value = (new CTextAreaFlexible('value'))
 					->setWidth(ZBX_TEXTAREA_MEDIUM_WIDTH)
 					->setId('value');
-
-				$inline_js .= $new_condition_value->getPostJS();
 
 				$form_grid
 					->addItem([
@@ -660,8 +692,6 @@ switch ($data['type']) {
 				$new_condition_value = (new CTextAreaFlexible('value'))
 					->setWidth(ZBX_TEXTAREA_MEDIUM_WIDTH)
 					->setId('value');
-
-				$inline_js .= $new_condition_value->getPostJS();
 
 				$help_icon = $condition_type == ZBX_CONDITION_TYPE_EVENT_NAME
 					? makeHelpIcon(_('Event name matches Trigger name (with macros expanded) unless a custom Event name is specified in Trigger settings.'))

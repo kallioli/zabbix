@@ -8,7 +8,7 @@ Most of the metrics are collected in one go, thanks to Zabbix bulk data collecti
 
 ## Requirements
 
-Zabbix version: 7.4 and higher.
+Zabbix version: 8.0 and higher.
 
 ## Tested versions
 
@@ -17,7 +17,7 @@ This template has been tested on:
 
 ## Configuration
 
-> Zabbix should be configured according to the instructions in the [Templates out of the box](https://www.zabbix.com/documentation/7.4/manual/config/templates_out_of_the_box) section.
+> Zabbix should be configured according to the instructions in the [Templates out of the box](https://www.zabbix.com/documentation/8.0/manual/config/templates_out_of_the_box) section.
 
 ## Setup
 
@@ -35,8 +35,8 @@ Don't forget to change macros {$JENKINS.URL}.
 |Name|Description|Default|
 |----|-----------|-------|
 |{$JENKINS.URL}|<p>Jenkins URL in the format `<scheme>://<host>:<port>`</p>||
-|{$JENKINS.API.KEY}|<p>API key to access Metrics Servlet</p>||
-|{$JENKINS.USER}|<p>Username for HTTP BASIC authentication</p>|`zabbix`|
+|{$JENKINS.API.KEY}|<p>API key to access Metrics Servlet.</p>||
+|{$JENKINS.USER}|<p>Username for HTTP BASIC authentication.</p>|`zabbix`|
 |{$JENKINS.API.TOKEN}|<p>API token for HTTP BASIC authentication.</p>||
 |{$JENKINS.PING.REPLY}|<p>Expected reply to the ping.</p>|`pong`|
 |{$JENKINS.FILE_DESCRIPTORS.MAX.WARN}|<p>Maximum percentage of file descriptors usage alert threshold (for trigger expression).</p>|`85`|

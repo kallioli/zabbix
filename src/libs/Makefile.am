@@ -3,17 +3,20 @@
 DIST_SUBDIRS = \
 	zbxalgo \
 	zbxalerter \
+	zbxapm_client \
 	zbxasyncpoller \
 	zbxasynchttppoller \
 	zbxaudit \
 	zbxautoreg \
 	zbxavailability \
 	zbxbincommon \
+	zbxcep_client \
 	zbxconnector \
 	zbxcommon \
 	zbxcomms \
 	zbxcommshigh \
 	zbxcompress \
+	zbxcalc \
 	zbxcfg \
 	zbxcrypto \
 	zbxcurl \
@@ -42,6 +45,7 @@ DIST_SUBDIRS = \
 	zbxhistory \
 	zbxhttp \
 	zbxhttppoller \
+	zbxtelemetry \
 	zbxicmpping \
 	zbxinterface \
 	zbxip \
@@ -53,6 +57,7 @@ DIST_SUBDIRS = \
 	zbxmedia \
 	zbxmodules \
 	zbxmutexs \
+	zbxmw \
 	zbxnix \
 	zbxnum \
 	zbxodbc \
@@ -70,10 +75,12 @@ DIST_SUBDIRS = \
 	zbxscripts \
 	zbxself \
 	zbxserialize \
-	zbxexpression \
 	zbxservice \
 	zbxshmem \
+	zbxsnmp \
 	zbxsnmptrapper \
+	zbxsupervisor \
+	zbxsupervisor_client \
 	zbxsysinfo \
 	zbxstats \
 	zbxstr \
@@ -89,11 +96,13 @@ DIST_SUBDIRS = \
 	zbxversion \
 	zbxvmware \
 	zbxprof \
-	zbxxml
+	zbxxml \
+	zbxresolver
 
 if SERVER
 SERVER_SUBDIRS = \
 	zbxalerter \
+	zbxapm_client \
 	zbxasynchttppoller \
 	zbxasyncpoller \
 	zbxaudit \
@@ -105,6 +114,7 @@ SERVER_SUBDIRS = \
 	zbxdb \
 	zbxdiscovery \
 	zbxdiscoverer \
+	zbxcep_client \
 	zbxcacheconfig \
 	zbxcachehistory \
 	zbxcachevalue \
@@ -123,12 +133,14 @@ SERVER_SUBDIRS = \
 	zbxhistory \
 	zbxhttp \
 	zbxhttppoller \
+	zbxtelemetry \
 	zbxicmpping \
 	zbxinterface \
 	zbxip \
 	zbxipcservice \
 	zbxkvs \
 	zbxmedia \
+	zbxmw \
 	zbxnum \
 	zbxodbc \
 	zbxparam \
@@ -143,10 +155,12 @@ SERVER_SUBDIRS = \
 	zbxscripts \
 	zbxself \
 	zbxserialize \
-	zbxexpression \
 	zbxservice \
 	zbxshmem \
+	zbxsnmp \
 	zbxsnmptrapper \
+	zbxsupervisor \
+	zbxsupervisor_client \
 	zbxstats \
 	zbxstr \
 	zbxtagfilter \
@@ -159,19 +173,24 @@ SERVER_SUBDIRS = \
 	zbxvault \
 	zbxversion \
 	zbxvmware \
-	zbxxml
+	zbxxml \
+	zbxcrypto \
+	zbxexec \
+	zbxthreads
 if HAVE_IPMI
 SERVER_SUBDIRS += zbxipmi
 endif
 else
 if PROXY
 PROXY_SUBDIRS = \
+	zbxapm_client \
 	zbxasyncpoller \
 	zbxasynchttppoller \
 	zbxaudit \
 	zbxautoreg \
 	zbxavailability \
 	zbxbincommon \
+	zbxcep_client \
 	zbxconnector \
 	zbxcompress \
 	zbxdb \
@@ -194,11 +213,13 @@ PROXY_SUBDIRS = \
 	zbxhistory \
 	zbxhttp \
 	zbxhttppoller \
+	zbxtelemetry \
 	zbxicmpping \
 	zbxinterface \
 	zbxip \
 	zbxipcservice \
 	zbxkvs \
+	zbxmw \
 	zbxnum \
 	zbxodbc \
 	zbxparam \
@@ -212,10 +233,12 @@ PROXY_SUBDIRS = \
 	zbxrtc \
 	zbxself \
 	zbxserialize \
-	zbxexpression \
 	zbxscripts \
 	zbxshmem \
+	zbxsnmp \
 	zbxsnmptrapper \
+	zbxsupervisor \
+	zbxsupervisor_client \
 	zbxstats \
 	zbxstr \
 	zbxtagfilter \
@@ -228,11 +251,21 @@ PROXY_SUBDIRS = \
 	zbxvault \
 	zbxversion \
 	zbxvmware \
-	zbxxml
+	zbxxml \
+	zbxcrypto \
+	zbxexec \
+	zbxthreads
 if HAVE_IPMI
 PROXY_SUBDIRS += zbxipmi
 endif
 endif
+endif
+
+if AGENT
+AGENT_SUBDIRS = \
+	zbxcrypto \
+	zbxexec \
+	zbxthreads
 endif
 
 SUBDIRS = \
@@ -242,10 +275,9 @@ SUBDIRS = \
 	zbxcomms \
 	zbxcommshigh \
 	zbxcompress \
+	zbxcalc \
 	zbxcfg \
-	zbxcrypto \
 	zbxcurl \
-	zbxexec \
 	zbxexpr \
 	zbxfile \
 	zbxgetopt \
@@ -264,12 +296,12 @@ SUBDIRS = \
 	zbxregexp \
 	zbxsysinfo \
 	zbxstr \
-	zbxthreads \
 	zbxtime \
 	zbxvariant \
 	zbxversion \
 	zbxxml \
 	zbxagentget \
+	zbxresolver \
 	$(PROXY_SUBDIRS) \
 	$(SERVER_SUBDIRS) \
 	$(AGENT_SUBDIRS)

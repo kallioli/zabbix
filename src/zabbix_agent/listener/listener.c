@@ -29,6 +29,9 @@
 #elif !defined(_WINDOWS)
 #	include "zbxnix.h"
 #endif
+#ifdef HAVE_ARES_QUERY_CACHE
+#include "zbxresolver.h"
+#endif
 
 #ifndef _WINDOWS
 static volatile sig_atomic_t	need_update_userparam;
@@ -151,6 +154,9 @@ static void	process_listener(zbx_socket_t *s, int config_timeout)
 {
 	int	ret;
 
+	if (0 == s->max_len_limit || ZBX_MAX_PASSIVE_CHECK_DATA_SIZE < s->max_len_limit)
+		s->max_len_limit = ZBX_MAX_PASSIVE_CHECK_DATA_SIZE;
+
 	if (SUCCEED == (ret = zbx_tcp_recv_to(s, config_timeout)))
 	{
 		struct zbx_json_parse	jp;
@@ -251,6 +257,9 @@ ZBX_THREAD_ENTRY(listener_thread, args)
 #endif
 
 #ifndef _WINDOWS
+#ifdef HAVE_ARES_QUERY_CACHE
+	zbx_ares_library_init();
+#endif
 	zbx_set_sigusr_handler(zbx_listener_sigusr_handler);
 #endif
 	zbx_cfg_set_process_num(process_num);
@@ -321,10 +330,7 @@ ZBX_THREAD_ENTRY(listener_thread, args)
 
 	zbx_thread_exit(EXIT_SUCCESS);
 #else
-	zbx_setproctitle("%s #%d [terminated]", get_process_type_string(process_type), process_num);
-
-	while (1)
-		zbx_sleep(SEC_PER_MIN);
+	exit(EXIT_SUCCESS);
 #endif
 #undef POLL_TIMEOUT
 }

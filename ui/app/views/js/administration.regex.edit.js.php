@@ -1,4 +1,4 @@
-<?php
+<?php declare(strict_types = 0);
 /*
 ** Copyright (C) 2001-2026 Zabbix SIA
 **
@@ -16,233 +16,370 @@
 
 /**
  * @var CView $this
+ * @var array $data
  */
 ?>
 
-<script type="text/x-jquery-tmpl" id="row-expression-tmpl">
-	<?= (new CRow([
-			(new CSelect('expressions[#{rowNum}][expression_type]'))
-				->addClass('js-expression-type-select')
-				->setId('expressions_#{rowNum}_expression_type')
-				->addOptions(CSelect::createOptionsFromArray(CRegexHelper::expression_type2str())),
-			(new CTextBox('expressions[#{rowNum}][expression]', '', false, 255))
-				->setWidth(ZBX_TEXTAREA_MEDIUM_WIDTH)
-				->setAriaRequired(),
-			(new CSelect('expressions[#{rowNum}][exp_delimiter]'))
-				->addOptions(CSelect::createOptionsFromArray(CRegexHelper::expressionDelimiters()))
-				->setId('expressions_#{rowNum}_exp_delimiter')
-				->addClass('js-expression-delimiter-select')
-				->setDisabled(true)
-				->addStyle('display: none;'),
-			new CCheckBox('expressions[#{rowNum}][case_sensitive]'),
-			(new CCol(
-				(new CButton('expressions[#{rowNum}][remove]', _('Remove')))
-					->addClass(ZBX_STYLE_BTN_LINK)
-					->addClass('element-table-remove')
-			))->addClass(ZBX_STYLE_NOWRAP)
-		]))
-			->addClass('form_row')
-			->setAttribute('data-index', '#{rowNum}')
-			->toString()
-	?>
-</script>
+window.regex_edit_popup = new class {
 
-<script type="text/x-jquery-tmpl" id="test-table-row-tmpl">
-	<?= (new CRow([
-			'#{type}', '#{expression}', (new CSpan('#{result}'))->addClass('#{resultClass}')
-		]))
-			->addClass('test_row')
-			->toString()
-	?>
-</script>
+	/** @type {Overlay} */
+	#overlay;
 
-<script type="text/x-jquery-tmpl" id="test-combined-table-row-tmpl">
-	<?= (new CRow([
-			(new CCol(_('Combined result')))->setColspan(2), (new CSpan('#{result}'))->addClass('#{resultClass}')
-		]))
-			->addClass('test_row')
-			->toString()
-	?>
-</script>
+	/**
+	 * @type {CForm}
+	 */
+	#form;
 
-<script>
-	(function($) {
-		/**
-		 * Object to manage expression related GUI elements.
-		 * @type {Object}
-		 */
-		window.zabbixRegExp = {
+	/**
+	 * @type {HTMLElement}
+	 */
+	#form_element;
 
-			/**
-			 * Template for expression row of testing results table.
-			 * @type {String}
-			 */
-			testTableRowTpl: new Template($('#test-table-row-tmpl').html()),
+	/**
+	 * @type {HTMLDivElement}
+	 */
+	#footer;
 
-			/**
-			 * Template for combined result row in testing results table.
-			 * @type {String}
-			 */
-			testCombinedTableRowTpl: new Template($('#test-combined-table-row-tmpl').html()),
+	/** @type {Object} */
+	#clone_rules;
 
-			/**
-			 * Send all expressions data to server with test string.
-			 *
-			 * @param {string} string Test string to test expression against
-			 *
-			 * @return {jqXHR}
-			 */
-			testExpressions: function(string) {
-				var ajaxData = {
-					testString: string,
-					expressions: {}
-				};
+	init({rules, clone_rules}) {
+		this.#overlay = overlays_stack.getById('regex.edit');
+		this.#footer = this.#overlay.$dialogue.$footer[0];
+		this.#form_element = this.#overlay.$dialogue.$body[0].querySelector('form');
+		this.#form = new CForm(this.#form_element, rules);
+		this.#clone_rules = clone_rules;
 
-				$('#testResultTable').css({opacity: 0.5});
+		const return_url = new URL('zabbix.php', location.href);
+		return_url.searchParams.set('action', 'regex.list');
+		ZABBIX.PopupManager.setReturnUrl(return_url.href);
 
-				$('#tbl_expr .form_row').each(function() {
-					var index = $(this).data('index');
+		this.#initActions();
+		this.#initTableActions();
+	}
 
-					ajaxData.expressions[index] = {
-						expression : $('#expressions_' + index + '_expression').val(),
-						expression_type : $('#expressions_' + index + '_expression_type').val(),
-						exp_delimiter : $('#expressions_' + index + '_exp_delimiter').val(),
-						case_sensitive : $('#expressions_' + index + '_case_sensitive').is(':checked') ? '1' : '0'
-					}
-				});
+	#initActions(rules) {
+		this.#footer.querySelector('.js-submit').addEventListener('click', () => this.#submit());
+		this.#footer.querySelector('.js-clone')?.addEventListener('click', () => this.#clone());
+		this.#footer.querySelector('.js-delete')?.addEventListener('click', () => this.#delete());
+		this.#footer.querySelector('.js-test').addEventListener('click', () => this.#testExpression(rules));
+	}
 
-				var url = new Curl('zabbix.php');
-				url.setArgument('action', 'regex.test');
+	#initTableActions() {
+		const table = document.getElementById('regular-expressions-table');
 
-				return $.post(
-					url.getUrl(),
-					{ajaxdata: ajaxData},
-					$.proxy(this.showTestResults, this),
-					'json'
-				);
-			},
+		table.querySelector('.js-add')?.addEventListener('click', () => this.#addRow());
+		table.querySelectorAll('.js-remove')?.forEach(node =>
+			node.addEventListener('click', e => this.#removeRow(e))
+		);
+		table.querySelectorAll('.js-expression-type-select').forEach(node =>
+			node.addEventListener('change', e => this.#updateRow(e))
+		);
 
-			/**
-			 * Update test results table with data received form server.
-			 *
-			 * @param {Object} response ajax response
-			 */
-			showTestResults: function(response) {
-				var tplData,
-					hasErrors,
-					obj = this,
-					$expressions = $('#tbl_expr .form_row'),
-					expression_type_str;
-
-				$('#testResultTable .test_row').remove();
-				hasErrors = ($expressions.length == 0);
-
-				$expressions.each(function() {
-					var index = $(this).data('index'),
-						expr_result = response.data.expressions[index],
-						result;
-
-					if (response.data.errors[index]) {
-						hasErrors = true;
-						result = response.data.errors[index];
-					}
-					else {
-						result = expr_result ? <?= json_encode(_('TRUE')) ?> : <?= json_encode(_('FALSE')) ?>;
-					}
-
-					switch ($('#expressions_' + index + '_expression_type').val()) {
-						case '<?= EXPRESSION_TYPE_INCLUDED ?>':
-							expression_type_str = <?= json_encode(_('Character string included')) ?>;
-							break;
-
-						case '<?= EXPRESSION_TYPE_ANY_INCLUDED ?>':
-							expression_type_str = <?= json_encode(_('Any character string included')) ?>;
-							break;
-
-						case '<?= EXPRESSION_TYPE_NOT_INCLUDED ?>':
-							expression_type_str = <?= json_encode(_('Character string not included')) ?>;
-							break;
-
-						case '<?= EXPRESSION_TYPE_TRUE ?>':
-							expression_type_str = <?= json_encode(_('Result is TRUE')) ?>;
-							break;
-
-						case '<?= EXPRESSION_TYPE_FALSE ?>':
-							expression_type_str = <?= json_encode(_('Result is FALSE')) ?>;
-							break;
-
-						default:
-							expression_type_str = '';
-					}
-
-					$('#testResultTable').append(obj.testTableRowTpl.evaluate({
-						expression: $('#expressions_' + index + '_expression').val(),
-						type: expression_type_str,
-						result: result,
-						resultClass: expr_result ? '<?= ZBX_STYLE_GREEN ?>' : '<?= ZBX_STYLE_RED ?>'
-					}));
-				});
-
-				if (hasErrors) {
-					tplData = {
-						resultClass: '<?= ZBX_STYLE_RED ?>',
-						result: <?= json_encode(_('UNKNOWN')) ?>
-					};
-				}
-				else {
-					tplData = {
-						resultClass: response.data.final ? '<?= ZBX_STYLE_GREEN ?>' : '<?= ZBX_STYLE_RED ?>',
-						result: response.data.final ? <?= json_encode(_('TRUE')) ?> : <?= json_encode(_('FALSE')) ?>
-					};
-				}
-
-				$('#testResultTable').append(this.testCombinedTableRowTpl.evaluate(tplData));
-				$('#testResultTable').css({opacity: 1});
+		table.addEventListener('change', e => {
+			if (e.target.classList.contains('js-clear-row-result')) {
+				this.#clearRowResult(e);
 			}
-		};
-	}(jQuery));
+		})
 
-	jQuery(function($) {
-		var $form = $('form#regex'),
-			$test_string = $('#test_string');
-			$test_btn = $('#testExpression');
+		table.querySelectorAll('textarea').forEach(node =>
+			node.addEventListener('input', e => this.#clearRowResult(e))
+		);
 
-		$form.on('submit', function() {
-			$form.trimValues(['#name']);
-		});
-
-		$('#testExpression, #tab_test').click(function() {
-			$test_btn.addClass('is-loading');
-			$test_btn.prop('disabled', true);
-			$test_string.prop('disabled', true);
-
-			zabbixRegExp
-				.testExpressions($test_string.val())
-				.always(function() {
-					$test_btn.removeClass('is-loading');
-					$test_btn.prop('disabled', false);
-					$test_string.prop('disabled', false);
+		document.getElementById('test-string').addEventListener('input', () => {
+			table.querySelectorAll('.js-expression-result')
+				.forEach(cell => {
+					cell.textContent = '';
+					cell.classList.remove(ZBX_STYLE_GREEN, ZBX_STYLE_RED);
 				});
+
+			this.#hideCombinedResult();
 		});
 
-		$('#tbl_expr')
-			.dynamicRows({template: '#row-expression-tmpl', allow_empty: true})
-			.on('change', '.js-expression-type-select', (e) => {
-				$(e.target)
-					.closest('[data-index]')
-					.find('.js-expression-delimiter-select')
-					.prop('disabled', e.target.value !== '<?= EXPRESSION_TYPE_ANY_INCLUDED ?>')
-					.toggle(e.target.value === '<?= EXPRESSION_TYPE_ANY_INCLUDED ?>');
-			});
+		this.#hideCombinedResult();
+	}
 
-		$form.find('#clone').click(function() {
-			var url = new Curl('zabbix.php?action=regex.edit');
+	#submit() {
+		this.#removePopupMessages();
 
-			$form.serializeArray().forEach(function(field) {
-				url.setArgument(field.name, field.value);
-			});
+		const fields = this.#form.getAllValues();
+		const action = document.getElementById('regexpid') !== null ? 'regex.update' : 'regex.create';
 
-			redirect(url.getUrl(), 'post', 'action', undefined, true);
+		this.#form.validateSubmit(fields)
+			.then(result => {
+				if (!result) {
+					this.#overlay.unsetLoading();
+					return;
+				}
+
+				this.#post(zabbixUrl({action}), fields);
 		});
-	});
-</script>
+	}
+
+	#clone() {
+		document.getElementById('regexpid').remove();
+
+		const title = <?= json_encode(_('New regular expression')) ?>;
+		const buttons = [
+			{
+				title: <?= json_encode(_('Add')) ?>,
+				class: 'js-submit',
+				keepOpen: true,
+				isSubmit: true
+			},
+			{
+				title: <?= json_encode(_('Test')) ?>,
+				class: <?= json_encode(ZBX_STYLE_BTN_ALT) ?> + ' js-test',
+				keepOpen: true,
+				isSubmit: false
+			},
+			{
+				title: <?= json_encode(_('Cancel')) ?>,
+				class: ZBX_STYLE_BTN_ALT,
+				cancel: true,
+				action: ''
+			}
+		];
+
+		this.#removePopupMessages();
+
+		this.#overlay.unsetLoading();
+		this.#overlay.setProperties({title, buttons});
+
+		this.#overlay.recoverFocus();
+		this.#overlay.containFocus();
+		this.#initActions();
+		this.#form.reload(this.#clone_rules);
+	}
+
+	#delete() {
+		this.#removePopupMessages();
+
+		const url_params = {
+			action: 'regex.delete',
+			[CSRF_TOKEN_NAME]: <?= json_encode(CCsrfTokenHelper::get('regex')) ?>
+		};
+
+		this.#post(zabbixUrl(url_params), {regexpids: [document.getElementById('regexpid').value]});
+	}
+
+	#post(url, data) {
+		fetch(url, {
+			method: 'POST',
+			headers: {'Content-Type': 'application/json'},
+			body: JSON.stringify(data)
+		})
+		.then(response => response.json())
+		.then(response => {
+			if ('error' in response) {
+				throw {error: response.error};
+			}
+
+			if ('form_errors' in response) {
+				this.#form.setErrors(response.form_errors, true, true);
+				this.#form.renderErrors();
+				return;
+			}
+
+			overlayDialogueDestroy(this.#overlay.dialogueid);
+			this.#overlay.$dialogue[0].dispatchEvent(new CustomEvent('dialogue.submit', {detail: response}));
+		})
+		.catch(exception => this.#ajaxExceptionHandler(exception))
+		.finally(() => this.#overlay.unsetLoading());
+	}
+
+	#ajaxExceptionHandler(exception) {
+		let title, messages;
+
+		if (typeof exception === 'object' && 'error' in exception) {
+			title = exception.error.title;
+			messages = exception.error.messages;
+		}
+		else {
+			messages = [<?= json_encode(_('Unexpected server error.')) ?>];
+		}
+
+		const message_box = makeMessageBox('bad', messages, title)[0];
+		this.#form_element.parentNode.insertBefore(message_box, this.#form_element);
+	}
+
+	#removePopupMessages() {
+		for (const el of this.#form_element.parentNode.children) {
+			if (el.matches('.msg-good, .msg-bad, .msg-warning')) {
+				el.parentNode.removeChild(el);
+			}
+		}
+	}
+
+	#removeRow(e) {
+		const row = e.target.closest('tr');
+		row.nextSibling.remove();
+		row.remove();
+
+		this.#hideCombinedResult();
+	}
+
+	#addRow() {
+		const indexes = Object.keys(this.#form.findFieldByName('expressions').getValue());
+		const next_index = indexes.length ? Math.max(...indexes) + 1 : 0;
+		const template = new Template(document.getElementById('row-expression-template').innerHTML);
+
+		document
+			.getElementById('expression-list-footer')
+			.insertAdjacentHTML('beforebegin', template.evaluate({index: next_index}));
+
+		const row = document
+			.getElementById('regular-expressions-table')
+			.querySelector(`tr[data-index="${next_index}"]`);
+
+		row.querySelector('.js-remove').addEventListener('click', e => this.#removeRow(e));
+		row.querySelector('.js-expression-type-select').addEventListener('change', e => this.#updateRow(e));
+		row.querySelector('textarea').addEventListener('input', e => this.#clearRowResult(e));
+
+		this.#hideCombinedResult();
+	}
+
+	#testExpression(rules) {
+		const test_fields = ['expressions', 'test_string'];
+
+		Object.values(this.#form.findFieldByName('expressions').getFields()).forEach(field => {
+			field.setChanged();
+		});
+
+		this.#form.findFieldByName('test_string').setChanged();
+
+		const values = this.#form.getAllValues();
+
+		this.#setTestLoadingStatus();
+
+		this.#form.validateFieldsForAction(test_fields, rules, values)
+			.then(result => {
+				if (!result) {
+					this.#unsetTestLoadingStatus();
+					return;
+				}
+
+				const {expressions, test_string} = values;
+
+				this.#removePopupMessages();
+
+				fetch(zabbixUrl({action: 'regex.test'}), {
+					method: 'POST',
+					headers: {'Content-Type': 'application/json'},
+					body: JSON.stringify({expressions, test_string})
+				})
+					.then(response => response.json())
+					.then(response => {
+						if ('error' in response) {
+							throw {error: response.error};
+						}
+
+						this.#showTestResult(response, expressions);
+					})
+					.catch(exception => this.#ajaxExceptionHandler(exception))
+					.finally(() => this.#unsetTestLoadingStatus());
+			});
+	}
+
+	#setTestLoadingStatus() {
+		if (!this.#form_element.isConnected) {
+			return;
+		}
+
+		this.#overlay.setLoading();
+
+		document.getElementById('regular-expressions-table')
+			.querySelectorAll('.js-add, .js-remove')
+			.forEach(button => button.disabled = true);
+	}
+
+	#unsetTestLoadingStatus() {
+		if (!this.#form_element.isConnected) {
+			return;
+		}
+
+		document.getElementById('regular-expressions-table')
+			.querySelectorAll('.js-add, .js-remove')
+			.forEach(button => button.disabled = false);
+
+		this.#overlay.unsetLoading();
+	}
+
+	#showTestResult(response, expressions) {
+		document.querySelectorAll('#regular-expressions-table .js-expression-result')
+			.forEach(cell => {
+				cell.textContent = '';
+				cell.className = cell.className.replace(ZBX_STYLE_GREEN, '').replace(ZBX_STYLE_RED, '')
+			});
+
+		for (const index of Object.keys(expressions)) {
+			const result = response.expressions[index];
+			const cell = document.getElementById(`expressions_${index}_result`);
+
+			if (!cell) {
+				continue;
+			}
+
+			cell.textContent = result ? <?= json_encode(_('TRUE')) ?> : <?= json_encode(_('FALSE')) ?>;
+			cell.classList.add(result ? ZBX_STYLE_GREEN : ZBX_STYLE_RED)
+		}
+
+		this.#setCombinedResult(response.final);
+	}
+
+	#setCombinedResult(result) {
+		const span = document.getElementById('test-result-combined');
+
+		span.textContent = result ? <?= json_encode(_('TRUE')) ?> : <?= json_encode(_('FALSE')) ?>;
+		span.className = '';
+
+		span.classList.add(result ? ZBX_STYLE_GREEN : ZBX_STYLE_RED);
+
+		span.closest('.form-field').previousElementSibling.style.display = '';
+		span.closest('.form-field').style.display = '';
+	}
+
+	#updateRow({target}) {
+		if (target.classList.contains('js-expression-type-select')) {
+			const row = target.closest('tr');
+			const delimiter = target.closest('tr').querySelector('.js-expression-delimiter-select');
+
+			if (target.value == <?= REGEX_TYPE_CONTAINS_ANY_SUBSTRING ?>) {
+				delimiter.disabled = false;
+				delimiter.classList.remove('<?= ZBX_STYLE_DISPLAY_NONE ?>');
+			}
+			else {
+				delimiter.disabled = true;
+				delimiter.classList.add('<?= ZBX_STYLE_DISPLAY_NONE ?>');
+			}
+
+			const cell = row.querySelector('.js-expression-result');
+
+			if (cell) {
+				cell.textContent = '';
+				cell.classList.remove(ZBX_STYLE_GREEN, ZBX_STYLE_RED);
+			}
+
+			this.#hideCombinedResult();
+		}
+	}
+
+	#hideCombinedResult() {
+		const span = document.getElementById('test-result-combined');
+
+		span.textContent = '';
+		span.closest('.form-field').previousElementSibling.style.display = 'none';
+		span.closest('.form-field').style.display = 'none';
+	}
+
+	#clearRowResult(e) {
+		const cell = e.target.closest('tr').querySelector('.js-expression-result');
+
+		if (cell) {
+			cell.textContent = '';
+			cell.classList.remove(ZBX_STYLE_GREEN, ZBX_STYLE_RED);
+		}
+
+		this.#hideCombinedResult();
+	}
+};

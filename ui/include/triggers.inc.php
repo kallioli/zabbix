@@ -88,16 +88,6 @@ function get_trigger_by_triggerid($triggerid) {
 	return false;
 }
 
-function get_triggers_by_hostid($hostid) {
-	return DBselect(
-		'SELECT DISTINCT t.*'.
-		' FROM triggers t,functions f,items i'.
-		' WHERE i.hostid='.zbx_dbstr($hostid).
-			' AND f.itemid=i.itemid'.
-			' AND f.triggerid=t.triggerid'
-	);
-}
-
 /**
  * Prepare arrays containing only hosts and triggers that will be shown results table.
  *
@@ -1285,6 +1275,7 @@ function get_item_function_info(string $expr) {
 		'firstclock' => $rules['numeric'] + $rules['string'],
 		'forecast' => $rules['numeric_as_float'],
 		'fuzzytime' => $rules['numeric_as_0or1'],
+		'jsonpath' => $rules['string'],
 		'kurtosis' => $rules['numeric_as_float'],
 		'last' => $rules['numeric'] + $rules['string'],
 		'lastclock' => $rules['numeric'] + $rules['string'],
@@ -1313,7 +1304,8 @@ function get_item_function_info(string $expr) {
 		'trendstl' => $rules['numeric'],
 		'trendsum' => $rules['numeric'],
 		'varpop' => $rules['numeric_as_float'],
-		'varsamp' => $rules['numeric_as_float']
+		'varsamp' => $rules['numeric_as_float'],
+		'xmlxpath' => $rules['string']
 	];
 
 	$math_functions = [
@@ -1337,6 +1329,7 @@ function get_item_function_info(string $expr) {
 		'ceil' => ['any' => $rule_int],
 		'char' => ['any' => $rule_str],
 		'concat' => ['any' => $rule_str],
+		'contains' => ['any' => $rule_0or1],
 		'cos' => ['any' => $rule_float],
 		'cosh' => ['any' => $rule_float],
 		'cot' => ['any' => $rule_float],
@@ -1380,6 +1373,7 @@ function get_item_function_info(string $expr) {
 		'sin' => ['any' => $rule_float],
 		'sinh' => ['any' => $rule_float],
 		'sqrt' => ['any' => $rule_float],
+		'substring' => ['any' => $rule_str],
 		'sum' => ['any' => $rule_float],
 		'tan' => ['any' => $rule_float],
 		'time' => [

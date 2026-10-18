@@ -262,6 +262,45 @@ static int	ipc_socket_recv(int fd, unsigned char *buffer, zbx_uint32_t size)
 #endif
 }
 
+/******************************************************************************
+ *                                                                            *
+ * Purpose: creates the pair of descriptors a service is woken up through     *
+ *                                                                            *
+ * Comments: A pipe on Unix. libevent on Windows only watches sockets, so the *
+ *           pair is two connected loopback sockets there, read and written   *
+ *           with the socket calls above.                                     *
+ *                                                                            *
+ ******************************************************************************/
+static int	ipc_alert_pipe_create(int *fds, char **error)
+{
+#ifdef _WINDOWS
+	evutil_socket_t	pair[2];
+
+	if (0 != evutil_socketpair(AF_INET, SOCK_STREAM, 0, pair))
+	{
+		*error = zbx_dsprintf(*error, "Cannot create alert socket pair: %s.",
+				zbx_strerror_from_system(WSAGetLastError()));
+		return FAIL;
+	}
+
+	fds[0] = (int)pair[0];
+	fds[1] = (int)pair[1];
+#else
+	if (0 != pipe(fds))
+	{
+		*error = zbx_dsprintf(*error, "Cannot create alert pipe: %s.", zbx_strerror(errno));
+		return FAIL;
+	}
+#endif
+	return SUCCEED;
+}
+
+static void	ipc_alert_pipe_close(int *fds)
+{
+	ipc_socket_close_fd(fds[0]);
+	ipc_socket_close_fd(fds[1]);
+}
+
 #define ZBX_IPC_CLIENT_STATE_NONE	0
 #define ZBX_IPC_CLIENT_STATE_QUEUED	1
 
@@ -300,8 +339,6 @@ ZBX_PTR_VECTOR_IMPL(ipc_client_ptr, zbx_ipc_client_t *)
 /*
  * Private API
  */
-
-#define ZBX_IPC_HEADER_SIZE	(int)(sizeof(zbx_uint32_t) * 2)
 
 #define ZBX_IPC_MESSAGE_CODE	0
 #define ZBX_IPC_MESSAGE_SIZE	1
@@ -974,7 +1011,6 @@ static void	ipc_service_push_client(zbx_ipc_service_t *service, zbx_ipc_client_t
  ******************************************************************************/
 static void	ipc_service_add_client(zbx_ipc_service_t *service, int fd)
 {
-	static zbx_uint64_t	next_clientid = 1;
 	zbx_ipc_client_t	*client;
 
 	zabbix_log(LOG_LEVEL_DEBUG, "In %s()", __func__);
@@ -985,13 +1021,13 @@ static void	ipc_service_add_client(zbx_ipc_service_t *service, int fd)
 	if (SUCCEED != ipc_socket_set_nonblocking(fd))
 	{
 		zabbix_log(LOG_LEVEL_CRIT, "cannot set non-blocking mode for IPC client socket");
-		exit(EXIT_FAILURE);
+		zbx_exit(EXIT_FAILURE);
 	}
 
 	client->csocket.fd = fd;
 	client->csocket.rx_buffer_bytes = 0;
 	client->csocket.rx_buffer_offset = 0;
-	client->id = next_clientid++;
+	client->id = service->next_clientid++;
 	client->state = ZBX_IPC_CLIENT_STATE_NONE;
 	client->refcount = 1;
 
@@ -1173,7 +1209,7 @@ static void	ipc_service_accept(zbx_ipc_service_t *service)
 			/* If there is unaccepted connection libevent will call registered callback function over and */
 			/* over again. It is better to exit straight away and cause all other processes to stop. */
 			zabbix_log(LOG_LEVEL_CRIT, "cannot accept incoming IPC connection: %s", zbx_strerror(errno));
-			exit(EXIT_FAILURE);
+			zbx_exit(EXIT_FAILURE);
 		}
 	}
 
@@ -1288,6 +1324,24 @@ static void	ipc_service_timer_cb(evutil_socket_t fd, short what, void *arg)
 	ZBX_UNUSED(fd);
 	ZBX_UNUSED(what);
 	ZBX_UNUSED(arg);
+}
+
+/******************************************************************************
+ *                                                                            *
+ * Purpose: alert callback                                                    *
+ *                                                                            *
+ ******************************************************************************/
+static void	ipc_service_alert_cb(evutil_socket_t fd, short what, void *arg)
+{
+	char			buf[16];
+	zbx_ipc_service_t	*service = (zbx_ipc_service_t *)arg;
+
+	ZBX_UNUSED(what);
+
+	while (ipc_socket_recv((int)fd, (unsigned char *)buf, sizeof(buf)) > 0)
+		;
+
+	event_base_loopbreak(service->ev);
 }
 
 /******************************************************************************
@@ -1644,13 +1698,6 @@ void	zbx_ipc_message_copy(zbx_ipc_message_t *dst, const zbx_ipc_message_t *src)
 }
 #endif /* HAVE_OPENIPMI */
 
-static void	ipc_service_user_cb(evutil_socket_t fd, short what, void *arg)
-{
-	ZBX_UNUSED(fd);
-	ZBX_UNUSED(what);
-	ZBX_UNUSED(arg);
-}
-
 /*
  * Public service API
  */
@@ -1785,6 +1832,7 @@ int	zbx_ipc_service_start(zbx_ipc_service_t *service, const char *service_name, 
 
 	zabbix_log(LOG_LEVEL_DEBUG, "In %s() service:%s", __func__, service_name);
 
+	service->fd = -1;
 #ifndef _WINDOWS
 	mode = umask(077);
 #endif
@@ -1890,6 +1938,9 @@ int	zbx_ipc_service_start(zbx_ipc_service_t *service, const char *service_name, 
 	}
 #endif
 
+	if (SUCCEED != ipc_alert_pipe_create(service->alert_pipe, error))
+		goto out;
+
 	service->path = zbx_strdup(NULL, socket_path);
 	zbx_vector_ipc_client_ptr_create(&service->clients);
 	zbx_queue_ptr_create(&service->clients_recv);
@@ -1900,13 +1951,27 @@ int	zbx_ipc_service_start(zbx_ipc_service_t *service, const char *service_name, 
 	event_add(service->ev_listener, NULL);
 
 	service->ev_timer = event_new(service->ev, -1, 0, ipc_service_timer_cb, service);
-	service->ev_alert = event_new(service->ev, -1, 0, ipc_service_user_cb, NULL);
+
+	evutil_make_socket_nonblocking(service->alert_pipe[0]);
+	evutil_make_socket_nonblocking(service->alert_pipe[1]);
+
+	service->ev_alert = event_new(service->ev, service->alert_pipe[0], EV_READ | EV_PERSIST, ipc_service_alert_cb,
+			service);
+	event_add(service->ev_alert, NULL);
+
+	service->next_clientid = 1;
 
 	ret = SUCCEED;
 out:
 #ifndef _WINDOWS
 	umask(mode);
 #endif
+
+	if (SUCCEED != ret && -1 != service->fd)
+	{
+		ipc_socket_close_fd(service->fd);
+		service->fd = -1;
+	}
 
 	zabbix_log(LOG_LEVEL_DEBUG, "End of %s():%s", __func__, zbx_result_string(ret));
 
@@ -1926,7 +1991,13 @@ void	zbx_ipc_service_close(zbx_ipc_service_t *service)
 
 	zabbix_log(LOG_LEVEL_DEBUG, "In %s() path:%s", __func__, service->path);
 
+	if (-1 == service->fd)
+		goto out;
+
+	event_free(service->ev_listener);
+
 	ipc_socket_close_fd(service->fd);
+	service->fd = -1;
 
 #ifdef _WINDOWS
 	/* the endpoint lives in the registry rather than on disk */
@@ -1953,9 +2024,10 @@ void	zbx_ipc_service_close(zbx_ipc_service_t *service)
 
 	event_free(service->ev_alert);
 	event_free(service->ev_timer);
-	event_free(service->ev_listener);
 	event_base_free(service->ev);
 
+	ipc_alert_pipe_close(service->alert_pipe);
+out:
 	zabbix_log(LOG_LEVEL_DEBUG, "End of %s()", __func__);
 }
 
@@ -2046,7 +2118,22 @@ int	zbx_ipc_service_recv(zbx_ipc_service_t *service, const zbx_timespec_t *timeo
  ******************************************************************************/
 void	zbx_ipc_service_alert(zbx_ipc_service_t *service)
 {
-	event_active(service->ev_alert, 0, 0);
+	unsigned char	byte = 1;
+
+	while (1 != ipc_socket_send(service->alert_pipe[1], &byte, 1))
+	{
+		int	err = ipc_socket_errno();
+
+		if (ZBX_IPC_EWOULDBLOCK == err || ZBX_IPC_EAGAIN == err)
+			return;
+
+		if (ZBX_IPC_EINTR != err)
+		{
+			zabbix_log(LOG_LEVEL_ERR, "cannot alert IPC service \"%s\": %s", service->path,
+					ipc_socket_strerror(err));
+			return;
+		}
+	}
 }
 
 /******************************************************************************
@@ -2086,8 +2173,14 @@ int	zbx_ipc_client_send(zbx_ipc_client_t *client, zbx_uint32_t code, const unsig
 	{
 		client->tx_header[ZBX_IPC_MESSAGE_CODE] = code;
 		client->tx_header[ZBX_IPC_MESSAGE_SIZE] = size;
-		client->tx_data = (unsigned char *)zbx_malloc(NULL, size);
-		memcpy(client->tx_data, data, size);
+		if (0 != size)
+		{
+			client->tx_data = (unsigned char *)zbx_malloc(NULL, size);
+			memcpy(client->tx_data, data, size);
+		}
+		else
+			client->tx_data = NULL;
+
 		client->tx_bytes = ZBX_IPC_HEADER_SIZE + size - tx_size;
 		event_add(client->tx_event, NULL);
 	}
@@ -2184,7 +2277,7 @@ int	zbx_ipc_async_socket_open(zbx_ipc_async_socket_t *asocket, const char *servi
 	if (SUCCEED != ipc_socket_set_nonblocking(asocket->client->csocket.fd))
 	{
 		zabbix_log(LOG_LEVEL_CRIT, "cannot set non-blocking mode for IPC client socket");
-		exit(EXIT_FAILURE);
+		zbx_exit(EXIT_FAILURE);
 	}
 
 	asocket->ev = event_base_new();
@@ -2199,8 +2292,8 @@ int	zbx_ipc_async_socket_open(zbx_ipc_async_socket_t *asocket, const char *servi
 
 	ret = SUCCEED;
 out:
-	zabbix_log(LOG_LEVEL_DEBUG, "End of %s() clientid:" ZBX_FS_UI64 " ret:%s", __func__, asocket->client->id,
-			zbx_result_string(ret));
+	zabbix_log(LOG_LEVEL_DEBUG, "End of %s() clientid:" ZBX_FS_UI64 " ret:%s", __func__,
+			(NULL != asocket->client ? asocket->client->id : 0), zbx_result_string(ret));
 
 	return ret;
 }

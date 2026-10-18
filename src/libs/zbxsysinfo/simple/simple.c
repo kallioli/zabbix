@@ -24,10 +24,7 @@
 #include "zbxtime.h"
 #include "zbxcomms.h"
 #include "zbx_discoverer_constants.h"
-
-#if defined(HAVE_LIBCURL) || defined(HAVE_LDAP)
-#	include "zbxip.h"
-#endif
+#include "zbxip.h"
 
 #ifdef HAVE_LIBCURL
 #	include "zbxcurl.h"
@@ -146,7 +143,7 @@ static int	check_ssh(const char *host, unsigned short port, int timeout, int *va
 	*value_int = 0;
 
 	if (SUCCEED == (ret = zbx_tcp_connect(&s, sysinfo_get_config_source_ip(), host, port, timeout,
-			ZBX_TCP_SEC_UNENCRYPTED, NULL, NULL)))
+			ZBX_TCP_SEC_UNENCRYPTED, NULL, NULL, ZBX_DNS_FAILOVER_DISABLED)))
 	{
 		while (NULL != (buf = zbx_tcp_recv_line(&s)))
 		{
@@ -256,7 +253,7 @@ static int	check_telnet(const char *host, unsigned short port, int timeout, int 
 	*value_int = 0;
 
 	if (SUCCEED == zbx_tcp_connect(&s, sysinfo_get_config_source_ip(), host, port, timeout, ZBX_TCP_SEC_UNENCRYPTED,
-			NULL, NULL))
+			NULL, NULL, ZBX_DNS_FAILOVER_DISABLED))
 	{
 		if (SUCCEED == zbx_telnet_test_login(&s))
 			*value_int = 1;
@@ -411,6 +408,12 @@ int	zbx_check_service_default_addr(AGENT_REQUEST *request, const char *default_a
 
 	if (0 == strncmp("net.tcp.service", get_rkey(request), 15))
 	{
+		if (FAIL == zbx_is_ip(ip) && FAIL == zbx_is_rfc_extended_hostname(ip))
+		{
+			SET_MSG_RESULT(result, zbx_strdup(NULL, "Invalid second parameter."));
+			return SYSINFO_RET_FAIL;
+		}
+
 		if (0 == strcmp(service, "ssh"))
 		{
 			if (NULL == port_str || '\0' == *port_str)
@@ -503,8 +506,15 @@ int	zbx_check_service_default_addr(AGENT_REQUEST *request, const char *default_a
 	{
 		if (0 == strcmp(service, "ntp"))
 		{
+			if (FAIL == zbx_is_ip(ip) && FAIL == zbx_is_rfc_extended_hostname(ip))
+			{
+				SET_MSG_RESULT(result, zbx_strdup(NULL, "Invalid second parameter."));
+				return SYSINFO_RET_FAIL;
+			}
+
 			if (NULL == port_str || '\0' == *port_str)
 				port = ZBX_DEFAULT_NTP_PORT;
+
 			ret = check_ntp(ip, port, request->timeout, &value_int);
 		}
 		else

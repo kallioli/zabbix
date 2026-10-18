@@ -22,7 +22,7 @@ class CControllerMenuPopup extends CController {
 
 	protected function checkInput() {
 		$fields = [
-			'type' => 'required|in history,host,item,item_prototype,map_element,trigger,trigger_macro,drule',
+			'type' => 'required|in host,item,item_prototype,map_element,trigger,trigger_macro,drule',
 			'data' => 'array'
 		];
 
@@ -49,12 +49,6 @@ class CControllerMenuPopup extends CController {
 				$rules = [
 					'hostid' => 'required|db hosts.hostid',
 					'has_goto' => 'in 0'
-				];
-				break;
-
-			case 'history':
-				$rules = [
-					'itemid' => 'required|db items.itemid'
 				];
 				break;
 
@@ -105,7 +99,7 @@ class CControllerMenuPopup extends CController {
 		array_map('error', $validator->getAllErrors());
 
 		if (array_key_exists('backurl', $this->input['data'])
-				&& !CHtmlUrlValidator::validateSameSite($this->input['data']['backurl'])) {
+				&& !(new CFrontendActionValidator())->validate($this->input['data']['backurl'])) {
 			throw new CAccessDeniedException();
 		}
 
@@ -114,37 +108,6 @@ class CControllerMenuPopup extends CController {
 
 	protected function checkPermissions() {
 		return true;
-	}
-
-	/**
-	 * Prepare data for history context menu popup.
-	 *
-	 * @param array  $data
-	 * @param string $data['itemid']
-	 *
-	 * @return mixed
-	 */
-	private static function getMenuDataHistory(array $data) {
-		$db_items = API::Item()->get([
-			'output' => ['value_type'],
-			'itemids' => $data['itemid'],
-			'webitems' => true
-		]);
-
-		if ($db_items) {
-			$db_item = $db_items[0];
-
-			return [
-				'type' => 'history',
-				'itemid' => $data['itemid'],
-				'hasLatestGraphs' => in_array($db_item['value_type'], [ITEM_VALUE_TYPE_UINT64, ITEM_VALUE_TYPE_FLOAT]),
-				'allowed_ui_latest_data' => CWebUser::checkAccess(CRoleHelper::UI_MONITORING_LATEST_DATA)
-			];
-		}
-
-		error(_('No permissions to referred object or it does not exist!'));
-
-		return null;
 	}
 
 	/**
@@ -286,9 +249,11 @@ class CControllerMenuPopup extends CController {
 	 * Prepare data for item latest data context menu popup.
 	 *
 	 * @param array  $data
-	 * @param string $data['itemid']
+	 *        string $data['itemid']
+	 *        string $data['backurl']
+	 *        bool   $data['combined']  (optional) is item aggregated using combined function or not
 	 *
-	 * @return mixed
+	 * @return array|null
 	 */
 	private static function getMenuDataItem(array $data) {
 		$db_items = API::Item()->get([
@@ -305,39 +270,43 @@ class CControllerMenuPopup extends CController {
 			$is_executable = false;
 
 			if ($db_item['type'] != ITEM_TYPE_HTTPTEST) {
-				$is_writable = CWebUser::getType() == USER_TYPE_SUPER_ADMIN
-					? true
-					: (bool) API::Host()->get([
-						'output' => ['hostid'],
-						'hostids' => $db_item['hostid'],
-						'editable' => true
-					]);
+				$is_writable = CWebUser::getType() == USER_TYPE_SUPER_ADMIN || (bool) API::Host()->get([
+					'output' => ['hostid'],
+					'hostids' => $db_item['hostid'],
+					'editable' => true
+				]);
 			}
 
 			if (in_array($db_item['type'], checkNowAllowedTypes())) {
-				$is_executable = $is_writable ? true : CWebUser::checkAccess(CRoleHelper::ACTIONS_INVOKE_EXECUTE_NOW);
+				$is_executable = $is_writable || CWebUser::checkAccess(CRoleHelper::ACTIONS_INVOKE_EXECUTE_NOW);
 			}
+
+			[
+				'keep_history' => $keep_history,
+				'keep_trends' => $keep_trends
+			] = CItemHelper::getStoragePeriods((int) $db_item['value_type'], $db_item['history'], $db_item['trends']);
 
 			return [
 				'type' => 'item',
 				'backurl' => $data['backurl'],
+				'combined' => $data['combined'] ?? false,
 				'itemid' => $data['itemid'],
 				'name' => $db_item['name_resolved'],
 				'key' => $db_item['key_'],
 				'hostid' => $db_item['hostid'],
 				'host' => $db_item['hosts'][0]['host'],
 				'triggers' => $db_item['triggers'],
-				'showGraph' => ($db_item['value_type'] == ITEM_VALUE_TYPE_FLOAT
-					|| $db_item['value_type'] == ITEM_VALUE_TYPE_UINT64
-				),
-				'history' => $db_item['history'] != 0,
-				'trends' => $db_item['trends'] != 0,
+				// A strict comparison with zero is required here because the $keep_* variables may have a null value.
+				'showGraph' => in_array($db_item['value_type'], [ITEM_VALUE_TYPE_FLOAT, ITEM_VALUE_TYPE_UINT64])
+						&& ($keep_history !== 0 || $keep_trends !== 0),
+				'history' => $keep_history !== 0,
 				'isDiscovery' => $db_item['flags'] == ZBX_FLAG_DISCOVERY_CREATED,
 				'isExecutable' => $is_executable,
 				'isWriteable' => $is_writable,
 				'allowed_ui_latest_data' => CWebUser::checkAccess(CRoleHelper::UI_MONITORING_LATEST_DATA),
 				'allowed_ui_conf_hosts' => CWebUser::checkAccess(CRoleHelper::UI_CONFIGURATION_HOSTS),
-				'binary_value_type' => $db_item['value_type'] == ITEM_VALUE_TYPE_BINARY
+				'is_trigger_supported' => $db_item['value_type'] != ITEM_VALUE_TYPE_BINARY
+					&& $db_item['value_type'] != ITEM_VALUE_TYPE_JSON
 			];
 		}
 
@@ -375,7 +344,8 @@ class CControllerMenuPopup extends CController {
 				'itemid' => $data['itemid'],
 				'name' => $db_item_prototype['name'],
 				'key' => $db_item_prototype['key_'],
-				'is_binary_value_type' => $db_item_prototype['value_type'] == ITEM_VALUE_TYPE_BINARY,
+				'is_trigger_supported' => $db_item_prototype['value_type'] != ITEM_VALUE_TYPE_BINARY
+					&& $db_item_prototype['value_type'] != ITEM_VALUE_TYPE_JSON,
 				'is_discovered_prototype' => $db_item_prototype['flags'] & ZBX_FLAG_DISCOVERY_CREATED,
 				'hostid' => $db_item_prototype['hosts'][0]['hostid'],
 				'host' => $db_item_prototype['hosts'][0]['host'],
@@ -740,15 +710,24 @@ class CControllerMenuPopup extends CController {
 				];
 			}
 
+			$is_writable = 	(bool) API::Trigger()->get([
+				'output' => [],
+				'triggerids' => $data['triggerid'],
+				'editable' => true
+			]);
+
 			$menu_data = [
 				'type' => 'trigger',
 				'triggerid' => $data['triggerid'],
 				'backurl' => $data['backurl'],
 				'items' => $items,
 				'show_events' => $show_events,
+				'isWritable' => $is_writable,
 				'allowed_ui_problems' => CWebUser::checkAccess(CRoleHelper::UI_MONITORING_PROBLEMS),
 				'allowed_ui_conf_hosts' => CWebUser::checkAccess(CRoleHelper::UI_CONFIGURATION_HOSTS),
 				'allowed_ui_latest_data' => CWebUser::checkAccess(CRoleHelper::UI_MONITORING_LATEST_DATA),
+				'allowed_ui_conf_maintenance' => CWebUser::checkAccess(CRoleHelper::UI_CONFIGURATION_MAINTENANCE),
+				'allowed_edit_maintenance' => CWebUser::checkAccess(CRoleHelper::ACTIONS_EDIT_MAINTENANCE),
 				'allowed_actions_change_problem_ranking' =>
 					CWebUser::checkAccess(CRoleHelper::ACTIONS_CHANGE_PROBLEM_RANKING)
 			];
@@ -1016,10 +995,6 @@ class CControllerMenuPopup extends CController {
 		$data = $this->hasInput('data') ? $this->getInput('data') : [];
 
 		switch ($this->getInput('type')) {
-			case 'history':
-				$menu_data = self::getMenuDataHistory($data);
-				break;
-
 			case 'host':
 				$menu_data = self::getMenuDataHost($data);
 				break;

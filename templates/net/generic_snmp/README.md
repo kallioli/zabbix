@@ -7,7 +7,7 @@ Use this template if you can't find the template for specific vendor or device f
 
 ## Requirements
 
-Zabbix version: 7.4 and higher.
+Zabbix version: 8.0 and higher.
 
 ## Tested versions
 
@@ -16,7 +16,7 @@ This template has been tested on:
 
 ## Configuration
 
-> Zabbix should be configured according to the instructions in the [Templates out of the box](https://www.zabbix.com/documentation/7.4/manual/config/templates_out_of_the_box) section.
+> Zabbix should be configured according to the instructions in the [Templates out of the box](https://www.zabbix.com/documentation/8.0/manual/config/templates_out_of_the_box) section.
 
 ## Setup
 
@@ -27,6 +27,7 @@ Refer to the vendor documentation.
 |Name|Description|Default|
 |----|-----------|-------|
 |{$SNMP.TIMEOUT}|<p>Time interval for the SNMP availability trigger.</p>|`5m`|
+|{$SNMP.UPTIME.WARN}|<p>Uptime threshold above which the "Host has been restarted" problem auto-resolves.</p>|`10m`|
 |{$ICMP_LOSS_WARN}|<p>Warning threshold of ICMP packet loss in %.</p>|`20`|
 |{$ICMP_RESPONSE_TIME_WARN}|<p>Warning threshold of the average ICMP response time in seconds.</p>|`0.15`|
 |{$IFCONTROL}||`1`|
@@ -66,7 +67,7 @@ Refer to the vendor documentation.
 
 |Name|Description|Expression|Severity|Dependencies and additional info|
 |----|-----------|----------|--------|--------------------------------|
-|Network Generic Device: Host has been restarted|<p>Uptime is less than 10 minutes.</p>|`(last(/Network Generic Device by SNMP/system.hw.uptime[hrSystemUptime.0])>0 and last(/Network Generic Device by SNMP/system.hw.uptime[hrSystemUptime.0])<10m) or (last(/Network Generic Device by SNMP/system.hw.uptime[hrSystemUptime.0])=0 and last(/Network Generic Device by SNMP/system.net.uptime[sysUpTime.0])<10m)`|Warning|**Manual close**: Yes<br>**Depends on**:<br><ul><li>Network Generic Device: No SNMP data collection</li></ul>|
+|Network Generic Device: Host has been restarted|<p>The uptime counter has decreased, which indicates that the host has been restarted.<br>A decrease is ignored if the previous value was close enough to the 32-bit SNMP counter limit (2^32 hundredths of a second, about 497 days) for the counter to have wrapped between the two readings.<br>The problem is resolved automatically once uptime exceeds {$SNMP.UPTIME.WARN}.</p>|`(last(/Network Generic Device by SNMP/system.hw.uptime[hrSystemUptime.0])>0 and change(/Network Generic Device by SNMP/system.hw.uptime[hrSystemUptime.0])<0 and last(/Network Generic Device by SNMP/system.hw.uptime[hrSystemUptime.0],#2)<42949672.96-(lastclock(/Network Generic Device by SNMP/system.hw.uptime[hrSystemUptime.0])-lastclock(/Network Generic Device by SNMP/system.hw.uptime[hrSystemUptime.0],#2))) or (last(/Network Generic Device by SNMP/system.hw.uptime[hrSystemUptime.0])=0 and change(/Network Generic Device by SNMP/system.net.uptime[sysUpTime.0])<0 and last(/Network Generic Device by SNMP/system.net.uptime[sysUpTime.0],#2)<42949672.96-(lastclock(/Network Generic Device by SNMP/system.net.uptime[sysUpTime.0])-lastclock(/Network Generic Device by SNMP/system.net.uptime[sysUpTime.0],#2)))`|Warning|**Manual close**: Yes<br>**Depends on**:<br><ul><li>Network Generic Device: No SNMP data collection</li></ul>|
 |Network Generic Device: System name has changed|<p>The name of the system has changed. Acknowledge to close the problem manually.</p>|`last(/Network Generic Device by SNMP/system.name,#1)<>last(/Network Generic Device by SNMP/system.name,#2) and length(last(/Network Generic Device by SNMP/system.name))>0`|Info|**Manual close**: Yes|
 |Network Generic Device: No SNMP data collection|<p>SNMP is not available for polling. Please check device connectivity and SNMP settings.</p>|`max(/Network Generic Device by SNMP/zabbix[host,snmp,available],{$SNMP.TIMEOUT})=0`|Warning|**Depends on**:<br><ul><li>Network Generic Device: Unavailable by ICMP ping</li></ul>|
 |Network Generic Device: Unavailable by ICMP ping|<p>Last three attempts returned timeout. Please check device connectivity.</p>|`max(/Network Generic Device by SNMP/icmpping,#3)=0`|High||

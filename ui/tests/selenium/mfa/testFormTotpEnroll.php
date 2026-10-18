@@ -134,7 +134,6 @@ class testFormTotpEnroll extends testFormTotp {
 		$this->page->waitUntilReady();
 		if (CTestArrayHelper::get($data, 'expected', TEST_GOOD) === TEST_GOOD) {
 			// Successful login.
-			$this->query('class:zi-sign-out')->waitUntilPresent();
 			$this->page->assertUserIsLoggedIn();
 			// Check that no error messages are displayed after logging in.
 			$this->assertFalse($this->query('class:msg-bad')->one(false)->isValid(), 'Unexpected error on page.');
@@ -272,7 +271,7 @@ class testFormTotpEnroll extends testFormTotp {
 			'&period=30$@';
 
 		// The QR code title contains URL-encoded characters (e.g., spaces as %20), so we need to decode it.
-		$qr_title = urldecode($qr_code->getAttribute('title'));
+		$qr_title = urldecode($qr_code->getAttribute('data-ref'));
 		$this->assertEquals(1, preg_match($regex, $qr_title, $matches),
 				"Failed to assert the QR code.\nExpected title regex: ".$regex."\nActual title: ".$qr_title
 		);

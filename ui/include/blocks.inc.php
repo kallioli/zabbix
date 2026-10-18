@@ -136,7 +136,7 @@ function getSystemStatusData(array $filter) {
 
 	if (array_key_exists('show_suppressed', $filter) && $filter['show_suppressed']) {
 		unset($options['suppressed']);
-		$options['selectSuppressionData'] = ['maintenanceid', 'suppress_until', 'userid'];
+		$options['selectSuppressionData'] = ['maintenanceid', 'suppress_until', 'userid', 'cep_ruleid'];
 	}
 
 	if ($filter_ext_ack == EXTACK_OPTION_UNACK) {
@@ -301,7 +301,8 @@ function getSystemStatusData(array $filter) {
 		if (array_key_exists('show_opdata', $filter) && $filter['show_opdata'] != OPERATIONAL_DATA_SHOW_NONE) {
 			$maked_data = CScreenProblem::makeData(
 				['problems' => $problems_data, 'triggers' => $data['triggers']],
-				['show' => 0, 'details' => 0, 'show_opdata' => $filter['show_opdata']]
+				['show' => 0],
+				['details' => 0, 'show_opdata' => $filter['show_opdata']]
 			);
 			$data['triggers'] = $maked_data['triggers'];
 		}
@@ -630,10 +631,29 @@ function makeProblemsPopup(array $problems, array $triggers, array $actions, arr
 	$triggers_hosts = getTriggersHostsList($triggers);
 	$triggers_hosts = makeTriggersHostsList($triggers_hosts);
 
-	$tags = makeTags($problems);
+	$tags = CTagHelper::getTagsHtml($problems, ZBX_TAG_OBJECT_PROBLEM);
 
 	if (array_key_exists('show_suppressed', $filter) && $filter['show_suppressed']) {
 		CScreenProblem::addSuppressionNames($problems);
+	}
+
+	if ($show_opdata != OPERATIONAL_DATA_SHOW_NONE) {
+		$events = [];
+
+		foreach ($problems as $problem) {
+			$trigger = $triggers[$problem['objectid']];
+
+			if ($trigger['opdata'] !== '') {
+				$events[$problem['eventid']] = [
+					'triggerid' => $trigger['triggerid'],
+					'expression' => $trigger['expression'],
+					'opdata' => $trigger['opdata'],
+					'clock' => $problem['clock'],
+					'ns' => $problem['ns']
+				];
+			}
+		}
+		$events = CMacrosResolverHelper::resolveEventOpdatas($events, ['html' => true]);
 	}
 
 	foreach ($problems as $problem) {
@@ -688,6 +708,7 @@ function makeProblemsPopup(array $problems, array $triggers, array $actions, arr
 				$info_icons[] = (new CButtonIcon(ZBX_ICON_EYE))
 					->addClass(ZBX_STYLE_COLOR_ICON)
 					->addClass('js-blink')
+					->setAttribute('aria-label', _('Manually unsuppressed'))
 					->setHint(_s('Unsuppressed by: %1$s', $user_unsuppressed));
 			}
 			elseif ($problem['suppression_data']) {
@@ -714,19 +735,7 @@ function makeProblemsPopup(array $problems, array $triggers, array $actions, arr
 				}
 			}
 			else {
-				$opdata = CMacrosResolverHelper::resolveTriggerOpdata(
-					[
-						'triggerid' => $trigger['triggerid'],
-						'expression' => $trigger['expression'],
-						'opdata' => $trigger['opdata'],
-						'clock' => $problem['clock'],
-						'ns' => $problem['ns']
-					],
-					[
-						'events' => true,
-						'html' => true
-					]
-				);
+				$opdata = $events[$problem['eventid']]['opdata'];
 
 				if ($show_opdata == OPERATIONAL_DATA_SHOW_SEPARATELY) {
 					$opdata = (new CCol($opdata))

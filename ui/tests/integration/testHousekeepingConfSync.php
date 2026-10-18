@@ -152,7 +152,7 @@ class testHousekeepingConfSync extends CIntegrationTest {
 
 		foreach ($section as $line) {
 			$events_pattern = '/events, mode:(\d+) period:\[trigger:(\d+) internal:(\d+) '.
-				'autoreg:(\d+) discovery:(\d+)\]/';
+				'autoreg:(\d+) discovery:(\d+) service:(\d+)\]/';
 
 			if (preg_match($events_pattern, $line, $matches)) {
 				$housekeeping['hk_events_mode'] = (int) $matches[1];
@@ -160,6 +160,7 @@ class testHousekeepingConfSync extends CIntegrationTest {
 				$housekeeping['hk_events_internal'] = (int) $matches[3];
 				$housekeeping['hk_events_autoreg'] = (int) $matches[4];
 				$housekeeping['hk_events_discovery'] = (int) $matches[5];
+				$housekeeping['hk_events_service'] = (int) $matches[6];
 			}
 			else if (preg_match('/audit, mode:(\d+) period:(\d+)/', $line, $matches)) {
 				$housekeeping['hk_audit_mode'] = (int) $matches[1];
@@ -219,6 +220,7 @@ class testHousekeepingConfSync extends CIntegrationTest {
 			'hk_events_internal' => '1d',
 			'hk_events_discovery' => '1d',
 			'hk_events_autoreg' => '1d',
+			'hk_events_service' => '1d',
 			'hk_services_mode' => 1,
 			'hk_services' => '365d',
 			'hk_sessions_mode' => 1,
@@ -382,6 +384,7 @@ class testHousekeepingConfSync extends CIntegrationTest {
 					'hk_events_internal' => '28d',
 					'hk_events_discovery' => '33d',
 					'hk_events_autoreg' => '115d',
+					'hk_events_service' => '213d',
 					'hk_services_mode' => 1,
 					'hk_services' => '213d',
 					'hk_sessions_mode' => 1,
@@ -403,6 +406,7 @@ class testHousekeepingConfSync extends CIntegrationTest {
 					'hk_events_internal' => '31d',
 					'hk_events_discovery' => '39d',
 					'hk_events_autoreg' => '121d',
+					'hk_events_service' => '217d',
 					'hk_services_mode' => 1,
 					'hk_services' => '217d',
 					'hk_sessions_mode' => 1,
@@ -424,6 +428,7 @@ class testHousekeepingConfSync extends CIntegrationTest {
 					'hk_events_internal' => '33d',
 					'hk_events_discovery' => '35d',
 					'hk_events_autoreg' => '150d',
+					'hk_events_service' => '220d',
 					'hk_services_mode' => 1,
 					'hk_services' => '230d',
 					'hk_sessions_mode' => 1,
@@ -445,6 +450,7 @@ class testHousekeepingConfSync extends CIntegrationTest {
 					'hk_events_internal' => '38d',
 					'hk_events_discovery' => '47d',
 					'hk_events_autoreg' => '128d',
+					'hk_events_service' => '222d',
 					'hk_services_mode' => 0,
 					'hk_services' => '222d',
 					'hk_sessions_mode' => 0,
@@ -464,6 +470,7 @@ class testHousekeepingConfSync extends CIntegrationTest {
 					'hk_events_internal' => '35d',
 					'hk_events_discovery' => '44d',
 					'hk_events_autoreg' => '125d',
+					'hk_events_service' => '219d',
 					'hk_services_mode' => 0,
 					'hk_services' => '219d',
 					'hk_sessions_mode' => 0,
@@ -483,6 +490,7 @@ class testHousekeepingConfSync extends CIntegrationTest {
 					'hk_events_internal' => '35d',
 					'hk_events_discovery' => '44d',
 					'hk_events_autoreg' => '125d',
+					'hk_events_service' => '219d',
 					'hk_services_mode' => 1,
 					'hk_services' => '219d',
 					'hk_sessions_mode' => 1,

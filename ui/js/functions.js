@@ -28,23 +28,6 @@ function check_target(e, type) {
 	}
 }
 
-/**
- * Remove part of expression.
- *
- * @param string id		Expression temporary ID.
- * @param number type	Expression (type = 0) or recovery expression (type = 1).
- */
-function delete_expression(id, type) {
-	// If type is expression.
-	if (type == 0) {
-		jQuery('#remove_expression').val(id);
-	}
-	// Type is recovery expression.
-	else {
-		jQuery('#remove_recovery_expression').val(id);
-	}
-}
-
 function testUserSound(idx) {
 	var element = document.getElementById(idx);
 	var sound = element.options[element.selectedIndex].value;
@@ -80,13 +63,19 @@ function escapeHtml(string) {
  * @param {bool}             allow_negative  If true, negative numbers are allowed; otherwise, negative numbers
  *                                           are converted to positive.
  * @param {number}           min_length      Pad number with zeroes to maintain min length.
+ * @param {number|null}      default_value
  */
-function normalizeNumericBox(input, {allow_empty, allow_negative, min_length}) {
+function normalizeNumericBox(input, {allow_empty, allow_negative, min_length, default_value}) {
 	const old_value = input.value;
 	let num = parseInt(input.value, 10);
 
 	if (isNaN(num)) {
-		input.value = (input.value === '' && allow_empty) ? '' : '0'.repeat(Math.max(min_length, 1));
+		if (default_value !== null) {
+			input.value = default_value;
+		}
+		else {
+			input.value = (input.value === '' && allow_empty) ? '' : '0'.repeat(Math.max(min_length, 1));
+		}
 	}
 	else {
 		if (num < 0 && !allow_negative) {
@@ -508,12 +497,12 @@ function overlayDialogueDestroy(dialogueid, close_by = Overlay.prototype.CLOSE_B
 function overlayDialogue(properties, options = {}) {
 	const overlay = overlays_stack.getById(options.dialogueid) || new Overlay({...options, type: 'popup'});
 
+	addToOverlaysStack(overlay);
+
 	overlay.setProperties(properties);
 	overlay.mount();
 	overlay.recoverFocus();
 	overlay.containFocus();
-
-	addToOverlaysStack(overlay);
 
 	return overlay;
 }
@@ -936,6 +925,35 @@ function objectToSearchParams(object) {
 }
 
 /**
+ * Convert nested data object into Form data object.
+ *
+ * @param {Object|Array} object
+ *
+ * @returns {FormData}
+ */
+function objectToFormData(object) {
+	const combine = (data, form_data = new FormData(), name_prefix = '') => {
+		if (Array.isArray(data)) {
+			for (const [index, datum] of data.entries()) {
+				combine(datum, form_data, name_prefix !== '' ? `${name_prefix}[${index}]` : index);
+			}
+		}
+		else if (data !== null && typeof data === 'object' && !(data instanceof File)) {
+			for (const [name, datum] of Object.entries(data)) {
+				combine(datum, form_data, name_prefix !== '' ? `${name_prefix}[${name}]` : name);
+			}
+		}
+		else {
+			form_data.append(name_prefix, data);
+		}
+
+		return form_data;
+	};
+
+	return combine(object);
+}
+
+/**
  * Create a URL pointing to zabbix.php.
  *
  * @param arguments
@@ -965,24 +983,32 @@ function convertRGBToHSL(r, g, b) {
 }
 
 /**
- * Convert HSL encoded color into RGB encoded color.
- *
- * @param {number} h  Hue component in range of 0-360.
- * @param {number} s  Saturation component in range of 0-1.
- * @param {number} l  Lightness component in range of 0-1.
- *
- * @returns [{number}, {number}, {number}]  Red, green and blue components in range 0-1.
- */
-function convertHSLToRGB(h, s, l) {
-	const a = s * Math.min(l, 1 - l);
-	const f = (n, k = (n + h / 30) % 12) => l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
-
-	return [f(0), f(8), f(4)];
-}
-
-/**
  * Check if given value is valid color hex code.
  */
 function isColorHex(value) {
 	return /^#([0-9A-F]{6})$/i.test(value);
+}
+
+/**
+ * Validate and convert time to seconds. Logic almost matches func.inc.php timeUnitToSeconds as this doesn't allow
+ * leading zeroes to match parser
+ *
+ * @param {string} time
+ * @param {bool}   with_year
+ *
+ * @returns {int|null}  Null if not valid time unit.
+ */
+function timeUnitToSeconds(time, with_year) {
+	const suffixes = with_year ? ZBX_TIME_SUFFIXES_WITH_YEAR : ZBX_TIME_SUFFIXES;
+	const match = time.match(new RegExp('^(?<int>-?\\d+)(?<suffix>[' + suffixes + '])?$'));
+
+	if (match === null || (match.groups.int.length > 1 && match.groups.int.charAt(0) === '0')) {
+		return null;
+	}
+
+	if (match.groups.suffix === undefined) {
+		return parseInt(match.groups.int);
+	}
+
+	return parseInt(match.groups.int) * ZBX_TIME_SUFFIX_MULTIPLIERS[match.groups.suffix];
 }

@@ -50,13 +50,18 @@
 			}
 			else if (type == <?= ZBX_PREPROC_VALIDATE_NOT_SUPPORTED ?>) {
 				['params_0_not_supported', 'params_1_not_supported'].forEach(function(name) {
-					const node = $preprocessing[0].querySelector(`input[name^="preprocessing[${num}][${name}]"]`);
+					const node = $preprocessing[0]
+						.querySelector(`input[name^="preprocessing[${num}][${name}]"],
+							z-textarea-flexible[name^="preprocessing[${num}][${name}]"]`);
 					node && params.push(node.value);
 				});
 			}
 			else {
 				['params_0', 'params_1', 'params_2'].forEach(function(name) {
-					const node = $preprocessing[0].querySelector(`input[name^="preprocessing[${num}][${name}]"]`);
+
+					const node = $preprocessing[0]
+						.querySelector(`input[name^="preprocessing[${num}][${name}]"],
+							z-textarea-flexible[name^="preprocessing[${num}][${name}]"]`);
 
 					if (node && !node.disabled) {
 						let value = node.value;
@@ -97,7 +102,7 @@
 			jQuery(':disabled', $form).removeAttr('disabled');
 		}
 
-		form_data = $form.serializeJSON();
+		form_data = getFormFields($form[0]);
 		delete $form;
 
 		const timeout = 'custom_timeout' in form_data
@@ -253,6 +258,23 @@
 					timeout
 				};
 				break;
+
+			case <?= ITEM_TYPE_TELEMETRY_QUERY ?>:
+				properties = {
+					key: form_data['key'].trim(),
+					timeout,
+					signal_type: form_data['signal_type'],
+					metric_point_type: form_data['metric_point_type'],
+					columns: form_data['columns'] || [],
+					aggregated_columns: form_data['aggregated_columns'] || [],
+					conditions: form_data['conditions'] || [],
+					evaltype: form_data['evaltype'],
+					formula: form_data['formula'],
+					time_shift: form_data['time_shift'],
+					lookback_limit: form_data['lookback_limit'],
+					granularity: form_data['granularity']
+				};
+				break;
 		}
 
 		// Common properties.
@@ -280,7 +302,7 @@
 	 */
 	function openItemTestDialog(step_nums, show_final_result, get_value, trigger_element, step_obj_nr) {
 		var $row = jQuery(trigger_element)
-					.closest('.preprocessing-list-item, .preprocessing-list-foot, .overlay-dialogue-footer'),
+					.closest(`.preprocessing-list-item, .preprocessing-list-foot, .${ZBX_STYLE_OVERLAY_DIALOGUE_FOOTER}`),
 			item_properties = getItemTestProperties('form[name="itemForm"]'),
 			cached_values = $row.data('test-data') || [];
 
@@ -303,5 +325,9 @@
 
 		// Display the close button after the screen reader announces the dialog title.
 		overlay.$dialogue.$head.$close_button.show();
+
+		overlay.$dialogue[0].addEventListener('itemtest.close', (e) => {
+			$row.data('test-data', e.detail);
+		});
 	}
 </script>

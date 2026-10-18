@@ -105,6 +105,7 @@ class testCalculatedExpression extends CIntegrationTest {
 			'key_'			=> self::TRAPPER_ITEM_KEY . self::$iterator,
 			'type'			=> ITEM_TYPE_TRAPPER,
 			'value_type'		=> ITEM_VALUE_TYPE_FLOAT,
+			'trapper_hosts' => '{$TRAPPER.ALLOWED_HOSTS}',
 			'tags'		=> [
 				['tag' => self::TAG_NAME, 'value' => self::TAG_VALUE]
 			],
@@ -628,6 +629,7 @@ class testCalculatedExpression extends CIntegrationTest {
 				'key_'		=> self::TRAPPER_ITEM_KEY . ".bucket[$le]",
 				'type'		=> ITEM_TYPE_TRAPPER,
 				'value_type'	=> ITEM_VALUE_TYPE_FLOAT,
+				'trapper_hosts' => '{$TRAPPER.ALLOWED_HOSTS}',
 				'preprocessing' => [
 					[
 						'type'			=> ZBX_PREPROC_TRIM,
@@ -734,6 +736,7 @@ class testCalculatedExpression extends CIntegrationTest {
 				'key_'		=> self::TRAPPER_ITEM_KEY . ".disk.pused[$fs]",
 				'type'		=> ITEM_TYPE_TRAPPER,
 				'value_type'	=> ITEM_VALUE_TYPE_FLOAT,
+				'trapper_hosts' => '{$TRAPPER.ALLOWED_HOSTS}',
 				'preprocessing' => [
 					[
 						'type'			=> ZBX_PREPROC_TRIM,

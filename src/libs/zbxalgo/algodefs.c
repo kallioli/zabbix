@@ -26,9 +26,9 @@ zbx_hash_t	zbx_hash_modfnv(const void *data, size_t len, zbx_hash_t seed)
 {
 	const uchar	*p = (const uchar *)data;
 
-	zbx_hash_t	hash;
+	zbx_uint32_t	hash;
 
-	hash = 2166136261u ^ seed;
+	hash = 2166136261u ^ (zbx_uint32_t)seed;
 
 	while (len-- >= 1)
 	{
@@ -52,14 +52,20 @@ zbx_hash_t	zbx_hash_splittable64(const void *data)
 	zbx_uint64_t	value = *(const zbx_uint64_t *)data;
 
 	value ^= value >> 30;
-	value *= __UINT64_C(0xbf58476d1ce4e5b9);
+	value *= UINT64_C(0xbf58476d1ce4e5b9);
 	value ^= value >> 27;
-	value *= __UINT64_C(0x94d049bb133111eb);
+	value *= UINT64_C(0x94d049bb133111eb);
 	value ^= value >> 31;
 
-	return (zbx_hash_t)value ^ (value >> 32);
+	return value;
 }
 
+zbx_hash_t	zbx_hash_id64(const void *data)
+{
+	zbx_uint64_t	value = *(const zbx_uint64_t *)data;
+
+	return (zbx_hash_t)value;
+}
 /* default hash functions */
 
 zbx_hash_t	zbx_default_ptr_hash_func(const void *data)
@@ -239,3 +245,23 @@ unsigned int	zbx_isqrt32(unsigned int value)
 
 	return result;
 }
+
+int	zbx_tag_compare(const void *a1, const void *a2)
+{
+	int	ret;
+
+	const zbx_tag_t	*t1 = (const zbx_tag_t *)a1;
+	const zbx_tag_t	*t2 = (const zbx_tag_t *)a2;
+
+	if (0 != (ret = strcmp(t1->tag, t2->tag)))
+		return ret;
+
+	return strcmp(t1->value, t2->value);
+}
+
+void	zbx_tag_clear(zbx_tag_t *tag)
+{
+	zbx_free(tag->tag);
+	zbx_free(tag->value);
+}
+

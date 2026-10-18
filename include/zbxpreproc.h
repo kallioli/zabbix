@@ -65,7 +65,6 @@ typedef struct
 	zbx_pp_task_type_t	type;
 	zbx_pp_task_state_t	state;
 	zbx_uint64_t		itemid;
-	zbx_uint64_t		hostid;
 	zbx_uint64_t		time_ms;
 	void			*data;
 }
@@ -79,7 +78,7 @@ typedef struct
 	int		config_timeout;
 	const char	*config_source_ip;
 }
-zbx_thread_pp_manager_args;
+zbx_thread_pp_manager_args_t;
 
 typedef struct zbx_pp_manager	zbx_pp_manager_t;
 
@@ -89,7 +88,7 @@ typedef void(*zbx_preproc_flush_value_func_t)(zbx_pp_manager_t *manager, zbx_uin
 typedef int(*zbx_preproc_prepare_value_func_t)(const zbx_variant_t *value, const zbx_pp_value_opt_t *value_opt);
 
 void	zbx_init_library_preproc(zbx_preproc_prepare_value_func_t preproc_prepare_value_cb,
-		zbx_preproc_flush_value_func_t preproc_flush_value_cb, zbx_get_progname_f get_progname_cb);
+		zbx_preproc_flush_value_func_t preproc_flush_value_cb);
 
 void	zbx_pp_value_task_get_data(zbx_pp_task_t *task, unsigned char *value_type, unsigned char *flags,
 		zbx_variant_t **value, zbx_timespec_t *ts, zbx_pp_value_opt_t **value_opt);
@@ -116,13 +115,14 @@ void	zbx_preproc_stats_ext_get_data(struct zbx_json *json, const void *arg);
 zbx_uint64_t	zbx_preprocessor_get_queue_size(void);
 void	zbx_preprocessor_get_size(struct zbx_json *json);
 void	zbx_preprocessor_stats_procinfo(zbx_process_info_t *info);
-void	zbx_preprocess_item_value(zbx_uint64_t itemid, zbx_uint64_t hostid, unsigned char item_value_type,
-		unsigned char item_flags, unsigned char preprocessing, AGENT_RESULT *result,
-		zbx_timespec_t *ts, unsigned char state, char *error);
-void	zbx_preprocessor_flush(void);
+void	zbx_preprocess_item_value(zbx_uint64_t itemid, unsigned char item_value_type, unsigned char item_flags,
+		unsigned char preprocessing, AGENT_RESULT *result, zbx_timespec_t *ts, unsigned char state,
+		char *error);
+size_t	zbx_preprocessor_flush(void);
 int	zbx_preprocessor_get_diag_stats(zbx_uint64_t *preproc_num, zbx_uint64_t *pending_num,
 		zbx_uint64_t *finished_num, zbx_uint64_t *sequences_num, zbx_uint64_t *queued_num,
 		zbx_uint64_t *queued_sz, zbx_uint64_t *direct_num, zbx_uint64_t *direct_sz, zbx_uint64_t *history_sz,
+		zbx_uint64_t *finished_peak_num, zbx_uint64_t *pending_peak_num, zbx_uint64_t *processed_num,
 		char **error);
 int	zbx_preprocessor_get_top_sequences(int limit, zbx_vector_pp_top_stats_ptr_t *stats, char **error);
 int	zbx_preprocessor_get_top_peak(int limit, zbx_vector_pp_top_stats_ptr_t *stats, char **error);
@@ -135,6 +135,6 @@ int	zbx_preprocessor_test(unsigned char value_type, const char *value, const zbx
 		zbx_pp_history_t *history, char **error);
 int	zbx_get_usage_stats_preprocessor(zbx_vector_dbl_t *usage, int *count, char **error);
 
-ZBX_THREAD_ENTRY(zbx_pp_manager_thread, args);
+void	*zbx_pp_manager_thread(void *args);
 
 #endif

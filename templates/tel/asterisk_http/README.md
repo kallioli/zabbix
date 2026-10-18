@@ -9,7 +9,7 @@ All metrics are collected at once, thanks to Zabbix's bulk data collection.
 
 ## Requirements
 
-Zabbix version: 7.4 and higher.
+Zabbix version: 8.0 and higher.
 
 ## Tested versions
 
@@ -18,7 +18,7 @@ This template has been tested on:
 
 ## Configuration
 
-> Zabbix should be configured according to the instructions in the [Templates out of the box](https://www.zabbix.com/documentation/7.4/manual/config/templates_out_of_the_box) section.
+> Zabbix should be configured according to the instructions in the [Templates out of the box](https://www.zabbix.com/documentation/8.0/manual/config/templates_out_of_the_box) section.
 
 ## Setup
 
@@ -34,7 +34,7 @@ If there are errors, increase the logging to debug level and see the Zabbix serv
 |----|-----------|-------|
 |{$HTTP.TLS.VERIFY}|<p>TLS certificate verification for JavaScript preprocessing: "none" - disabled, "peer" - verify the certificate chain and expiration, "full" - full verification. Any other value enables full verification. To override the setting for this template only, define the macro with the context "Asterisk", e.g. {$HTTP.TLS.VERIFY:"Asterisk"}.</p>|`full`|
 |{$AMI.URL}|<p>The Asterisk Manager API URL in the format `<scheme>://<host>:<port>/<prefix>/rawman`.</p>|`http://asterisk:8088/asterisk/rawman`|
-|{$AMI.HOST}|<p>The hostname or IP address of the Asterisk Manager API host.</p>|`<SET AMI HOST>`|
+|{$AMI.HOST}|<p>The hostname or IP address of the Asterisk Manager API host.</p>||
 |{$AMI.PORT}|<p>AMI port number for checking service availability.</p>|`5038`|
 |{$AMI.USERNAME}|<p>The Asterisk Manager name.</p>|`zabbix`|
 |{$AMI.SECRET}|<p>The Asterisk Manager secret.</p>|`zabbix`|

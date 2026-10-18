@@ -19,13 +19,17 @@ class CForm {
 		'array': CFieldArray,
 		'checkbox': CFieldCheckBox,
 		'hidden': CFieldHidden,
+		'menu-path': CFieldMenuPath,
 		'multiline': CFieldMultiline,
 		'multiselect': CFieldMultiselect,
 		'radio-list': CFieldRadioList,
 		'set': CFieldSet,
 		'text-box': CFieldTextBox,
 		'textarea': CFieldTextarea,
-		'z-select': CFieldZSelect
+		'z-select': CFieldZSelect,
+		'z-color-picker': CFieldZColorPicker,
+		'z-textarea-flexible': CFieldZTextareaFlexible,
+		'file': CFieldFile
 	};
 	#form = null;
 	#rules = null;
@@ -164,7 +168,7 @@ class CForm {
 		return Object.values(all_fields).filter(x => !Object.values(sub_fields).includes(x));
 	}
 
-	getAllValues() {
+	getAllValues(untrimmed_fields = []) {
 		let result = Object.create(null);
 		let simple_fields = Object.create(null);
 
@@ -181,7 +185,7 @@ class CForm {
 				}
 			}
 			else {
-				simple_fields[key] = field.getValueTrimmed();
+				simple_fields[key] = untrimmed_fields.includes(field.getName()) ? field.getValue() : field.getValueTrimmed();
 			}
 		}
 
@@ -225,10 +229,8 @@ class CForm {
 			validator.validateChanges(values, fields)
 				.then(() => this.#custom_validation.forEach((fn) => fn.call(this, values)))
 				.then(() => {
-					if (validator !== null) {
-						this.setErrors(validator.getErrors(), undefined, force_display_errors);
-						this.renderErrors();
-					}
+					this.setErrors(validator.getErrors(), undefined, force_display_errors);
+					this.renderErrors();
 				})
 				.catch((error) => {
 					if (error.cause !== 'RulesError' && error.type !== 'abort') {
@@ -241,6 +243,8 @@ class CForm {
 					if (index !== -1) {
 						this.#validators.splice(index, 1);
 					}
+
+					this.#form.dispatchEvent(new CustomEvent('form.validated'));
 				});
 		};
 
@@ -316,13 +320,15 @@ class CForm {
 	 *
 	 * @param {Array} fields
 	 * @param {?Object} rules
+	 * @param {?Object} values
 	 *
 	 * @returns {Promise}
 	 */
-	validateFieldsForAction(fields, rules) {
+	validateFieldsForAction(fields, rules, values = null) {
 		const validator = new CFormValidator(rules ? rules : this.#rules);
+		const values_to_validate = values === null ? this.getAllValues() : values;
 
-		return validator.validateChanges(this.getAllValues(), fields)
+		return validator.validateChanges(values_to_validate, fields)
 			.then((result) => {
 				this.setErrors(validator.getErrors(), true);
 				this.renderErrors();
@@ -438,8 +444,8 @@ class CForm {
 			const subfield_path = new RegExp('^' + field_path + '/');
 
 			if (field instanceof CFieldMultiselect) {
-				const affixed_path = '/' + field_name + '_new';
-				const affixed_subfield = new RegExp(`^/(${field_name}|${field_name}_new)/`);
+				const affixed_path = `${field_path}_new`;
+				const affixed_subfield = new RegExp(`^(${field_path}|${field_path}_new)/`);
 
 				for (const error_path in raw_errors) {
 					const affixed = error_path === affixed_path || affixed_subfield.test(error_path);
@@ -586,6 +592,42 @@ class CForm {
 		}
 
 		return null;
+	}
+
+	/**
+	 * Function to disable fields in case they are not disabled. Must be paired with unlock.
+	 * Any field, that is disabled in such way will have attribute data-form-disabled.
+	 * Warning: Locked field values will act as disabled and won't return any values until unlocked.
+	 *
+	 * @param {?Array} field_names
+	 */
+	lock(field_names = null) {
+		const fields = field_names !== null
+			? field_names.map((name) => this.findFieldByName(name))
+			: Object.values(this.#fields);
+
+		for (const field of fields) {
+			field.lock();
+		}
+	}
+
+	/**
+	 * Function to enable fields which were disabled by lock function.
+	 *
+	 * @param {?Array} field_names
+	 */
+	unlock(field_names = null) {
+		const fields = field_names !== null
+			? field_names.map((name) => this.findFieldByName(name))
+			: Object.values(this.#fields);
+
+		for (const field of fields) {
+			field.unlock();
+		}
+	}
+
+	hasErrors() {
+		return Object.values(this.#fields).some(field => field.hasErrors());
 	}
 
 	/**

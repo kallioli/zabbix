@@ -154,9 +154,11 @@ class testFormMaintenance extends CWebTest {
 					'Periods' => [],
 					'Host groups' => '',
 					'Hosts' => '',
+					'Triggers' => '',
+					'id:event_names_0_operator' => 'Contains',
 					'id:tags_evaltype' => 'And/Or',
 					'id:tags_0_tag' => '',
-					'id:tags_0_operator' => 'Contains',
+					'name:tags[0][operator]' => 'Contains',
 					'id:tags_0_value' => '',
 					'Description' => ''
 				];
@@ -167,7 +169,7 @@ class testFormMaintenance extends CWebTest {
 			// Check asterisk in required field labels.
 			$this->assertEquals(['Name', 'Active since', 'Active till', 'Periods'], $form->getRequiredLabels());
 			$this->assertTrue($this->query('xpath://label[contains(@class,"form-label-asterisk") and contains(text(),'.
-				'"At least one host group or host must be selected.")]')->exists()
+				'"At least one host group, host or trigger must be selected.")]')->exists()
 			);
 
 			$check_fields = [
@@ -176,6 +178,8 @@ class testFormMaintenance extends CWebTest {
 				'id:active_till' => ['maxlength' => 255, 'placeholder' => 'YYYY-MM-DD hh:mm'],
 				'id:groupids__ms' => ['placeholder' => 'type here to search'],
 				'id:hostids__ms' => ['placeholder' => 'type here to search'],
+				'id:triggerids__ms' => ['placeholder' => 'type here to search'],
+				'id:event_names_0_value' =>  ['maxlength' => 2048, 'placeholder' => 'value'],
 				'id:tags_0_tag' => ['maxlength' => 255, 'placeholder' => 'tag'],
 				'id:tags_0_value' => ['maxlength' => 255, 'placeholder' => 'value'],
 				'Description' => ['maxlength' => 65535]
@@ -190,7 +194,8 @@ class testFormMaintenance extends CWebTest {
 			$radio_buttons = [
 				'Maintenance type' => ['With data collection', 'No data collection'],
 				'id:tags_evaltype' => ['And/Or', 'Or'],
-				'id:tags_0_operator' => ['Contains', 'Equals']
+				'id:event_names_0_operator' => ['Contains', 'Does not contain']
+
 			];
 			foreach ($radio_buttons as $name => $labels) {
 				$this->assertEquals($labels, $form->getField($name)->getLabels()->asText());
@@ -209,6 +214,12 @@ class testFormMaintenance extends CWebTest {
 					->filter(CElementFilter::CLICKABLE)->count()
 			);
 
+			// Check Event name table.
+			$event_table = $form->query('id:event_names')->asMultifieldTable()->one();
+			$this->assertSame( ['Operator', 'Name'], $event_table->getHeadersText());
+			$this->assertEquals(2, $event_table->query('button', ['Add', 'Remove'])->all()
+					->filter(CElementFilter::CLICKABLE)->count());
+
 			// Check Tags table.
 			$tags_table = $form->query('id:tags')->asMultifieldTable()->one();
 			$tags_rows_count = $is_update ? 2 : 1;
@@ -216,20 +227,22 @@ class testFormMaintenance extends CWebTest {
 			$this->assertEquals($tags_rows_count + 1, $tags_table->query('button', ['Add', 'Remove'])->all()
 					->filter(CElementFilter::CLICKABLE)->count()
 			);
+			$this->assertSame(['Equals', 'Contains', 'Does not equal', 'Does not contain'],
+					$form->getField('name:tags[0][operator]')->getOptions()->asText()
+			);
 
-			// Change to 'No data collection' and assert tags table elements are disabled.
+			// Change to 'No data collection' and assert tags table, event table and triggers field elements are disabled.
 			$form->fill(['Maintenance type' => 'No data collection']);
-			$state_changing_fields = [
-				'id:tags_evaltype',
-				'id:tags_0_tag',
-				'id:tags_0_operator',
-				'id:tags_0_value'
-			];
+			$state_changing_fields = ['id:tags_evaltype', 'id:tags_0_tag', 'name:tags[0][operator]', 'id:tags_0_value',
+					'Triggers', 'id:event_names_0_operator_0', 'id:event_names_0_value'];
 			foreach ($state_changing_fields as $field) {
 				$this->assertFalse($form->getField($field)->isEnabled());
 			}
 
 			$this->assertEquals(0, $tags_table->query('button', ['Add', 'Remove'])->all()
+					->filter(CElementFilter::CLICKABLE)->count()
+			);
+			$this->assertEquals(0, $event_table->query('button', ['Add', 'Remove'])->all()
 					->filter(CElementFilter::CLICKABLE)->count()
 			);
 
@@ -238,8 +251,10 @@ class testFormMaintenance extends CWebTest {
 			foreach ($state_changing_fields as $field) {
 				$this->assertTrue($form->getField($field)->isEnabled());
 			}
-
 			$this->assertEquals($tags_rows_count + 1, $tags_table->query('button', ['Add', 'Remove'])->all()
+					->filter(CElementFilter::CLICKABLE)->count()
+			);
+			$this->assertEquals(2, $event_table->query('button', ['Add', 'Remove'])->all()
 					->filter(CElementFilter::CLICKABLE)->count()
 			);
 
@@ -249,7 +264,7 @@ class testFormMaintenance extends CWebTest {
 			}
 
 			// Check Select buttons and dialogs they open.
-			foreach (['Host groups', 'Hosts'] as $field) {
+			foreach (['Host groups', 'Hosts', 'Triggers'] as $field) {
 				$this->assertTrue($form->getField($field)->query('button:Select')->one()->isClickable());
 				$form->getField($field)->query('button:Select')->one()->click();
 
@@ -344,24 +359,24 @@ class testFormMaintenance extends CWebTest {
 						break;
 
 					case 'Daily':
-						$expected_required = ['Every day(s)'];
+						$expected_required = ['Every day(s)', 'At (hour:minute)'];
 						$check_fields = [
-							'id:every_day' => ['maxlength' => 3]
+							'Every day(s)' => ['maxlength' => 3]
 						];
 						$expected_default_values += [
-							'id:every_day' => '1',
+							'Every day(s)' => '1',
 							'id:hour' => '00',
 							'id:minute' => '00'
 						];
 						break;
 
 					case 'Weekly':
-						$expected_required = ['Every week(s)', 'Day of week'];
+						$expected_required = ['Every week(s)', 'Day of week', 'At (hour:minute)'];
 						$check_fields = [
-							'id:every_week' => ['maxlength' => 2]
+							'Every week(s)' => ['maxlength' => 2]
 						];
 						$expected_default_values += [
-							'id:every_week' => '1',
+							'Every week(s)' => '1',
 							'id:hour' => '00',
 							'id:minute' => '00',
 							'Day of week' => []
@@ -373,13 +388,13 @@ class testFormMaintenance extends CWebTest {
 						break;
 
 					case 'Monthly':
-						$expected_required = ['Month', 'Day of month'];
+						$expected_required = ['Month', 'Day of month', 'At (hour:minute)'];
 						$check_fields = [
-							'id:day' => ['maxlength' => 2]
+							'Day of month' => ['maxlength' => 2]
 						];
 						$expected_default_values += [
 							'id:month_date_type' => 'Day of month',
-							'id:day' => '1',
+							'Day of month' => '1',
 							'id:hour' => '00',
 							'id:minute' => '00',
 							'Month' => []
@@ -391,7 +406,7 @@ class testFormMaintenance extends CWebTest {
 						break;
 
 					case 'Monthly with Day of week period':
-						$expected_required = ['Month', 'Day of week'];
+						$expected_required = ['Month', 'Day of week', 'At (hour:minute)'];
 						$check_fields = [
 						];
 						$expected_default_values += [
@@ -614,7 +629,7 @@ class testFormMaintenance extends CWebTest {
 				// Edit 2nd defined period.
 				$timeperiods_table->getRow(1)->query('button:Edit')->one()->click();
 				$period_form = COverlayDialogElement::find(1)->waitUntilReady()->one()->asForm();
-				$period_form->fill(['id:every_day' => '2']);
+				$period_form->fill(['Every day(s)' => '2']);
 				$period_form->submit();
 				$period_form->waitUntilNotVisible();
 
@@ -734,7 +749,7 @@ class testFormMaintenance extends CWebTest {
 						],
 						[
 							'Period type' => 'Daily',
-							'id:every_day' => '2',
+							'Every day(s)' => '2',
 							'id:hour' => '23',
 							'id:minute' => '30',
 							'id:period_days' => '0',
@@ -743,7 +758,7 @@ class testFormMaintenance extends CWebTest {
 						],
 						[
 							'Period type' => 'Weekly',
-							'id:every_week' => '2',
+							'Every week(s)' => '2',
 							'Day of week' => ['Monday', 'Wednesday', 'Friday'],
 							'id:hour' => '05',
 							'id:minute' => '30',
@@ -755,7 +770,7 @@ class testFormMaintenance extends CWebTest {
 							'Period type' => 'Monthly',
 							'Month' => ['February', 'June', 'December'],
 							'Date' => 'Day of month',
-							'id:day' => '14',
+							'Day of month' => '14',
 							'id:hour' => '22',
 							'id:minute' => '30',
 							'id:period_days' => '0',
@@ -863,8 +878,8 @@ class testFormMaintenance extends CWebTest {
 				[
 					'fields' => [
 						'Name' => '  Trim test  ',
-						'Active since' => '2025-02-03 05',
-						'Active till' => '2030',
+						'Active since' => '   2025-02-03 05   ',
+						'Active till' => '   2030   ',
 						'Host groups' => 'Zabbix servers',
 						'Hosts' => 'ЗАББИКС Сервер',
 						'Description' => '  This description should be trimmed  '
@@ -888,57 +903,38 @@ class testFormMaintenance extends CWebTest {
 					'fields' => [
 						'Name' => '',
 						'Active since' => '',
-						'Active till' => ''
+						'Active till' => '',
+						'Host groups' => '',
+						'Hosts' => '',
+						'id:tags_evaltype' => 'And/Or'
 					],
-					'error_details' => [
-						'Incorrect value for field "name": cannot be empty.',
-						'Incorrect value for field "active_since": a time is expected.',
-						'Incorrect value for field "active_till": a time is expected.',
-						'Field "timeperiods" is mandatory.'
+					'inline_errors' => [
+						'Name' => 'This field cannot be empty.',
+						'id:active_since' => 'This field cannot be empty.',
+						'id:active_till' => 'This field cannot be empty.',
+						'xpath://table[@id="timeperiods"]/..' => 'At least one period must be added.',
+						'Host groups' => 'At least one host group, host or trigger must be selected.'
 					]
 				]
 			],
-			// #7 All mandatory input fields have only empty space inside.
+			// #7 Only empty space in mandatory input elements.
 			[
 				[
 					'expected' => TEST_BAD,
 					'fields' => [
 						'Name' => ' ',
 						'Active since' => ' ',
-						'Active till' => ' '
+						'Active till' => ' ',
+						'Host groups' => 'Zabbix servers'
 					],
-					'periods' => [
-						[
-							'Period type' => 'Daily'
-						]
-					],
-					'error_details' => [
-						'Incorrect value for field "name": cannot be empty.',
-						'Incorrect value for field "active_since": a time is expected.',
-						'Incorrect value for field "active_till": a time is expected.'
+					'inline_errors' => [
+						'Name' => 'This field cannot be empty.',
+						'id:active_since' => 'This field cannot be empty.',
+						'id:active_till' => 'This field cannot be empty.'
 					]
 				]
 			],
-			// #8 Hosts and host groups empty.
-			[
-				[
-					'expected' => TEST_BAD,
-					'fields' => [
-						'Name' => 'Hosts and host groups empty',
-						'Host groups' => '',
-						'Hosts' => ''
-					],
-					'periods' => [
-						[
-							'Period type' => 'Daily'
-						]
-					],
-					'error_details' => [
-						'At least one host group or host must be selected.'
-					]
-				]
-			],
-			// #9 Duplicate name.
+			// #8 Duplicate name.
 			[
 				[
 					'expected' => TEST_BAD,
@@ -951,12 +947,12 @@ class testFormMaintenance extends CWebTest {
 							'Period type' => 'Daily'
 						]
 					],
-					'error_details' => [
-						'Maintenance "'.self::MAINTENANCE_NAME.'" already exists.'
+					'inline_errors' => [
+						'id:name' => 'This object already exists.'
 					]
 				]
 			],
-			// #10 Active since greater than Active till.
+			// #9 Active since greater than Active till.
 			[
 				[
 					'expected' => TEST_BAD,
@@ -974,45 +970,7 @@ class testFormMaintenance extends CWebTest {
 					]
 				]
 			],
-			// #11 Trailing spaces in Active since and Active till.
-			[
-				[
-					'expected' => TEST_BAD,
-					'fields' => [
-						'Name' => 'Trailing spaces in Active since and Active till',
-						'Active since' => '2025-02-03 00:00 ',
-						'Active till' => '2026-01-01 00:00 ',
-						'Host groups' => 'Zabbix servers'
-					],
-					'periods' => [
-						'Period type' => 'Daily'
-					],
-					'error_details' => [
-						'Incorrect value for field "active_since": a time is expected.',
-						'Incorrect value for field "active_till": a time is expected.'
-					]
-				]
-			],
-			// #12 Leading spaces in Active since and Active till.
-			[
-				[
-					'expected' => TEST_BAD,
-					'fields' => [
-						'Name' => 'Leading spaces in Active since and Active till',
-						'Active since' => ' 2025-02-03 00:00',
-						'Active till' => ' 2026-01-01 00:00',
-						'Host groups' => 'Zabbix servers'
-					],
-					'periods' => [
-						'Period type' => 'Daily'
-					],
-					'error_details' => [
-						'Incorrect value for field "active_since": a time is expected.',
-						'Incorrect value for field "active_till": a time is expected.'
-					]
-				]
-			],
-			// #13 Wrong date format in Active since and Active till.
+			// #10 Wrong date format in Active since and Active till.
 			[
 				[
 					'expected' => TEST_BAD,
@@ -1025,13 +983,13 @@ class testFormMaintenance extends CWebTest {
 					'periods' => [
 						'Period type' => 'Daily'
 					],
-					'error_details' => [
-						'Incorrect value for field "active_since": a time is expected.',
-						'Incorrect value for field "active_till": a time is expected.'
+					'inline_errors' => [
+						'id:active_since' => 'Invalid date.',
+						'id:active_till' => 'Invalid date.'
 					]
 				]
 			],
-			// #14 Invalid time in Active since and Active till.
+			// #11 Invalid time in Active since and Active till.
 			[
 				[
 					'expected' => TEST_BAD,
@@ -1044,13 +1002,13 @@ class testFormMaintenance extends CWebTest {
 					'periods' => [
 						'Period type' => 'Daily'
 					],
-					'error_details' => [
-						'Incorrect value for field "active_since": a time is expected.',
-						'Incorrect value for field "active_till": a time is expected.'
+					'inline_errors' => [
+						'id:active_since' => 'Invalid date.',
+						'id:active_till' => 'Invalid date.'
 					]
 				]
 			],
-			// #15 Non-existing dates with valid format in Active since and Active till.
+			// #12 Non-existing dates with valid format in Active since and Active till.
 			[
 				[
 					'expected' => TEST_BAD,
@@ -1063,45 +1021,47 @@ class testFormMaintenance extends CWebTest {
 					'periods' => [
 						'Period type' => 'Daily'
 					],
-					'error_details' => [
-						'Incorrect value for field "active_since": a time is expected.',
-						'Incorrect value for field "active_till": a time is expected.'
+					'inline_errors' => [
+						'id:active_since' => 'Invalid date.',
+						'id:active_till' => 'Invalid date.'
 					]
 				]
 			],
-			// #16 Active since too far in the past.
+			// #13 Active since and Active till too far in the past.
 			[
 				[
 					'expected' => TEST_BAD,
 					'fields' => [
-						'Name' => 'Active since too far in the past',
-						'Active since' => '1969-12-31 23:59',
-						'Active till' => '2026-02-10 23:00',
+						'Name' => 'Active since and Active till too far in the past',
+						'Active since' => '1969-12-30 00:00',
+						'Active till' => '1969-12-31 23:59',
 						'Host groups' => 'Zabbix servers'
 					],
 					'periods' => [
 						'Period type' => 'Daily'
 					],
-					'error_details' => [
-						'Invalid parameter "/1/active_since": an unsigned integer is expected.'
+					'inline_errors' => [
+						'id:active_since' => 'Invalid date.',
+						'id:active_till' => 'Invalid date.'
 					]
 				]
 			],
-			// #17 Active till too far in the future.
+			// #14 Active since and Active till too far in the future.
 			[
 				[
 					'expected' => TEST_BAD,
 					'fields' => [
-						'Name' => 'Active till too far in the future',
-						'Active since' => '1970-01-01 12:00',
-						'Active till' => '2038-01-19 09:00',
+						'Name' => 'Active since and Active till too far in the future',
+						'Active since' => '2038-01-19 09:00',
+						'Active till' => '2038-01-20 23:59',
 						'Host groups' => 'Zabbix servers'
 					],
 					'periods' => [
 						'Period type' => 'Daily'
 					],
-					'error_details' => [
-						'Invalid parameter "/1/active_till": a timestamp is too large.'
+					'inline_errors' => [
+						'id:active_since' => 'Value must be less than or equal to 2038-01-19 05:14:07.',
+						'id:active_till' => 'Value must be less than or equal to 2038-01-19 05:14:07.'
 					]
 				]
 			]
@@ -1159,8 +1119,6 @@ class testFormMaintenance extends CWebTest {
 		$dialog = COverlayDialogElement::find()->waitUntilReady()->one();
 		$form = $dialog->asForm();
 
-		$form->fill($data['fields']);
-
 		if ($update) {
 			// Remove all periods.
 			$existing_periods = $this->query(self::PERIODS_TABLE)->asTable()->one()->getRows();
@@ -1180,12 +1138,20 @@ class testFormMaintenance extends CWebTest {
 			}
 		}
 
+		$form->fill($data['fields']);
+
 		$form->submit();
 		$this->page->waitUntilReady();
 		$action = ($update) ? 'update' : 'create';
 
 		if ($expected === TEST_BAD) {
-			$this->assertMessage(TEST_BAD, 'Cannot '.$action.' maintenance period', $data['error_details']);
+			if (array_key_exists('inline_errors', $data)) {
+				$this->page->removeFocus();
+				$this->assertInlineError($form, $data['inline_errors']);
+			}
+			else {
+				$this->assertMessage(TEST_BAD, 'Cannot '.$action.' maintenance period', $data['error_details']);
+			}
 
 			// Check that DB hash has not changed.
 			$this->assertEquals($old_hash, CDBHelper::getHash($sql));
@@ -1258,7 +1224,9 @@ class testFormMaintenance extends CWebTest {
 						'Period type' => 'One time only',
 						'Date' => ''
 					],
-					'error' => 'Incorrect value for field "start_date": a time is expected.'
+					'inline_errors' => [
+						'id:start_date' => 'This field cannot be empty.'
+					]
 				]
 			],
 			// #1 One time only with wrong date format.
@@ -1268,7 +1236,9 @@ class testFormMaintenance extends CWebTest {
 						'Period type' => 'One time only',
 						'Date' => '2030/02/19'
 					],
-					'error' => 'Incorrect value for field "start_date": a time is expected.'
+					'inline_errors' => [
+						'id:start_date' => 'Invalid date.'
+					]
 				]
 			],
 			// #2 One time only with invalid dates.
@@ -1278,7 +1248,9 @@ class testFormMaintenance extends CWebTest {
 						'Period type' => 'One time only',
 						'Date' => '2030-02-30 00:00'
 					],
-					'error' => 'Incorrect value for field "start_date": a time is expected.'
+					'inline_errors' => [
+						'id:start_date' => 'Invalid date.'
+					]
 				]
 			],
 			// #3 One time only with date out of range (before 1970-01-01).
@@ -1288,7 +1260,9 @@ class testFormMaintenance extends CWebTest {
 						'Period type' => 'One time only',
 						'Date' => '1969-12-31 23:59'
 					],
-					'error' => 'Invalid parameter "Date": value must be between "1970-01-01" and "2038-01-18".'
+					'inline_errors' => [
+						'id:start_date' => 'Invalid date.'
+					]
 				]
 			],
 			// #4 One time only with date out of range (after 2038-01-18).
@@ -1298,7 +1272,9 @@ class testFormMaintenance extends CWebTest {
 						'Period type' => 'One time only',
 						'Date' => '2038-01-20 00:00'
 					],
-					'error' => 'Invalid parameter "Date": value must be between "1970-01-01" and "2038-01-18".'
+					'inline_errors' => [
+						'id:start_date' => 'Value must be less than or equal to 2038-01-19 05:14:07.'
+					]
 				]
 			],
 			// #5 Daily with 'Every day(s)' 0 and period length 0 hours and 0 minutes.
@@ -1306,14 +1282,14 @@ class testFormMaintenance extends CWebTest {
 				[
 					'fields' => [
 						'Period type' => 'Daily',
-						'id:every_day' => '0',
+						'Every day(s)' => '0',
 						'id:period_days' => '0',
 						'name:period_hours' => '0',
 						'name:period_minutes' => '0'
 					],
-					'error' => [
-						'Incorrect value for field "every_day": value must be no less than "1".',
-						'Incorrect maintenance period (minimum 5 minutes)'
+					'inline_errors' => [
+						'Every day(s)' => 'Value must be greater than or equal to 1.',
+						'name:period_minutes' => 'Minutes: Minimum value of "Maintenance period length" is 5 minutes.'
 					]
 				]
 			],
@@ -1326,10 +1302,10 @@ class testFormMaintenance extends CWebTest {
 						'id:minute' => '99',
 						'id:period_days' => '-9'
 					],
-					'error' => [
-						'Incorrect value for field "hour": value must be no greater than "23".',
-						'Incorrect value for field "minute": value must be no greater than "59".',
-						'Incorrect value for field "period_days": value must be no less than "0".'
+					'inline_errors' => [
+						'id:hour' => "Hour: Value must be less than or equal to 23.",
+						'id:minute' => "Minute: Value must be less than or equal to 59.",
+						'id:period_days' => 'Days: Value must be greater than or equal to 0.'
 					]
 				]
 			],
@@ -1338,11 +1314,11 @@ class testFormMaintenance extends CWebTest {
 				[
 					'fields' => [
 						'Period type' => 'Weekly',
-						'id:every_week' => '0'
+						'Every week(s)' => '0'
 					],
-					'error' => [
-						'Incorrect value for field "every_week": value must be no less than "1".',
-						'Field "weekly_days" is mandatory.'
+					'inline_errors' => [
+						'Every week(s)' => 'Value must be greater than or equal to 1.',
+						'xpath:.//ul[@data-field-name="weekly_days"]' => 'At least one day must be selected.'
 					]
 				]
 			],
@@ -1351,11 +1327,11 @@ class testFormMaintenance extends CWebTest {
 				[
 					'fields' => [
 						'Period type' => 'Monthly',
-						'id:day' => '0'
+						'Day of month' => '0'
 					],
-					'error' => [
-						'Field "months" is mandatory.',
-						'Incorrect value for field "day": value must be no less than "1".'
+					'inline_errors' => [
+						'Day of month' => 'Value must be greater than or equal to 1.',
+						'xpath:.//ul[@data-field-name="months"]' => 'At least one month must be selected.'
 					]
 				]
 			],
@@ -1366,9 +1342,9 @@ class testFormMaintenance extends CWebTest {
 						'Period type' => 'Monthly',
 						'id:month_date_type' => 'Day of week'
 					],
-					'error' => [
-						'Field "months" is mandatory.',
-						'Field "monthly_days" is mandatory.'
+					'inline_errors' => [
+						'xpath:.//ul[@data-field-name="months"]' => 'At least one month must be selected.',
+						'xpath:.//ul[@data-field-name="monthly_days"]' => 'At least one weekday must be selected.'
 					]
 				]
 			]
@@ -1409,7 +1385,7 @@ class testFormMaintenance extends CWebTest {
 			$overlay = COverlayDialogElement::find(1)->waitUntilReady()->one();
 			$overlay->asForm()->fill($data['fields'])->submit();
 
-			$this->assertMessage(TEST_BAD, null, $data['error']);
+			$this->assertInlineError($overlay->asForm(), $data['inline_errors']);
 
 			COverlayDialogElement::closeAll();
 		}
@@ -1422,7 +1398,7 @@ class testFormMaintenance extends CWebTest {
 				[
 					'row_index' => 1, // Daily period.
 					'fill' => [
-						'id:every_day' => '5',
+						'Every day(s)' => '5',
 						'id:hour' => '12'
 					],
 					'expected' => ['Period type' => 'Daily', 'Schedule' => 'At 12:00 every 5 days']
@@ -1434,7 +1410,7 @@ class testFormMaintenance extends CWebTest {
 					'row_index' => 3, // Monthly period.
 					'fill' => [
 						'Period type' => 'Weekly',
-						'id:every_week' => '4',
+						'Every week(s)' => '4',
 						'id:weekly_days_1' => true
 					],
 					'expected' => ['Period type' => 'Weekly', 'Schedule' => 'At 23:00 Monday of every 4 weeks']

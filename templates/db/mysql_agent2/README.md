@@ -7,7 +7,7 @@ This template is designed for the effortless deployment of MySQL monitoring by Z
 
 ## Requirements
 
-Zabbix version: 7.4 and higher.
+Zabbix version: 8.0 and higher.
 
 ## Tested versions
 
@@ -18,7 +18,7 @@ This template has been tested on:
 
 ## Configuration
 
-> Zabbix should be configured according to the instructions in the [Templates out of the box](https://www.zabbix.com/documentation/7.4/manual/config/templates_out_of_the_box) section.
+> Zabbix should be configured according to the instructions in the [Templates out of the box](https://www.zabbix.com/documentation/8.0/manual/config/templates_out_of_the_box) section.
 
 ## Setup
 
@@ -47,7 +47,7 @@ For more information about MySQL Unix socket file, see the MySQL documentation h
 Leave macros {$MYSQL.USER} and {$MYSQL.PASSWORD} empty if you use a session name. Set the user name and password in the Plugins.Mysql.<...> section of your Zabbix agent 2 configuration file.
 For more information about configuring the Zabbix MySQL plugin, see the documentation https://git.zabbix.com/projects/ZBX/repos/zabbix/browse/src/go/plugins/mysql/README.md.
 
-**NOTE:** In order to use this template for monitoring MySQL version 8.4 and later, Zabbix agent 2 version 7.4.6 and later should be used.
+**NOTE:** In order to use this template for monitoring MySQL version 8.4 and later, Zabbix agent 2 version 8.0.0 and later should be used.
 
 ### Macros used
 

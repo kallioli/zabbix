@@ -7,7 +7,7 @@ This template is designed for the effortless deployment of Apache ActiveMQ monit
 
 ## Requirements
 
-Zabbix version: 7.4 and higher.
+Zabbix version: 8.0 and higher.
 
 ## Tested versions
 
@@ -16,7 +16,7 @@ This template has been tested on:
 
 ## Configuration
 
-> Zabbix should be configured according to the instructions in the [Templates out of the box](https://www.zabbix.com/documentation/7.4/manual/config/templates_out_of_the_box) section.
+> Zabbix should be configured according to the instructions in the [Templates out of the box](https://www.zabbix.com/documentation/8.0/manual/config/templates_out_of_the_box) section.
 
 ## Setup
 
@@ -30,9 +30,9 @@ Metrics are collected by JMX.
 
 |Name|Description|Default|
 |----|-----------|-------|
-|{$ACTIVEMQ.USER}|<p>User for JMX</p>|`admin`|
-|{$ACTIVEMQ.PASSWORD}|<p>Password for JMX</p>|`activemq`|
-|{$ACTIVEMQ.PORT}|<p>Port for JMX</p>|`1099`|
+|{$ACTIVEMQ.USER}|<p>ActiveMQ JMX user.</p>|`admin`|
+|{$ACTIVEMQ.PASSWORD}|<p>ActiveMQ JMX password.</p>|`activemq`|
+|{$ACTIVEMQ.PORT}|<p>ActiveMQ JMX port.</p>|`1099`|
 |{$ACTIVEMQ.LLD.FILTER.BROKER.MATCHES}|<p>Filter of discoverable discovered brokers</p>|`.*`|
 |{$ACTIVEMQ.LLD.FILTER.BROKER.NOT_MATCHES}|<p>Filter to exclude discovered brokers</p>|`CHANGE IF NEEDED`|
 |{$ACTIVEMQ.LLD.FILTER.DESTINATION.MATCHES}|<p>Filter of discoverable discovered destinations</p>|`.*`|

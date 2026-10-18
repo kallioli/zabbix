@@ -14,7 +14,9 @@
 
 #include "pp_queue.h"
 #include "pp_task.h"
+#include "zbxcommon.h"
 #include "zbxalgo.h"
+#include "zbxcacheconfig.h"
 
 #define PP_TASK_QUEUE_INIT_NONE		0x00
 #define PP_TASK_QUEUE_INIT_LOCK		0x01
@@ -33,7 +35,8 @@ zbx_pp_item_task_sequence_t;
 typedef struct
 {
 	zbx_uint64_t	itemid;
-	zbx_list_t	tasks;
+	zbx_pp_task_t	*task;
+	zbx_queue_ptr_t	tasks;
 }
 zbx_pp_item_tasks_t;
 
@@ -48,7 +51,7 @@ zbx_pp_item_tasks_t;
  *               FAIL    - otherwise                                          *
  *                                                                            *
  ******************************************************************************/
-int	pp_task_queue_init(zbx_pp_queue_t *queue, char **error)
+int	pp_task_queue_init(zbx_pp_queue_t *queue, int slots_num, char **error)
 {
 	int	err, ret = FAIL;
 
@@ -57,8 +60,11 @@ int	pp_task_queue_init(zbx_pp_queue_t *queue, char **error)
 	queue->finished_num = 0;
 	queue->processing_num = 0;
 	zbx_list_create(&queue->pending);
+	zbx_list_init_pool(&queue->pending, slots_num);
 	zbx_list_create(&queue->immediate);
+	zbx_list_init_pool(&queue->immediate, slots_num / 4);
 	zbx_list_create(&queue->finished);
+	zbx_list_init_pool(&queue->finished, slots_num / 2);
 
 	zbx_hashset_create(&queue->sequences, 100, ZBX_DEFAULT_UINT64_HASH_FUNC, ZBX_DEFAULT_UINT64_COMPARE_FUNC);
 	zbx_hashset_create(&queue->tasks, 100, ZBX_DEFAULT_UINT64_HASH_FUNC, ZBX_DEFAULT_UINT64_COMPARE_FUNC);
@@ -111,6 +117,23 @@ void	pp_task_queue_destroy(zbx_pp_queue_t *queue)
 	if (0 != (queue->init_flags & PP_TASK_QUEUE_INIT_EVENT))
 		pthread_cond_destroy(&queue->event);
 
+	zbx_hashset_iter_t	iter;
+	zbx_pp_item_tasks_t	*item_tasks;
+
+	zbx_hashset_iter_reset(&queue->tasks, &iter);
+	while (NULL != (item_tasks = (zbx_pp_item_tasks_t *)zbx_hashset_iter_next(&iter)))
+	{
+		zbx_pp_task_t	*task;
+
+		while (NULL != (task = (zbx_pp_task_t *)zbx_queue_ptr_pop(&item_tasks->tasks)))
+		{
+			if (ZBX_PP_TASK_FINISHED == task->state)
+				pp_task_free(task);
+		}
+	}
+
+	zbx_hashset_destroy(&queue->tasks);
+
 	pp_task_queue_clear_tasks(&queue->pending);
 	zbx_list_destroy(&queue->pending);
 
@@ -121,7 +144,6 @@ void	pp_task_queue_destroy(zbx_pp_queue_t *queue)
 	zbx_list_destroy(&queue->finished);
 
 	zbx_hashset_destroy(&queue->sequences);
-	zbx_hashset_destroy(&queue->tasks);
 
 	queue->init_flags = PP_TASK_QUEUE_INIT_NONE;
 }
@@ -220,9 +242,12 @@ static void	pp_track_value_task(zbx_pp_queue_t *queue, zbx_pp_task_t *task)
 			sizeof(item_tasks_local));
 
 	if (tasks_num != queue->tasks.num_data)
-		zbx_list_create(&item_tasks->tasks);
-
-	zbx_list_append(&item_tasks->tasks, task, NULL);
+	{
+		item_tasks->task = task;
+		zbx_queue_ptr_create(&item_tasks->tasks);
+	}
+	else
+		zbx_queue_ptr_push(&item_tasks->tasks, task);
 }
 
 /******************************************************************************
@@ -290,23 +315,24 @@ void	pp_task_queue_push_test(zbx_pp_queue_t *queue, zbx_pp_task_t *task)
  *                                                                            *
  * Purpose: queue normal task to be processed                                 *
  *                                                                            *
- * Parameters: queue - [IN] task queue                                        *
- *             task  - [IN] task                                              *
+ * Parameters: queue         - [IN] task queue                                *
+ *             task          - [IN] task                                      *
+ *             preprocessing - [IN] priority flag,                            *
+ *                                  see ZBX_ITEM_PREPROCESSING_ defines       *
  *                                                                            *
  * Comments: This function is used to push tasks created by new preprocessing *
  *           or testing requests.                                             *
  *                                                                            *
  ******************************************************************************/
-void	pp_task_queue_push(zbx_pp_queue_t *queue, zbx_pp_task_t *task)
+void	pp_task_queue_push(zbx_pp_queue_t *queue, zbx_pp_task_t *task, unsigned char prepressing)
 {
-	zbx_pp_task_value_t	*d = (zbx_pp_task_value_t *)PP_TASK_DATA(task);
 	queue->pending_num++;
 
 	/* track input value order to have the same output order for non sequential tasks */
 	if (ZBX_PP_TASK_VALUE == task->type)
 		pp_track_value_task(queue, task);
 
-	if (ITEM_TYPE_INTERNAL != d->preproc->type)
+	if (prepressing != ZBX_ITEM_PREPROCESSING_PRIORITY)
 	{
 		(void)zbx_list_append(&queue->pending, task, NULL);
 		return;
@@ -390,17 +416,27 @@ void	pp_task_queue_push_finished(zbx_pp_queue_t *queue, zbx_pp_task_t *task)
 	if (ZBX_PP_TASK_VALUE == task->type &&
 			NULL != (item_tasks = (zbx_pp_item_tasks_t *)zbx_hashset_search(&queue->tasks, &task->itemid)))
 	{
-		while (SUCCEED == zbx_list_peek(&item_tasks->tasks, (void **)&task))
+		if (NULL != item_tasks->task)
+		{
+			if (ZBX_PP_TASK_FINISHED != item_tasks->task->state)
+				return;
+
+			(void)zbx_list_append(&queue->finished, item_tasks->task, NULL);
+			item_tasks->task = NULL;
+			queue->finished_num++;
+		}
+
+		while (NULL != (task = (zbx_pp_task_t *)zbx_queue_ptr_peek(&item_tasks->tasks)))
 		{
 			if (ZBX_PP_TASK_FINISHED != task->state)
 				return;
 
-			zbx_list_pop(&item_tasks->tasks, NULL);
+			(void)zbx_queue_ptr_pop(&item_tasks->tasks);
 			(void)zbx_list_append(&queue->finished, task, NULL);
-
 			queue->finished_num++;
 		}
 
+		zbx_queue_ptr_destroy(&item_tasks->tasks);
 		zbx_hashset_remove_direct(&queue->tasks, item_tasks);
 	}
 	else

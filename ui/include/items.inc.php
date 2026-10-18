@@ -97,7 +97,8 @@ function item_type2str($type = null) {
 		ITEM_TYPE_DEPENDENT => _('Dependent item'),
 		ITEM_TYPE_SCRIPT => _('Script'),
 		ITEM_TYPE_BROWSER => _('Browser'),
-		ITEM_TYPE_NESTED => _('Nested')
+		ITEM_TYPE_NESTED => _('Nested'),
+		ITEM_TYPE_TELEMETRY_QUERY => _('Telemetry query')
 	];
 
 	if ($type === null) {
@@ -128,6 +129,8 @@ function itemValueTypeString($value_type): string {
 			return _('Text');
 		case ITEM_VALUE_TYPE_BINARY:
 			return _('Binary');
+		case ITEM_VALUE_TYPE_JSON:
+			return _('JSON');
 	}
 
 	return _('Unknown');
@@ -600,12 +603,14 @@ function makeItemTemplatePrefix($itemid, array $parent_templates, $flag, bool $p
 	if ($provide_links && $template['permission'] == PERM_READ_WRITE) {
 		if ($flag & ZBX_FLAG_DISCOVERY_RULE) {
 			if ($flag & ZBX_FLAG_DISCOVERY_PROTOTYPE) {
-				$url = (new CUrl('host_discovery_prototypes.php'))
+				$url = (new CUrl('zabbix.php'))
+					->setArgument('action', 'lldrule.prototype.list')
 					->setArgument('parent_discoveryid', $parent_templates['links'][$itemid]['lld_ruleid'])
 					->setArgument('context', 'template');
 			}
 			else {
-				$url = (new CUrl('host_discovery.php'))
+				$url = (new CUrl('zabbix.php'))
+					->setArgument('action', 'lldrule.list')
 					->setArgument('filter_set', '1')
 					->setArgument('filter_hostids', [$template['hostid']])
 					->setArgument('context', 'template');
@@ -661,17 +666,20 @@ function makeItemTemplatesHtml($itemid, array $parent_templates, $flag, bool $pr
 		if ($provide_links && $template['permission'] == PERM_READ_WRITE) {
 			if ($flag & ZBX_FLAG_DISCOVERY_RULE) {
 				if ($flag & ZBX_FLAG_DISCOVERY_PROTOTYPE) {
-					$url = (new CUrl('host_discovery_prototypes.php'))
-						->setArgument('form', 'update')
+					$url = (new CUrl('zabbix.php'))
+						->setArgument('action', 'popup')
+						->setArgument('popup', 'lldrule.prototype.edit')
 						->setArgument('itemid', $parent_templates['links'][$itemid]['itemid'])
 						->setArgument('parent_discoveryid', $parent_templates['links'][$itemid]['lld_ruleid'])
 						->setArgument('context', 'template');
 				}
 				else {
-					$url = (new CUrl('host_discovery.php'))
-						->setArgument('form', 'update')
-						->setArgument('itemid', $parent_templates['links'][$itemid]['itemid'])
-						->setArgument('context', 'template');
+					$url = (new CUrl('zabbix.php'))
+						->setArgument('action', 'popup')
+						->setArgument('popup', 'lldrule.edit')
+						->setArgument('context', 'template')
+						->setArgument('hostid', $parent_templates['links'][$itemid]['hostid'])
+						->setArgument('itemid', $parent_templates['links'][$itemid]['itemid']);
 				}
 			}
 			else {
@@ -867,63 +875,14 @@ function formatAggregatedHistoryValue($value, array $item, int $function, bool $
  */
 function formatAggregatedHistoryValueRaw($value, array $item, int $function, bool $force_units = false,
 		bool $trim = true, array $convert_options = []): array {
-	$units = $force_units || CAggFunctionData::preservesUnits($function) ? $item['units'] : '';
-
-	$is_numeric_item = in_array($item['value_type'], [ITEM_VALUE_TYPE_FLOAT, ITEM_VALUE_TYPE_UINT64]);
-	$is_numeric_data = $is_numeric_item || CAggFunctionData::isNumericResult($function);
-
-	if ($is_numeric_data) {
-		$converted_value = convertUnitsRaw([
-			'value' => $value,
-			'units' => $units
-		] + $convert_options);
-
-		$display_value = $converted_value['value'].
-			($converted_value['units'] !== '' ? ' '.$converted_value['units'] : '');
-	}
-	else {
-		switch ($item['value_type']) {
-			case ITEM_VALUE_TYPE_STR:
-			case ITEM_VALUE_TYPE_TEXT:
-			case ITEM_VALUE_TYPE_LOG:
-				$display_value = $trim && mb_strlen($value) > 20 ? mb_substr($value, 0, 20).'...' : $value;
-				break;
-
-			case ITEM_VALUE_TYPE_BINARY:
-				$display_value = _('binary value');
-				break;
-
-			default:
-				$display_value = _('Unknown value type');
-		}
-	}
-
-	if (in_array($item['value_type'], [ITEM_VALUE_TYPE_FLOAT, ITEM_VALUE_TYPE_UINT64, ITEM_VALUE_TYPE_STR])
-			&& CAggFunctionData::preservesValueMapping($function)) {
-		$mapped_value = CValueMapHelper::getMappedValue($item['value_type'], $value, $item['valuemap']);
-
-		if ($mapped_value !== false) {
-			return [
-				'value' => $mapped_value.' ('.$display_value.')',
-				'units' => '',
-				'is_mapped' => true
-			];
-		}
-	}
-
-	if ($is_numeric_data) {
-		return [
-			'value' => $converted_value['value'],
-			'units' => $converted_value['units'],
-			'is_mapped' => false
-		];
-	}
-
-	return [
-		'value' => $display_value,
-		'units' => $units,
-		'is_mapped' => false
+	$options = [
+		'force_units' => $force_units,
+		'trim' => $trim,
+		'convert_options' => $convert_options,
+		'valuemap' => $item['valuemap']
 	];
+
+	return CAggHelper::formatValue($value, $item['value_type'], $function, $item['units'], $options);
 }
 
 /**
@@ -991,6 +950,7 @@ function formatHistoryValueRaw($value, array $item, bool $trim = true, array $co
 		case ITEM_VALUE_TYPE_STR:
 		case ITEM_VALUE_TYPE_TEXT:
 		case ITEM_VALUE_TYPE_LOG:
+		case ITEM_VALUE_TYPE_JSON:
 			if ($trim && mb_strlen($value) > 20) {
 				$value = mb_substr($value, 0, 20).'...';
 			}
@@ -1391,20 +1351,6 @@ function calculateItemNextCheck($seed, $delay, $flexible_intervals, $now) {
 	return $nextCheck;
 }
 
-/*
- * Description:
- *	Function returns true if http items exists in the $items array.
- *	The array should contain a field 'type'
- */
-function httpItemExists($items) {
-	foreach ($items as $item) {
-		if ($item['type'] == ITEM_TYPE_HTTPTEST) {
-			return true;
-		}
-	}
-	return false;
-}
-
 function getParamFieldNameByType($itemType) {
 	switch ($itemType) {
 		case ITEM_TYPE_SCRIPT:
@@ -1728,7 +1674,8 @@ function checkNowAllowedTypes() {
 		ITEM_TYPE_HTTPAGENT,
 		ITEM_TYPE_SNMP,
 		ITEM_TYPE_SCRIPT,
-		ITEM_TYPE_BROWSER
+		ITEM_TYPE_BROWSER,
+		ITEM_TYPE_TELEMETRY_QUERY
 	];
 }
 
@@ -2051,7 +1998,7 @@ function prepareLldMacroPaths(array $macro_paths): array {
  */
 function prepareLldFilter(array $filter): array {
 	$filter['conditions'] = array_values(array_filter($filter['conditions'], static function (array $condition): bool {
-		return $condition['macro'] !== '' || $condition['value'] !== '';
+		return $condition['macro'] !== '' || (array_key_exists('value', $condition) && $condition['value'] !== '');
 	}));
 
 	if ($filter['evaltype'] == CONDITION_EVAL_TYPE_EXPRESSION && count($filter['conditions']) <= 1) {
@@ -2076,7 +2023,9 @@ function prepareLldOverrides(array $overrides): array {
 	foreach ($overrides as &$override) {
 		$override['filter'] = prepareLldFilter([
 			'evaltype' => $override['filter']['evaltype'],
-			'formula' => $override['filter']['formula'],
+			'formula' => array_key_exists('formula', $override['filter'])
+				? $override['filter']['formula']
+				: '',
 			'conditions' => array_key_exists('conditions', $override['filter'])
 				? $override['filter']['conditions']
 				: []
@@ -2243,6 +2192,9 @@ function getMainItemFieldNames(array $input): array {
 		case ZBX_FLAG_DISCOVERY_CREATED:
 		case ZBX_FLAG_DISCOVERY_RULE_CREATED:
 			return ['status'];
+
+		default:
+			return [];
 	}
 }
 
@@ -2339,6 +2291,11 @@ function getTypeItemFieldNames(array $input): array {
 				? ['parameters', 'params', 'timeout', 'delay']
 				: ['delay'];
 
+		case ITEM_TYPE_TELEMETRY_QUERY:
+			return $input['templateid'] == 0
+				? ['query', 'time_shift', 'lookback_limit', 'granularity', 'timeout', 'delay']
+				: ['time_shift', 'lookback_limit', 'granularity', 'delay'];
+
 		case ITEM_TYPE_NESTED:
 			return [];
 	}
@@ -2426,14 +2383,21 @@ function getInheritedTimeouts(string $proxyid): array {
 		$db_proxies = API::Proxy()->get([
 			'output' => ['custom_timeouts', 'timeout_zabbix_agent', 'timeout_simple_check', 'timeout_snmp_agent',
 				'timeout_external_check', 'timeout_db_monitor', 'timeout_http_agent', 'timeout_ssh_agent',
-				'timeout_telnet_agent', 'timeout_script', 'timeout_browser'
+				'timeout_telnet_agent', 'timeout_script', 'timeout_browser', 'timeout_telemetry_query'
 			],
-			'proxyids' => $proxyid,
-			'nopermissions' => true
+			'proxyids' => $proxyid
 		]);
 		$db_proxy = reset($db_proxies);
 
-		if ($db_proxy && $db_proxy['custom_timeouts'] == ZBX_PROXY_CUSTOM_TIMEOUTS_ENABLED) {
+		if (!$db_proxy) {
+			return [
+				'source' => 'inaccessible',
+				'proxyid' => $proxyid,
+				'timeouts' => []
+			];
+		}
+
+		if ($db_proxy['custom_timeouts'] == ZBX_PROXY_CUSTOM_TIMEOUTS_ENABLED) {
 			return [
 				'source' => 'proxy',
 				'proxyid' => $proxyid,
@@ -2448,7 +2412,8 @@ function getInheritedTimeouts(string $proxyid): array {
 					ITEM_TYPE_HTTPAGENT => $db_proxy['timeout_http_agent'],
 					ITEM_TYPE_SNMP => $db_proxy['timeout_snmp_agent'],
 					ITEM_TYPE_SCRIPT => $db_proxy['timeout_script'],
-					ITEM_TYPE_BROWSER => $db_proxy['timeout_browser']
+					ITEM_TYPE_BROWSER => $db_proxy['timeout_browser'],
+					ITEM_TYPE_TELEMETRY_QUERY => $db_proxy['timeout_telemetry_query']
 				]
 			];
 		}
@@ -2468,7 +2433,8 @@ function getInheritedTimeouts(string $proxyid): array {
 			ITEM_TYPE_HTTPAGENT => CSettingsHelper::get(CSettingsHelper::TIMEOUT_HTTP_AGENT),
 			ITEM_TYPE_SNMP => CSettingsHelper::get(CSettingsHelper::TIMEOUT_SNMP_AGENT),
 			ITEM_TYPE_SCRIPT => CSettingsHelper::get(CSettingsHelper::TIMEOUT_SCRIPT),
-			ITEM_TYPE_BROWSER => CSettingsHelper::get(CSettingsHelper::TIMEOUT_BROWSER)
+			ITEM_TYPE_BROWSER => CSettingsHelper::get(CSettingsHelper::TIMEOUT_BROWSER),
+			ITEM_TYPE_TELEMETRY_QUERY => CSettingsHelper::get(CSettingsHelper::TIMEOUT_TELEMETRY_QUERY)
 		]
 	];
 }

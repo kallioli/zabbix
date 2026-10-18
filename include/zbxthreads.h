@@ -20,9 +20,10 @@
 /* the order workers are asked to stop in, on either platform */
 #define ZBX_THREAD_PRIORITY_NONE	0
 #define ZBX_THREAD_PRIORITY_COLLECTOR	1
-#define ZBX_THREAD_PRIORITY_SYNCER	2
-#define ZBX_THREAD_PRIORITY_WORKER	3
-#define ZBX_THREAD_PRIORITY_COUNT	4
+#define ZBX_THREAD_PRIORITY_SUPERVISOR	2
+#define ZBX_THREAD_PRIORITY_SYNCER	3
+#define ZBX_THREAD_PRIORITY_WORKER	4
+#define ZBX_THREAD_PRIORITY_COUNT	5
 
 #if defined(_WINDOWS) || defined(__MINGW32__)
 	/* the ZBXEndThread function is implemented in service.c file */
@@ -76,16 +77,6 @@
 	#define zbx_thread_kill_fatal(h)	kill(h, SIGHUP)
 #endif	/* _WINDOWS */
 
-/* Ends a worker that has finished on its own: a process on Unix, where this is exit(), and a thread on      */
-/* Windows, where exit() would end the whole program, every other worker and the service with it. Unlike      */
-/* zbx_thread_exit() it keeps exit()'s semantics on Unix and can be used at any depth of the worker, as both   */
-/* forms are declared noreturn.                                                                                */
-#if defined(_WINDOWS) || defined(__MINGW32__)
-	#define zbx_worker_exit(status)		_endthreadex((unsigned int)(status))
-#else
-	#define zbx_worker_exit(status)		exit((int)(status))
-#endif
-
 typedef struct
 {
 	unsigned char	program_type;
@@ -107,7 +98,8 @@ zbx_thread_args_t;
 
 void	zbx_thread_start(ZBX_THREAD_ENTRY_POINTER(handler), zbx_thread_args_t *thread_args, ZBX_THREAD_HANDLE *thread);
 int	zbx_thread_wait(ZBX_THREAD_HANDLE thread);
-void	zbx_threads_kill_and_wait(ZBX_THREAD_HANDLE *threads, const int *threads_flags, int threads_num, int ret);
+int	zbx_waitpid_nohang(ZBX_THREAD_HANDLE *threads, size_t threads_num);
+void	zbx_threads_kill_and_wait(ZBX_THREAD_HANDLE *threads, const int *threads_flags, int threads_num, int timeout);
 
 void	zbx_pthread_init_attr(pthread_attr_t *attr);
 

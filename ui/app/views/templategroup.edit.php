@@ -29,7 +29,7 @@ $form = (new CForm())
 $form_grid = (new CFormGrid())
 	->addItem([
 		(new CLabel(_('Group name'), 'name'))->setAsteriskMark(),
-		new CFormField((new CTextBox('name', $data['name']))
+		new CFormField((new CTextAreaFlexible('name', $data['name']))
 			->setAttribute('autofocus', 'autofocus')
 			->setWidth(ZBX_TEXTAREA_STANDARD_WIDTH)
 			->setAriaRequired()
@@ -119,6 +119,7 @@ $output = [
 	'script_inline' => getPagePostJs().
 		$this->readJsFile('templategroup.edit.js.php').
 		'templategroup_edit_popup.init('.json_encode([
+			'rules' => $data['js_validation_rules'],
 			'groupid' => $data['groupid'],
 			'name' => $data['name']
 		]).');',

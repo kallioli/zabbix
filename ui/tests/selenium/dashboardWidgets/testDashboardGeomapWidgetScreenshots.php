@@ -29,6 +29,15 @@ require_once __DIR__.'/../../include/helpers/CDataHelper.php';
  */
 class testDashboardGeomapWidgetScreenshots extends CWebTest {
 
+	/**
+	 * Attach MessageBehavior to the test.
+	 *
+	 * @return array
+	 */
+	public function getBehaviors() {
+		return [CMessageBehavior::class];
+	}
+
 	// Dashboard for zoom screenshot tests.
 	protected static $zoom_dashboardid;
 
@@ -43,15 +52,6 @@ class testDashboardGeomapWidgetScreenshots extends CWebTest {
 				'Bergen' => null
 			]
 		];
-
-	/**
-	 * Attach MessageBehavior to the test.
-	 *
-	 * @return array
-	 */
-	public function getBehaviors() {
-		return ['class' => CMessageBehavior::class];
-	}
 
 	public function prepareZoomData() {
 		// Create hostgroup for hosts with items triggers.

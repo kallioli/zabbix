@@ -925,7 +925,7 @@ class testInitialConfSync extends CIntegrationTest
 
 		$sync_lines1 = preg_replace(
 			[
-				"/^\s*[0-9]+:[0-9]+:[0-9]+\.[0-9]+ zbx_dc_sync_configuration\(\) /",
+				"/^\s*[0-9]+:[0-9]+:[0-9]+\.[0-9]+ \[configuration syncer #1\] zbx_dc_sync_configuration\(\) /",
 				"/\s+/",
 				"/-?[0-9]+bytes/",
 				"/:sql:[0-9]+\.[0-9]+sync:[0-9]+\.[0-9]+sec/",
@@ -1272,7 +1272,7 @@ class testInitialConfSync extends CIntegrationTest
 			'expressions' => [
 				[
 					'expression' => '.*',
-					'expression_type' => EXPRESSION_TYPE_FALSE,
+					'expression_type' => REGEX_TYPE_NOT_MATCHES_REGEX,
 					'case_sensitive' => 1
 				]
 			]
@@ -1289,7 +1289,7 @@ class testInitialConfSync extends CIntegrationTest
 			'expressions' => [
 				[
 					'expression' => '.*a',
-					'expression_type' => EXPRESSION_TYPE_TRUE,
+					'expression_type' => REGEX_TYPE_MATCHES_REGEX,
 					'case_sensitive' => 1
 				]
 			]
@@ -1792,6 +1792,7 @@ class testInitialConfSync extends CIntegrationTest
 		$this->updateAction();
 		$this->updateTlsForHost();
 
+		$this->waitForLogLineToBePresent(self::COMPONENT_SERVER, "End of zbx_dc_sync_configuration()", true, 30, 1);
 		$this->clearLog(self::COMPONENT_SERVER);
 		$this->reloadConfigurationCache(self::COMPONENT_SERVER);
 		$this->waitForLogLineToBePresent(self::COMPONENT_SERVER, "End of zbx_dc_sync_configuration()", true, 30, 1);
@@ -1830,6 +1831,7 @@ class testInitialConfSync extends CIntegrationTest
 		$this->purgeExisting('item', 'itemids');
 		$this->purgeHostGroups();
 
+		$this->waitForLogLineToBePresent(self::COMPONENT_SERVER, "End of zbx_dc_sync_configuration()", true, 30, 1);
 		$this->clearLog(self::COMPONENT_SERVER);
 		$this->reloadConfigurationCache(self::COMPONENT_SERVER);
 		$this->waitForLogLineToBePresent(self::COMPONENT_SERVER, "End of zbx_dc_sync_configuration()", true, 30, 1);

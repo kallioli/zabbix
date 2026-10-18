@@ -18,6 +18,7 @@
 #include "zbxcommon.h"
 
 #include "zbxthreads.h"
+#include "zbxtime.h"
 
 #include <process.h>
 
@@ -88,6 +89,39 @@ int	pthread_cond_broadcast(pthread_cond_t *cond)
 	return 0;
 }
 
+/******************************************************************************
+ *                                                                            *
+ * Purpose: waits on a condition variable until a point in time               *
+ *                                                                            *
+ * Comments: POSIX takes an absolute time on the realtime clock; the Windows   *
+ *           call takes a duration, so the remaining time is computed here.   *
+ *           A deadline already in the past is a poll, as in POSIX.           *
+ *                                                                            *
+ ******************************************************************************/
+int	pthread_cond_timedwait(pthread_cond_t *cond, pthread_mutex_t *mutex, const struct timespec *abstime)
+{
+	zbx_timespec_t	now;
+	DWORD		ms;
+	double		remaining;
+
+	zbx_timespec(&now);
+
+	remaining = ((double)abstime->tv_sec - (double)now.sec) * 1000.0 +
+			((double)abstime->tv_nsec - (double)now.ns) / 1000000.0;
+
+	if (0 >= remaining)
+		ms = 0;
+	else if ((double)INFINITE - 1 <= remaining)
+		ms = INFINITE - 1;
+	else
+		ms = (DWORD)remaining;
+
+	if (0 == SleepConditionVariableCS(cond, mutex, ms))
+		return ERROR_TIMEOUT == GetLastError() ? ETIMEDOUT : EINVAL;
+
+	return 0;
+}
+
 int	pthread_rwlock_init(pthread_rwlock_t *rwlock, const void *attr)
 {
 	ZBX_UNUSED(attr);
@@ -152,9 +186,9 @@ static unsigned __stdcall	pthread_entry(void *ctx_raw)
 	zbx_pthread_ctx_t	ctx = *(zbx_pthread_ctx_t *)ctx_raw;
 
 	zbx_free(ctx_raw);
-	ctx.start(ctx.arg);
 
-	return 0;
+	/* the return value travels to pthread_join() as the thread exit code; the callers return small integers */
+	return (unsigned)(zbx_int64_t)ctx.start(ctx.arg);
 }
 
 int	pthread_create(pthread_t *thread, const pthread_attr_t *attr, void *(*start)(void *), void *arg)
@@ -180,15 +214,27 @@ int	pthread_create(pthread_t *thread, const pthread_attr_t *attr, void *(*start)
 
 int	pthread_join(pthread_t thread, void **retval)
 {
-	if (NULL != retval)
-		*retval = NULL;
+	DWORD	code = 0;
 
 	if (WAIT_OBJECT_0 != WaitForSingleObject(thread, INFINITE))
 		return EINVAL;
 
+	if (NULL != retval)
+	{
+		if (0 == GetExitCodeThread(thread, &code))
+			code = 0;
+
+		*retval = (void *)(zbx_int64_t)code;
+	}
+
 	CloseHandle(thread);
 
 	return 0;
+}
+
+void	pthread_exit(void *retval)
+{
+	_endthreadex((unsigned)(zbx_int64_t)retval);
 }
 
 /******************************************************************************

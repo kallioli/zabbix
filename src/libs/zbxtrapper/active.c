@@ -260,124 +260,6 @@ out:
 	return ret;
 }
 
-/***************************************************************************
- *                                                                         *
- * Purpose: sends list of active checks to host (older version agent)      *
- *                                                                         *
- * Parameters:                                                             *
- *    sock                   - [IN] open socket of server-agent connection *
- *    request                - [IN] request buffer                         *
- *    events_cbs             - [IN]                                        *
- *    config_timeout         - [IN]                                        *
- *    autoreg_update_host_cb - [IN]                                        *
- *                                                                         *
- * Return value:  SUCCEED - list of active checks sent successfully        *
- *                FAIL - error occurred                                    *
- *                                                                         *
- * Comments: format of the request: ZBX_GET_ACTIVE_CHECKS\n<host name>\n   *
- *           format of the list: key:delay:last_log_size                   *
- *                                                                         *
- ***************************************************************************/
-int	send_list_of_active_checks(zbx_socket_t *sock, char *request, const zbx_events_funcs_t *events_cbs,
-		int config_timeout, zbx_autoreg_update_host_func_t autoreg_update_host_cb)
-{
-	char		*host = NULL, *p, *buffer = NULL, error[MAX_STRING_LEN];
-	size_t		buffer_alloc = 8 * ZBX_KIBIBYTE, buffer_offset = 0;
-	int		ret = FAIL, i, num = 0;
-	zbx_uint64_t	hostid, revision;
-
-	zabbix_log(LOG_LEVEL_DEBUG, "In %s()", __func__);
-
-	if (NULL != (host = strchr(request, '\n')))
-	{
-		host++;
-		if (NULL != (p = strchr(host, '\n')))
-			*p = '\0';
-	}
-	else
-	{
-		zbx_snprintf(error, sizeof(error), "host is null");
-		goto out;
-	}
-
-	/* no host metadata in older versions of agent */
-	if (FAIL == get_hostid_by_host_or_autoregister(sock, host, sock->peer, ZBX_DEFAULT_AGENT_PORT, "", 0, "",
-			events_cbs, config_timeout, autoreg_update_host_cb, &hostid, &revision, NULL, error))
-	{
-		goto out;
-	}
-
-	num = zbx_dc_config_get_active_items_count_by_hostid(hostid);
-
-	buffer = (char *)zbx_malloc(buffer, buffer_alloc);
-
-	if (0 != num)
-	{
-		zbx_dc_item_t		*dc_items;
-		int			*errcodes;
-		zbx_dc_um_handle_t	*um_handle;
-
-		um_handle = zbx_dc_open_user_macros();
-
-		dc_items = (zbx_dc_item_t *)zbx_malloc(NULL, sizeof(zbx_dc_item_t) * num);
-		errcodes = (int *)zbx_malloc(NULL, sizeof(int) * num);
-
-		zbx_dc_config_get_active_items_by_hostid(dc_items, hostid, errcodes, num);
-
-		for (i = 0; i < num; i++)
-		{
-			int	delay;
-
-			if (SUCCEED != errcodes[i])
-			{
-				zabbix_log(LOG_LEVEL_DEBUG, "%s() Item for host [" ZBX_FS_UI64 "] was not found in the"
-						" server cache.", __func__, hostid);
-				continue;
-			}
-
-			if (ITEM_STATUS_ACTIVE != dc_items[i].status)
-				continue;
-
-			if (HOST_STATUS_MONITORED != dc_items[i].host.status)
-				continue;
-
-			zbx_dc_expand_user_and_func_macros(um_handle, &dc_items[i].delay, &dc_items[i].host.hostid, 1,
-					NULL);
-
-			if (SUCCEED != zbx_interval_preproc(dc_items[i].delay, &delay, NULL, NULL))
-				continue;
-
-			zbx_snprintf_alloc(&buffer, &buffer_alloc, &buffer_offset, "%s:%d:" ZBX_FS_UI64 "\n",
-					dc_items[i].key_orig, delay, dc_items[i].lastlogsize);
-		}
-
-		zbx_dc_config_clean_items(dc_items, errcodes, num);
-
-		zbx_free(errcodes);
-		zbx_free(dc_items);
-
-		zbx_dc_close_user_macros(um_handle);
-	}
-
-	zbx_strcpy_alloc(&buffer, &buffer_alloc, &buffer_offset, "ZBX_EOF\n");
-
-	zabbix_log(LOG_LEVEL_DEBUG, "%s() sending [%s]", __func__, buffer);
-
-	if (SUCCEED != zbx_tcp_send_ext(sock, buffer, strlen(buffer), 0, 0, config_timeout))
-		zbx_strlcpy(error, zbx_socket_strerror(), MAX_STRING_LEN);
-	else
-		ret = SUCCEED;
-
-	zbx_free(buffer);
-out:
-	if (FAIL == ret)
-		zabbix_log(LOG_LEVEL_WARNING, "cannot send list of active checks to \"%s\": %s", sock->peer, error);
-
-	zabbix_log(LOG_LEVEL_DEBUG, "End of %s():%s", __func__, zbx_result_string(ret));
-
-	return ret;
-}
-
 /******************************************************************************
  *                                                                            *
  * Purpose: appends non duplicate string to string vector                     *
@@ -632,8 +514,9 @@ int	send_list_of_active_checks_json(zbx_socket_t *sock, zbx_json_parse_t *jp,
 			}
 
 			dc_items[i].key = zbx_strdup(dc_items[i].key, dc_items[i].key_orig);
-			zbx_substitute_item_key_params(&dc_items[i].key, NULL, 0, zbx_item_key_subst_cb,
-					um_handle_secure, &dc_items[i]);
+			zbx_substitute_item_key_params_default(&dc_items[i].key, NULL, 0, um_handle_secure,
+					dc_items[i].host.hostid, dc_items[i].host.host, dc_items[i].host.name,
+					dc_items[i].itemid, &dc_items[i].interface);
 
 			zbx_json_addobject(&json, NULL);
 			zbx_json_addstring(&json, ZBX_PROTO_TAG_KEY, dc_items[i].key, ZBX_JSON_TYPE_STRING);
@@ -712,6 +595,7 @@ int	send_list_of_active_checks_json(zbx_socket_t *sock, zbx_json_parse_t *jp,
 		for (int i = 0; i < regexps.values_num; i++)
 		{
 			zbx_expression_t	*regexp = regexps.values[i];
+			char			exp_delimiter = regexp->exp_delimiter;
 
 			zbx_json_addobject(&json, NULL);
 			zbx_json_addstring(&json, "name", regexp->name, ZBX_JSON_TYPE_STRING);
@@ -720,7 +604,13 @@ int	send_list_of_active_checks_json(zbx_socket_t *sock, zbx_json_parse_t *jp,
 			zbx_snprintf(str, sizeof(str), "%d", regexp->expression_type);
 			zbx_json_addstring(&json, "expression_type", str, ZBX_JSON_TYPE_INT);
 
-			zbx_snprintf(str, sizeof(str), "%c", regexp->exp_delimiter);
+			/* By Zabbix 5.0.0, agent 2 was already reporting its version without a patch component. */
+			/* Zabbix agent and agent 2 report their version with a patch component in a unified */
+			/* way starting from Zabbix 7.0.0rc1. */
+			if ('\0' == exp_delimiter && ZBX_COMPONENT_VERSION(6, 0, 4) > version)
+				exp_delimiter = ',';
+
+			zbx_snprintf(str, sizeof(str), "%c", exp_delimiter);
 			zbx_json_addstring(&json, "exp_delimiter", str, ZBX_JSON_TYPE_STRING);
 
 			zbx_snprintf(str, sizeof(str), "%d", regexp->case_sensitive);

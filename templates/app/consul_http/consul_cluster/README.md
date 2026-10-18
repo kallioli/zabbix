@@ -11,7 +11,7 @@ More information about metrics you can find in [official documentation](https://
 
 ## Requirements
 
-Zabbix version: 7.4 and higher.
+Zabbix version: 8.0 and higher.
 
 ## Tested versions
 
@@ -20,7 +20,7 @@ This template has been tested on:
 
 ## Configuration
 
-> Zabbix should be configured according to the instructions in the [Templates out of the box](https://www.zabbix.com/documentation/7.4/manual/config/templates_out_of_the_box) section.
+> Zabbix should be configured according to the instructions in the [Templates out of the box](https://www.zabbix.com/documentation/8.0/manual/config/templates_out_of_the_box) section.
 
 ## Setup
 
@@ -40,7 +40,7 @@ In case of Open Source version leave this macro empty.
 |Name|Description|Default|
 |----|-----------|-------|
 |{$CONSUL.CLUSTER.URL}|<p>Consul cluster URL.</p>|`http://localhost:8500`|
-|{$CONSUL.TOKEN}|<p>Consul auth token.</p>|`<PUT YOUR AUTH TOKEN>`|
+|{$CONSUL.TOKEN}|<p>Consul auth token.</p>||
 |{$CONSUL.NAMESPACE}|<p>Consul service namespace. Enterprise only, in case of Open Source version leave this macro empty. Do not specify this macro to get all of services.</p>||
 |{$CONSUL.API.SCHEME}|<p>Consul API scheme. Using in node LLD.</p>|`http`|
 |{$CONSUL.API.PORT}|<p>Consul API port. Using in node LLD.</p>|`8500`|

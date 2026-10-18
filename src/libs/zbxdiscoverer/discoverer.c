@@ -18,7 +18,7 @@
 #include "zbxcacheconfig.h"
 #include "zbxicmpping.h"
 #include "zbxdiscovery.h"
-#include "zbxexpression.h"
+#include "zbxregexp.h"
 #include "zbxself.h"
 #include "zbxrtc.h"
 #include "zbxnix.h"
@@ -41,6 +41,8 @@
 #include "zbxipcservice.h"
 #include "zbxstr.h"
 #include "zbxthreads.h"
+#include "zbxcurl.h"
+#include "zbxcalc.h"
 
 #ifdef HAVE_NETSNMP
 #	include "zbxpoller.h"
@@ -680,7 +682,7 @@ static int	process_results(zbx_discoverer_manager_t *manager, const zbx_vector_u
 				discovery_update_hosts_cb(result-> druleid, result->now, events_cbs->add_event_cb);
 
 			if (NULL != events_cbs->process_events_cb)
-				events_cbs->process_events_cb(NULL, NULL, NULL);
+				events_cbs->process_events_cb();
 
 			if (NULL != events_cbs->clean_events_cb)
 				events_cbs->clean_events_cb();
@@ -1300,17 +1302,16 @@ int	dcheck_is_async(zbx_ds_dcheck_t *ds_dcheck)
 
 static void	*discoverer_worker_entry(void *net_check_worker)
 {
-	int			err;
 	char			component[MAX_ID_LEN + 1];
 	zbx_discoverer_worker_t	*worker = (zbx_discoverer_worker_t*)net_check_worker;
 	zbx_discoverer_queue_t	*queue = worker->queue;
+	sigjmp_buf		jmp_ret;
 
 	zbx_snprintf(component, sizeof(component), "%s #%d",
 			get_process_type_string(worker->thread_type), worker->worker_id);
 	zbx_set_log_component(component, &worker->logger);
 
-	if (0 != (err = zbx_init_thread_signal_handler()))
-		zabbix_log(LOG_LEVEL_WARNING, "cannot block signals: %s", zbx_strerror(err));
+	ZBX_INIT_THREAD_OR_RETURN(jmp_ret, NULL);
 
 	zabbix_log(LOG_LEVEL_INFORMATION, "thread started [%s #%d]",
 			get_process_type_string(worker->thread_type), worker->worker_id);
@@ -1433,6 +1434,8 @@ static void	*discoverer_worker_entry(void *net_check_worker)
 		}
 	}
 
+	zbx_deinit_regexp_env();
+
 	discoverer_queue_deregister_worker(queue);
 	discoverer_queue_unlock(queue);
 
@@ -1492,9 +1495,7 @@ static void	discoverer_libs_init(void)
 #ifdef HAVE_NETSNMP
 	zbx_init_library_mt_snmp(zbx_get_progname_cb());
 #endif
-#ifdef HAVE_LIBCURL
-	curl_global_init(CURL_GLOBAL_DEFAULT);
-#endif
+	zbx_curl_init();
 #ifdef HAVE_LDAP
 	ldap_get_option(NULL, 0, NULL);
 #endif
@@ -1510,9 +1511,7 @@ static void	discoverer_libs_destroy(void)
 #ifdef HAVE_NETSNMP
 	zbx_shutdown_library_mt_snmp(zbx_get_progname_cb());
 #endif
-#ifdef HAVE_LIBCURL
-	curl_global_cleanup();
-#endif
+	zbx_curl_cleanup();
 }
 
 static int	discoverer_manager_init(zbx_discoverer_manager_t *manager, zbx_thread_discoverer_args *args_in,
@@ -1750,7 +1749,7 @@ ZBX_THREAD_ENTRY(zbx_discoverer_thread, args)
 	{
 		zabbix_log(LOG_LEVEL_CRIT, "cannot start discoverer service: %s", error);
 		zbx_free(error);
-		exit(EXIT_FAILURE);
+		zbx_exit(EXIT_FAILURE);
 	}
 
 	if (FAIL == discoverer_manager_init(&dmanager, discoverer_args_in, info, &error))
@@ -1758,7 +1757,7 @@ ZBX_THREAD_ENTRY(zbx_discoverer_thread, args)
 		zabbix_log(LOG_LEVEL_ERR, "Cannot initialize discovery manager: %s", error);
 		zbx_free(error);
 		zbx_ipc_service_close(&ipc_service);
-		exit(EXIT_FAILURE);
+		zbx_exit(EXIT_FAILURE);
 	}
 
 	zbx_rtc_subscribe_service(ZBX_PROCESS_TYPE_DISCOVERYMANAGER, 0, rtc_msgs, ARRSIZE(rtc_msgs),
@@ -1971,5 +1970,5 @@ ZBX_THREAD_ENTRY(zbx_discoverer_thread, args)
 #endif
 	zbx_setproctitle("%s #%d [terminated]", get_process_type_string(info->process_type), info->process_num);
 
-	zbx_worker_exit(EXIT_SUCCESS);
+	zbx_exit(EXIT_SUCCESS);
 }

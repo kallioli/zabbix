@@ -27,6 +27,9 @@
 #	include "checks_snmp.h"
 #endif
 
+#include "async_telemetry_query.h"
+
+
 #include "zbxlog.h"
 #include "zbxalgo.h"
 #include "zbxtimekeeper.h"
@@ -44,6 +47,9 @@
 #include "zbxtime.h"
 #include "zbxtypes.h"
 #include "zbxasyncpoller.h"
+#include "zbxtelemetry.h"
+#include "zbxsysinfo.h"
+#include "zbxcurl.h"
 
 #include <event2/dns.h>
 
@@ -91,8 +97,8 @@ static void	process_async_result(zbx_dc_item_context_t *item, zbx_poller_config_
 	{
 		if (ZBX_IS_RUNNING())
 		{
-			zbx_preprocess_item_value(item->itemid, item->hostid, item->value_type, item->flags,
-					item->preprocessing, &item->result, &timespec, ITEM_STATE_NORMAL, NULL);
+			zbx_preprocess_item_value(item->itemid, item->value_type, item->flags, item->preprocessing,
+					&item->result, &timespec, ITEM_STATE_NORMAL, NULL);
 		}
 	}
 	else
@@ -101,9 +107,9 @@ static void	process_async_result(zbx_dc_item_context_t *item, zbx_poller_config_
 		{
 			if (NOTSUPPORTED == item->ret || AGENT_ERROR == item->ret || CONFIG_ERROR == item->ret)
 			{
-				zbx_preprocess_item_value(item->itemid, item->hostid, item->value_type, item->flags,
-					item->preprocessing, NULL, &timespec, ITEM_STATE_NOTSUPPORTED,
-					item->result.msg);
+				zbx_preprocess_item_value(item->itemid, item->value_type, item->flags,
+						item->preprocessing, NULL, &timespec, ITEM_STATE_NOTSUPPORTED,
+						item->result.msg);
 			}
 		}
 
@@ -111,7 +117,7 @@ static void	process_async_result(zbx_dc_item_context_t *item, zbx_poller_config_
 		SET_MSG_RESULT(&item->result, NULL);
 	}
 
-	zbx_async_manager_requeue(poller_config->manager, item->itemid, item->ret, timespec.sec);
+	zbx_async_manager_requeue(poller_config->manager, item->itemid, item->ret, timespec.sec, NULL);
 
 	poller_config->processing--;
 	poller_config->processed++;
@@ -180,9 +186,8 @@ static void	process_httpagent_result(CURL *easy_handle, CURLcode err, void *arg)
 		out = NULL;
 		if (ZBX_IS_RUNNING())
 		{
-			zbx_preprocess_item_value(item_context->itemid, item_context->hostid, item_context->value_type,
-					item_context->flags, item_context->preprocessing, &result,
-					&timespec, ITEM_STATE_NORMAL, NULL);
+			zbx_preprocess_item_value(item_context->itemid, item_context->value_type, item_context->flags,
+					item_context->preprocessing, &result, &timespec, ITEM_STATE_NORMAL, NULL);
 		}
 	}
 	else
@@ -190,9 +195,9 @@ static void	process_httpagent_result(CURL *easy_handle, CURLcode err, void *arg)
 		SET_MSG_RESULT(&result, error);
 		if (ZBX_IS_RUNNING())
 		{
-			zbx_preprocess_item_value(item_context->itemid, item_context->hostid, item_context->value_type,
-					item_context->flags, item_context->preprocessing, NULL, &timespec,
-					ITEM_STATE_NOTSUPPORTED, result.msg);
+			zbx_preprocess_item_value(item_context->itemid, item_context->value_type, item_context->flags,
+					item_context->preprocessing, NULL, &timespec, ITEM_STATE_NOTSUPPORTED,
+					result.msg);
 		}
 	}
 
@@ -200,7 +205,7 @@ static void	process_httpagent_result(CURL *easy_handle, CURLcode err, void *arg)
 	zbx_free(out);
 
 	zbx_async_manager_requeue(poller_config->manager, httpagent_context->item_context.itemid, SUCCEED,
-			timespec.sec);
+			timespec.sec, NULL);
 
 	poller_config->processing--;
 	poller_config->processed++;
@@ -210,6 +215,171 @@ static void	process_httpagent_result(CURL *easy_handle, CURLcode err, void *arg)
 	curl_multi_remove_handle(poller_config->curl_handle, easy_handle);
 	zbx_async_check_httpagent_clean(httpagent_context);
 	zbx_free(httpagent_context);
+fail:
+	zabbix_log(LOG_LEVEL_DEBUG, "End of %s()", __func__);
+}
+
+static void	process_telemetry_query_result(CURL *easy_handle, CURLcode err, void *arg)
+{
+	int				status;
+	long				response_code;
+	char				*error = NULL, *http_resp = NULL;
+	char				status_codes[] = "200,201,202,203,204";
+	zbx_vector_str_t		values;
+	zbx_telemetry_query_context	*telemetry_query_context;
+	zbx_dc_tq_item_context_t	*item_context;
+	zbx_timespec_t			timespec;
+	zbx_timespec_t			next_value_ts;
+	zbx_poller_config_t		*poller_config;
+	CURLcode			err_info;
+	zbx_dc_cached_data_t		cached_data;
+
+	zabbix_log(LOG_LEVEL_DEBUG, "In %s()", __func__);
+
+	poller_config = (zbx_poller_config_t *)arg;
+
+	if (CURLE_OK != (err_info = curl_easy_getinfo(easy_handle, CURLINFO_PRIVATE, &telemetry_query_context)))
+	{
+		THIS_SHOULD_NEVER_HAPPEN;
+		zabbix_log(LOG_LEVEL_CRIT, "Cannot get pointer to private data: %s", curl_easy_strerror(err_info));
+
+		goto fail;
+	}
+
+	zbx_timespec(&timespec);
+
+	zbx_vector_str_create(&values);
+	zbx_dc_config_cached_data_init(&cached_data);
+
+	item_context = &telemetry_query_context->item_context;
+
+	zabbix_log(LOG_LEVEL_DEBUG, "%s(): timespec: (%ds, %dns), min_free_ts: (%ds, %dns)", __func__, timespec.sec,
+			timespec.ns, item_context->min_free_ts.sec, item_context->min_free_ts.ns);
+
+	if (timespec.sec < item_context->min_free_ts.sec || (timespec.sec == item_context->min_free_ts.sec &&
+			timespec.ns < item_context->min_free_ts.ns))
+	{
+		zabbix_log(LOG_LEVEL_DEBUG, "%s(): min_free_ts > timespec, using min_free_ts", __func__);
+		next_value_ts = item_context->min_free_ts;
+	}
+	else
+		next_value_ts = timespec;
+
+	if (SUCCEED == zbx_http_handle_response(easy_handle, &telemetry_query_context->http_context, err,
+			&response_code, &http_resp, &error) &&
+			SUCCEED == zbx_handle_response_code(status_codes, response_code, http_resp, &error))
+	{
+		zabbix_log(LOG_LEVEL_TRACE, "%s(): response: '%s'", __func__, http_resp);
+
+		if (ZBX_APM_DB_TYPE_CLICKHOUSE != item_context->db_type)
+			THIS_SHOULD_NEVER_HAPPEN;
+
+		if (FAIL == (status = zbx_tq_clickhouse_parse_resp(item_context->query, http_resp, &values)))
+		{
+			error = zbx_strdup(NULL, "Failed to parse data store response");
+		}
+		else if (SUCCEED_PARTIAL == status)
+		{
+			error = zbx_dsprintf(NULL, "Telemetry query result row limit (%d) exceeded, "
+					"result was truncated", ZBX_TQ_MAX_RESULT_ROWS);
+		}
+	}
+	else
+	{
+		status = FAIL;
+	}
+
+	if (ZBX_IS_RUNNING())
+	{
+		if (FAIL != status)
+		{
+			for (int i = 0; i < values.values_num; i++)
+			{
+				AGENT_RESULT	result;
+
+				zabbix_log(LOG_LEVEL_TRACE, "%s(): bucket %d: '%s'", __func__, i, values.values[i]);
+
+				zbx_init_agent_result(&result);
+
+				SET_TEXT_RESULT(&result, values.values[i]);
+				values.values[i] = NULL;
+
+				zbx_set_agent_result_meta(&result, (zbx_uint64_t)item_context->newlasttimestamp, 0);
+
+				zbx_preprocess_item_value(item_context->itemid, item_context->value_type,
+						item_context->flags, item_context->preprocessing, &result,
+						&next_value_ts, ITEM_STATE_NORMAL, NULL);
+
+				zbx_free_agent_result(&result);
+
+				next_value_ts.ns++;
+				zbx_timespec_normalize(&next_value_ts);
+			}
+
+			if (0 == values.values_num)
+			{
+				AGENT_RESULT	result;
+
+				zabbix_log(LOG_LEVEL_TRACE, "%s(): saving empty result", __func__);
+
+				zbx_init_agent_result(&result);
+
+				zbx_set_agent_result_meta(&result, (zbx_uint64_t)item_context->newlasttimestamp, 0);
+
+				zbx_preprocess_item_value(item_context->itemid, item_context->value_type,
+						item_context->flags, item_context->preprocessing, &result, &timespec,
+						ITEM_STATE_NORMAL, NULL);
+
+				zbx_free_agent_result(&result);
+			}
+
+			if (SUCCEED_PARTIAL == status)
+			{
+				/* if result was truncated, values are saved to history, lasttimestamp is updated, */
+				/* but the item becomes not supported */
+				zbx_preprocess_item_value(item_context->itemid, item_context->value_type,
+						item_context->flags, item_context->preprocessing, NULL, &timespec,
+						ITEM_STATE_NOTSUPPORTED, error);
+			}
+
+			cached_data.upd_flags |= ZBX_CACHED_DATA_FLAG_UPDATE_LASTTIMESTAMP;
+			cached_data.lasttimestamp = item_context->newlasttimestamp;
+
+			if (0 != values.values_num)
+			{
+				cached_data.upd_flags |= ZBX_CACHED_DATA_FLAG_UPDATE_MIN_FREE_TS;
+				cached_data.min_free_ts = next_value_ts;
+			}
+		}
+		else
+		{
+			zbx_preprocess_item_value(item_context->itemid, item_context->value_type, item_context->flags,
+					item_context->preprocessing, NULL,
+					&timespec, ITEM_STATE_NOTSUPPORTED, error);
+
+			/* leave cached_data the same if the check resulted in item becoming not supported */
+			/* (except when result was truncated), lasttimestamp does not change */
+		}
+	}
+
+	zbx_vector_str_clear_ext(&values, zbx_str_free);
+	zbx_vector_str_destroy(&values);
+
+	zbx_free(error);
+	zbx_free(http_resp);
+
+	zbx_async_manager_requeue(poller_config->manager, telemetry_query_context->item_context.itemid, SUCCEED,
+			timespec.sec, &cached_data);
+
+	poller_config->processing--;
+	poller_config->processed++;
+
+	zabbix_log(LOG_LEVEL_DEBUG, "finished processing itemid:" ZBX_FS_UI64,
+			telemetry_query_context->item_context.itemid);
+
+	curl_multi_remove_handle(poller_config->curl_handle, easy_handle);
+	zbx_async_check_telemetry_query_clean(telemetry_query_context);
+	zbx_free(telemetry_query_context);
 fail:
 	zabbix_log(LOG_LEVEL_DEBUG, "End of %s()", __func__);
 }
@@ -228,7 +398,7 @@ static void	async_wake(evutil_socket_t fd, short events, void *arg)
 
 static void	async_initiate_queued_checks(zbx_poller_config_t *poller_config, const char *zbx_progname)
 {
-	zbx_dc_item_t			*items = NULL;
+	zbx_dc_poller_item_t		items = { .any = NULL };
 	AGENT_RESULT			*results;
 	int				*errcodes, total = 0;
 	zbx_timespec_t			timespec;
@@ -265,9 +435,13 @@ static void	async_initiate_queued_checks(zbx_poller_config_t *poller_config, con
 
 	for (int j = 0; j < poller_items.values_num; j++)
 	{
-		int	num;
+		int		num;
+		unsigned char	poller_type;
+
+		const zbx_apm_db_config_t	*apm_db_config = poller_items.values[j]->apm_db_config;
 
 		items = poller_items.values[j]->items;
+		poller_type = poller_items.values[j]->poller_type;
 		results = poller_items.values[j]->results;
 		errcodes = poller_items.values[j]->errcodes;
 		num = poller_items.values[j]->num;
@@ -279,40 +453,45 @@ static void	async_initiate_queued_checks(zbx_poller_config_t *poller_config, con
 			if (SUCCEED != errcodes[i])
 				continue;
 
-			if (ITEM_TYPE_HTTPAGENT == items[i].type)
+			if (ZBX_POLLER_TYPE_HTTPAGENT == poller_type)
 			{
-	#ifdef HAVE_LIBCURL
-				errcodes[i] = zbx_async_check_httpagent(&items[i], &results[i],
+#ifdef HAVE_LIBCURL
+				errcodes[i] = zbx_async_check_httpagent(&items.httpagent_items[i], &results[i],
 						poller_config->config_source_ip, poller_config->config_ssl_ca_location,
 						poller_config->config_ssl_cert_location,
 						poller_config->config_ssl_key_location, poller_config->curl_handle);
-	#else
+#else
 				errcodes[i] = NOTSUPPORTED;
-				SET_MSG_RESULT(&results[i], zbx_strdup(NULL, "Support for HTTP agent was not compiled"
-						" in: missing cURL library"));
-	#endif
+				SET_MSG_RESULT(&results[i], zbx_strdup(NULL,
+						"Support for HTTP agent was not compiled in: missing cURL library"));
+#endif
 			}
-			else if (ITEM_TYPE_ZABBIX == items[i].type)
+			else if (ZBX_POLLER_TYPE_TELEMETRY_QUERY == poller_type)
 			{
-				errcodes[i] = zbx_async_check_agent(&items[i], &results[i], process_agent_result,
-						poller_config, poller_config, poller_config->base,
-						poller_config->channel, poller_config->dnsbase,
+				errcodes[i] = zbx_async_check_telemetry_query(&items.telemetry_query_items[i],
+						&results[i], poller_config, apm_db_config);
+			}
+			else if (ZBX_POLLER_TYPE_AGENT == poller_type)
+			{
+				errcodes[i] = zbx_async_check_agent(&items.agent_items[i], &results[i],
+						process_agent_result, poller_config, poller_config,
+						poller_config->base, poller_config->channel, poller_config->dnsbase,
 						poller_config->config_source_ip, ZABBIX_ASYNC_RESOLVE_REVERSE_DNS_NO);
 			}
-			else
+			else /* ZBX_POLLER_TYPE_SNMP */
 			{
-	#ifdef HAVE_NETSNMP
+#ifdef HAVE_NETSNMP
 				zbx_set_snmp_bulkwalk_options(zbx_progname);
 
-				errcodes[i] = zbx_async_check_snmp(&items[i], &results[i], process_snmp_result,
-					poller_config, poller_config, poller_config->base, poller_config->channel,
-					poller_config->dnsbase, poller_config->config_source_ip,
-					ZABBIX_ASYNC_RESOLVE_REVERSE_DNS_NO, ZBX_SNMP_DEFAULT_NUMBER_OF_RETRIES);
-	#else
+				errcodes[i] = zbx_async_check_snmp(&items.snmp_items[i], &results[i],
+						process_snmp_result, poller_config, poller_config,
+						poller_config->base, poller_config->channel, poller_config->dnsbase,
+						poller_config->config_source_ip, ZABBIX_ASYNC_RESOLVE_REVERSE_DNS_NO);
+#else
 				errcodes[i] = NOTSUPPORTED;
-				SET_MSG_RESULT(&results[i], zbx_strdup(NULL, "Support for SNMP checks was not compiled"
-						"in."));
-	#endif
+				SET_MSG_RESULT(&results[i], zbx_strdup(NULL,
+						"Support for SNMP checks was not compiled in."));
+#endif
 			}
 
 			if (SUCCEED == errcodes[i])
@@ -324,19 +503,51 @@ static void	async_initiate_queued_checks(zbx_poller_config_t *poller_config, con
 		/* process item values */
 		for (int i = 0; i < num; i++)
 		{
-			if (SUCCEED != errcodes[i])
-			{
-				if (ZBX_IS_RUNNING())
-				{
-					zbx_preprocess_item_value(items[i].itemid,
-							items[i].host.hostid, items[i].value_type,
-							items[i].flags, items[i].preprocessing, NULL, &timespec,
-							ITEM_STATE_NOTSUPPORTED, results[i].msg);
-				}
+			if (SUCCEED == errcodes[i])
+				continue;
 
-				zbx_async_manager_requeue(poller_config->manager, items[i].itemid, errcodes[i],
-						timespec.sec);
+			zbx_uint64_t	itemid;
+			unsigned char	value_type;
+			unsigned char	flags;
+			unsigned char	preprocessing;
+
+			switch (poller_type)
+			{
+				case ZBX_POLLER_TYPE_HTTPAGENT:
+					itemid = items.httpagent_items[i].itemid;
+					value_type = items.httpagent_items[i].value_type;
+					flags = items.httpagent_items[i].flags;
+					preprocessing = items.httpagent_items[i].preprocessing;
+					break;
+				case ZBX_POLLER_TYPE_TELEMETRY_QUERY:
+					itemid = items.telemetry_query_items[i].itemid;
+					value_type = items.telemetry_query_items[i].value_type;
+					flags = items.telemetry_query_items[i].flags;
+					preprocessing = items.telemetry_query_items[i].preprocessing;
+					break;
+				case ZBX_POLLER_TYPE_AGENT:
+					itemid = items.agent_items[i].itemid;
+					value_type = items.agent_items[i].value_type;
+					flags = items.agent_items[i].flags;
+					preprocessing = items.agent_items[i].preprocessing;
+					break;
+				default: /* ZBX_POLLER_TYPE_SNMP */
+					itemid = items.snmp_items[i].itemid;
+					value_type = items.snmp_items[i].value_type;
+					flags = items.snmp_items[i].flags;
+					preprocessing = items.snmp_items[i].preprocessing;
 			}
+
+			if (ZBX_IS_RUNNING())
+			{
+				zbx_preprocess_item_value(itemid, value_type, flags,
+						preprocessing, NULL, &timespec,
+						ITEM_STATE_NOTSUPPORTED, results[i].msg);
+			}
+
+			/* not updating cached data */
+			zbx_async_manager_requeue(poller_config->manager, itemid, errcodes[i],
+					timespec.sec, NULL);
 		}
 
 		zbx_poller_item_free(poller_items.values[j]);
@@ -455,7 +666,7 @@ static void	async_poller_init(zbx_poller_config_t *poller_config, zbx_thread_pol
 	if (NULL == (poller_config->base = event_base_new()))
 	{
 		zabbix_log(LOG_LEVEL_ERR, "cannot initialize event base");
-		exit(EXIT_FAILURE);
+		zbx_exit(EXIT_FAILURE);
 	}
 
 	poller_config->config_source_ip = poller_args_in->config_comms->config_source_ip;
@@ -477,7 +688,7 @@ static void	async_poller_init(zbx_poller_config_t *poller_config, zbx_thread_pol
 			poller_config)))
 	{
 		zabbix_log(LOG_LEVEL_ERR, "cannot create async items timer event");
-		exit(EXIT_FAILURE);
+		zbx_exit(EXIT_FAILURE);
 	}
 
 	evtimer_add(poller_config->async_wake_timer, &tv);
@@ -486,7 +697,7 @@ static void	async_poller_init(zbx_poller_config_t *poller_config, zbx_thread_pol
 			poller_config)))
 	{
 		zabbix_log(LOG_LEVEL_ERR, "cannot create async timer event");
-		exit(EXIT_FAILURE);
+		zbx_exit(EXIT_FAILURE);
 	}
 
 	evtimer_add(poller_config->async_timer, &tv);
@@ -495,7 +706,7 @@ static void	async_poller_init(zbx_poller_config_t *poller_config, zbx_thread_pol
 			poller_config)))
 	{
 		zabbix_log(LOG_LEVEL_ERR, "cannot create async timer event");
-		exit(EXIT_FAILURE);
+		zbx_exit(EXIT_FAILURE);
 	}
 
 	evtimer_add(poller_config->async_timeout_timer, &tv);
@@ -506,7 +717,7 @@ static void	async_poller_init(zbx_poller_config_t *poller_config, zbx_thread_pol
 	{
 		zabbix_log(LOG_LEVEL_CRIT, "cannot initialize async manager: %s", error);
 		zbx_free(error);
-		exit(EXIT_FAILURE);
+		zbx_exit(EXIT_FAILURE);
 	}
 
 	zabbix_log(LOG_LEVEL_DEBUG, "End of %s()", __func__);
@@ -517,7 +728,7 @@ static void	ares_process_fd_cb(evutil_socket_t fd, short events, void *arg)
 {
 	zabbix_log(LOG_LEVEL_DEBUG, "In %s() event '%s' fd:%d", __func__, zbx_get_event_string(events), fd);
 
-	ares_process_fd((zbx_channel_t *)arg, (events & EV_READ) ? fd : ARES_SOCKET_BAD,
+	ares_process_fd((zbx_ares_channel_t *)arg, (events & EV_READ) ? fd : ARES_SOCKET_BAD,
 			(events & EV_WRITE) ? fd : ARES_SOCKET_BAD);
 
 	zabbix_log(LOG_LEVEL_DEBUG, "End of %s()", __func__);
@@ -546,22 +757,22 @@ static void	sock_state_cb(void *data, int s, int read, int write)
 		goto out;
 	}
 
-	struct event	*ev = event_new(poller_config->base, s, events|EV_PERSIST, ares_process_fd_cb,
+	fd_event_local.event = event_new(poller_config->base, s, events|EV_PERSIST, ares_process_fd_cb,
 			poller_config->channel);
 
-	if (NULL == ev)
+	if (NULL == fd_event_local.event)
 	{
 		zabbix_log(LOG_LEVEL_WARNING, "cannot create new event");
 		goto out;
 	}
 
-	if (0 != event_add(ev, NULL))
+	if (0 != event_add(fd_event_local.event, NULL))
 	{
 		zabbix_log(LOG_LEVEL_WARNING, "cannot add event");
-		event_free(ev);
+		event_free(fd_event_local.event);
 		goto out;
 	}
-	fd_event_local.event = ev;
+
 	zbx_hashset_insert(&poller_config->fd_events, &fd_event_local, sizeof(fd_event_local));
 out:
 	zabbix_log(LOG_LEVEL_DEBUG, "End of %s()", __func__);
@@ -573,7 +784,7 @@ static void	async_poller_dns_init(zbx_poller_config_t *poller_config, zbx_thread
 {
 	char			*timeout;
 #ifdef HAVE_ARES
-	struct ares_options	options;
+	struct ares_options	options = {0};
 	int			optmask, status;
 
 	status = ares_library_init(ARES_LIB_INIT_ALL);
@@ -581,10 +792,14 @@ static void	async_poller_dns_init(zbx_poller_config_t *poller_config, zbx_thread
 	if (ARES_SUCCESS != status)
 	{
 		zabbix_log(LOG_LEVEL_ERR, "cannot initialise c-ares library: %s", ares_strerror(status));
-		exit(EXIT_FAILURE);
+		zbx_exit(EXIT_FAILURE);
 	}
 
 	optmask = ARES_OPT_SOCK_STATE_CB|ARES_OPT_TIMEOUT;
+#ifdef ARES_OPT_QUERY_CACHE
+	optmask |= ARES_OPT_QUERY_CACHE;
+	options.qcache_max_ttl = SEC_PER_HOUR;
+#endif
 	options.sock_state_cb = sock_state_cb;
 	options.sock_state_cb_data = poller_config;
 	options.timeout = poller_args_in->config_comms->config_timeout;
@@ -594,7 +809,7 @@ static void	async_poller_dns_init(zbx_poller_config_t *poller_config, zbx_thread
 	if (ARES_SUCCESS != status)
 	{
 		zabbix_log(LOG_LEVEL_ERR, "cannot set c-ares library options: %s", ares_strerror(status));
-		exit(EXIT_FAILURE);
+		zbx_exit(EXIT_FAILURE);
 	}
 #endif
 
@@ -607,7 +822,7 @@ static void	async_poller_dns_init(zbx_poller_config_t *poller_config, zbx_thread
 		if (NULL == (poller_config->dnsbase = evdns_base_new(poller_config->base, 0)))
 		{
 			zabbix_log(LOG_LEVEL_ERR, "cannot initialize asynchronous DNS library");
-			exit(EXIT_FAILURE);
+			zbx_exit(EXIT_FAILURE);
 		}
 
 		if (0 != (ret = evdns_base_resolv_conf_parse(poller_config->dnsbase, DNS_OPTIONS_ALL,
@@ -622,7 +837,7 @@ static void	async_poller_dns_init(zbx_poller_config_t *poller_config, zbx_thread
 	if (0 != evdns_base_set_option(poller_config->dnsbase, "timeout:", timeout))
 	{
 		zabbix_log(LOG_LEVEL_ERR, "cannot set timeout to asynchronous DNS library");
-		exit(EXIT_FAILURE);
+		zbx_exit(EXIT_FAILURE);
 	}
 
 	zbx_free(timeout);
@@ -735,7 +950,25 @@ ZBX_THREAD_ENTRY(zbx_async_poller_thread, args)
 		{
 			zabbix_log(LOG_LEVEL_ERR, "zbx_async_httpagent_create() error: %s", error);
 			zbx_free(error);
-			exit(EXIT_FAILURE);
+			zbx_exit(EXIT_FAILURE);
+		}
+
+		poller_config.curl_handle = asynchttppoller_config->curl_handle;
+#endif
+	}
+	else if (ZBX_POLLER_TYPE_TELEMETRY_QUERY == poller_type)
+	{
+#ifdef HAVE_LIBCURL
+		char	*error = NULL;
+
+		zbx_async_httpagent_init();
+
+		if (NULL == (asynchttppoller_config = zbx_async_httpagent_create(poller_config.base,
+				process_telemetry_query_result, poller_update_selfmon_counter, &poller_config, &error)))
+		{
+			zabbix_log(LOG_LEVEL_ERR, "zbx_async_httpagent_create() error: %s", error);
+			zbx_free(error);
+			zbx_exit(EXIT_FAILURE);
 		}
 
 		poller_config.curl_handle = asynchttppoller_config->curl_handle;
@@ -833,11 +1066,11 @@ ZBX_THREAD_ENTRY(zbx_async_poller_thread, args)
 		}
 #undef SNMP_ENGINEID_HK_INTERVAL
 #endif
-		if (ZBX_POLLER_TYPE_HTTPAGENT != poller_type)
+		if (ZBX_POLLER_TYPE_HTTPAGENT != poller_type && ZBX_POLLER_TYPE_TELEMETRY_QUERY != poller_type)
 			zbx_async_dns_update_host_addresses(poller_config.dnsbase, poller_config.channel);
 	}
 
-	if (ZBX_POLLER_TYPE_HTTPAGENT != poller_type)
+	if (ZBX_POLLER_TYPE_HTTPAGENT != poller_type && ZBX_POLLER_TYPE_TELEMETRY_QUERY != poller_type)
 	{
 		async_poller_dns_destroy(&poller_config);
 	}
@@ -845,7 +1078,7 @@ ZBX_THREAD_ENTRY(zbx_async_poller_thread, args)
 	event_del(rtc_event);
 	async_poller_stop(&poller_config);
 
-	if (ZBX_POLLER_TYPE_HTTPAGENT == poller_type)
+	if (ZBX_POLLER_TYPE_HTTPAGENT == poller_type || ZBX_POLLER_TYPE_TELEMETRY_QUERY == poller_type)
 	{
 #ifdef HAVE_LIBCURL
 		zbx_async_httpagent_clean(asynchttppoller_config);
@@ -862,9 +1095,10 @@ ZBX_THREAD_ENTRY(zbx_async_poller_thread, args)
 		zbx_destroy_snmp_engineid_cache();
 #endif
 	zbx_ipc_async_socket_close(&rtc);
+	zbx_curl_cleanup();
 
 	zbx_setproctitle("%s #%d [terminated]", get_process_type_string(process_type), process_num);
 
-	zbx_worker_exit(EXIT_SUCCESS);
+	zbx_exit(EXIT_SUCCESS);
 #undef STAT_INTERVAL
 }

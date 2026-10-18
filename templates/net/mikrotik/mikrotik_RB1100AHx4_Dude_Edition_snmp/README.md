@@ -9,7 +9,7 @@ Powerful 1U rackmount router with 13x Gigabit Ethernet ports, 60GB M.2 drive for
 
 ## Requirements
 
-Zabbix version: 7.4 and higher.
+Zabbix version: 8.0 and higher.
 
 ## Tested versions
 
@@ -18,7 +18,7 @@ This template has been tested on:
 
 ## Configuration
 
-> Zabbix should be configured according to the instructions in the [Templates out of the box](https://www.zabbix.com/documentation/7.4/manual/config/templates_out_of_the_box) section.
+> Zabbix should be configured according to the instructions in the [Templates out of the box](https://www.zabbix.com/documentation/8.0/manual/config/templates_out_of_the_box) section.
 
 ## Setup
 
@@ -28,15 +28,15 @@ Refer to the vendor documentation.
 
 |Name|Description|Default|
 |----|-----------|-------|
-|{$VFS.FS.PUSED.MAX.CRIT}||`90`|
-|{$VFS.FS.PUSED.MAX.WARN}||`80`|
-|{$CPU.UTIL.CRIT}||`90`|
-|{$TEMP_CRIT}||`60`|
-|{$TEMP_CRIT_LOW}||`5`|
-|{$TEMP_WARN}||`50`|
-|{$TEMP_CRIT:"CPU"}||`75`|
-|{$TEMP_WARN:"CPU"}||`70`|
-|{$MEMORY.UTIL.MAX}||`90`|
+|{$VFS.FS.PUSED.MAX.CRIT}|<p>The critical threshold of filesystem utilization.</p>|`90`|
+|{$VFS.FS.PUSED.MAX.WARN}|<p>The warning threshold of filesystem utilization.</p>|`80`|
+|{$CPU.UTIL.CRIT}|<p>The critical threshold of CPU utilization expressed in %.</p>|`90`|
+|{$TEMP_CRIT}|<p>Critical threshold for temperature.</p>|`60`|
+|{$TEMP_CRIT_LOW}|<p>Critical threshold for low temperature.</p>|`5`|
+|{$TEMP_WARN}|<p>Warning threshold for temperature.</p>|`50`|
+|{$TEMP_CRIT:"CPU"}|<p>Critical threshold for CPU temperature.</p>|`75`|
+|{$TEMP_WARN:"CPU"}|<p>Warning threshold for CPU temperature.</p>|`70`|
+|{$MEMORY.UTIL.MAX}|<p>Threshold for maximum memory utilization in %.</p>|`90`|
 |{$IFNAME.WIFI.MATCHES}|<p>This macro is used in CAPsMAN AP channel discovery. It can be overridden on the host level.</p>|`WIFI`|
 |{$IFNAME.LTEMODEM.MATCHES}|<p>This macro is used in LTE modem discovery. It can be overridden on the host.</p>|`^lte`|
 |{$LTEMODEM.RSSI.MIN.WARN}|<p>The LTE modem RSSI minimum value for warning trigger expression.</p>|`-100`|
@@ -44,6 +44,7 @@ Refer to the vendor documentation.
 |{$LTEMODEM.RSRQ.MIN.WARN}|<p>The LTE modem RSRQ minimum value for warning trigger expression.</p>|`-20`|
 |{$LTEMODEM.SINR.MIN.WARN}|<p>The LTE modem SINR minimum value for warning trigger expression.</p>|`0`|
 |{$SNMP.TIMEOUT}|<p>Time interval for the SNMP availability trigger.</p>|`5m`|
+|{$SNMP.UPTIME.WARN}|<p>Uptime threshold above which the "Host has been restarted" problem auto-resolves.</p>|`10m`|
 |{$ICMP_LOSS_WARN}|<p>Warning threshold of ICMP packet loss in %.</p>|`20`|
 |{$ICMP_RESPONSE_TIME_WARN}|<p>Warning threshold of the average ICMP response time in seconds.</p>|`0.15`|
 |{$IFCONTROL}|<p>Link status trigger will be fired only for interfaces where the context macro equals "1".</p>|`1`|
@@ -98,7 +99,7 @@ Refer to the vendor documentation.
 |MikroTik: Operating system description has changed|<p>The description of the operating system has changed. Possible reasons are that the system has been updated or replaced. Acknowledge to close the problem manually.</p>|`last(/MikroTik RB1100AHx4 Dude Edition by SNMP/system.sw.os[mtxrLicVersion.0],#1)<>last(/MikroTik RB1100AHx4 Dude Edition by SNMP/system.sw.os[mtxrLicVersion.0],#2) and length(last(/MikroTik RB1100AHx4 Dude Edition by SNMP/system.sw.os[mtxrLicVersion.0]))>0`|Info|**Manual close**: Yes<br>**Depends on**:<br><ul><li>MikroTik: System name has changed</li></ul>|
 |MikroTik: Device has been replaced|<p>Device serial number has changed. Acknowledge to close the problem manually.</p>|`last(/MikroTik RB1100AHx4 Dude Edition by SNMP/system.hw.serialnumber,#1)<>last(/MikroTik RB1100AHx4 Dude Edition by SNMP/system.hw.serialnumber,#2) and length(last(/MikroTik RB1100AHx4 Dude Edition by SNMP/system.hw.serialnumber))>0`|Info|**Manual close**: Yes|
 |MikroTik: Firmware has changed|<p>Firmware version has changed. Acknowledge to close the problem manually.</p>|`last(/MikroTik RB1100AHx4 Dude Edition by SNMP/system.hw.firmware,#1)<>last(/MikroTik RB1100AHx4 Dude Edition by SNMP/system.hw.firmware,#2) and length(last(/MikroTik RB1100AHx4 Dude Edition by SNMP/system.hw.firmware))>0`|Info|**Manual close**: Yes|
-|MikroTik: Host has been restarted|<p>Uptime is less than 10 minutes.</p>|`(last(/MikroTik RB1100AHx4 Dude Edition by SNMP/system.hw.uptime[hrSystemUptime.0])>0 and last(/MikroTik RB1100AHx4 Dude Edition by SNMP/system.hw.uptime[hrSystemUptime.0])<10m) or (last(/MikroTik RB1100AHx4 Dude Edition by SNMP/system.hw.uptime[hrSystemUptime.0])=0 and last(/MikroTik RB1100AHx4 Dude Edition by SNMP/system.net.uptime[sysUpTime.0])<10m)`|Warning|**Manual close**: Yes<br>**Depends on**:<br><ul><li>MikroTik: No SNMP data collection</li></ul>|
+|MikroTik: Host has been restarted|<p>The uptime counter has decreased, which indicates that the host has been restarted.<br>A decrease is ignored if the previous value was close enough to the 32-bit SNMP counter limit (2^32 hundredths of a second, about 497 days) for the counter to have wrapped between the two readings.<br>The problem is resolved automatically once uptime exceeds {$SNMP.UPTIME.WARN}.</p>|`(last(/MikroTik RB1100AHx4 Dude Edition by SNMP/system.hw.uptime[hrSystemUptime.0])>0 and change(/MikroTik RB1100AHx4 Dude Edition by SNMP/system.hw.uptime[hrSystemUptime.0])<0 and last(/MikroTik RB1100AHx4 Dude Edition by SNMP/system.hw.uptime[hrSystemUptime.0],#2)<42949672.96-(lastclock(/MikroTik RB1100AHx4 Dude Edition by SNMP/system.hw.uptime[hrSystemUptime.0])-lastclock(/MikroTik RB1100AHx4 Dude Edition by SNMP/system.hw.uptime[hrSystemUptime.0],#2))) or (last(/MikroTik RB1100AHx4 Dude Edition by SNMP/system.hw.uptime[hrSystemUptime.0])=0 and change(/MikroTik RB1100AHx4 Dude Edition by SNMP/system.net.uptime[sysUpTime.0])<0 and last(/MikroTik RB1100AHx4 Dude Edition by SNMP/system.net.uptime[sysUpTime.0],#2)<42949672.96-(lastclock(/MikroTik RB1100AHx4 Dude Edition by SNMP/system.net.uptime[sysUpTime.0])-lastclock(/MikroTik RB1100AHx4 Dude Edition by SNMP/system.net.uptime[sysUpTime.0],#2)))`|Warning|**Manual close**: Yes<br>**Depends on**:<br><ul><li>MikroTik: No SNMP data collection</li></ul>|
 |MikroTik: System name has changed|<p>The name of the system has changed. Acknowledge to close the problem manually.</p>|`last(/MikroTik RB1100AHx4 Dude Edition by SNMP/system.name,#1)<>last(/MikroTik RB1100AHx4 Dude Edition by SNMP/system.name,#2) and length(last(/MikroTik RB1100AHx4 Dude Edition by SNMP/system.name))>0`|Info|**Manual close**: Yes|
 |MikroTik: No SNMP data collection|<p>SNMP is not available for polling. Please check device connectivity and SNMP settings.</p>|`max(/MikroTik RB1100AHx4 Dude Edition by SNMP/zabbix[host,snmp,available],{$SNMP.TIMEOUT})=0`|Warning|**Depends on**:<br><ul><li>MikroTik: Unavailable by ICMP ping</li></ul>|
 |MikroTik: Unavailable by ICMP ping|<p>Last three attempts returned timeout. Please check device connectivity.</p>|`max(/MikroTik RB1100AHx4 Dude Edition by SNMP/icmpping,#3)=0`|High||

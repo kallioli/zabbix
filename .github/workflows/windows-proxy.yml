@@ -4,9 +4,11 @@ on:
   push:
     branches:
       - "feature/windows-proxy"
+      - "feature/windows-proxy-8.0"
   pull_request:
     branches:
       - "feature/windows-proxy"
+      - "feature/windows-proxy-8.0"
   workflow_dispatch:
 
 jobs:
@@ -180,7 +182,7 @@ jobs:
 
     env:
       VCPKG_TRIPLET: x64-windows-static
-      ZBX_VERSION: 7.4.15
+      ZBX_VERSION: 8.0.0
       NETSNMP_VERSION: 5.9.4
 
     steps:
@@ -274,11 +276,11 @@ jobs:
 
     env:
       VCPKG_TRIPLET: x64-windows-static
-      ZBX_VERSION: 7.4.15
+      ZBX_VERSION: 8.0.0
       NETSNMP_VERSION: 5.9.4
       # The same tree packaged as a later release, so an upgrade has something
       # to upgrade to. It is never published; see the upload step.
-      ZBX_NEXT_VERSION: 7.4.16
+      ZBX_NEXT_VERSION: 8.0.1
 
     steps:
       - uses: actions/checkout@v4
@@ -506,7 +508,7 @@ jobs:
         os: [windows-2022, windows-2025]
 
     env:
-      ZBX_VERSION: 7.4.15
+      ZBX_VERSION: 8.0.0
 
     steps:
       - uses: actions/checkout@v4

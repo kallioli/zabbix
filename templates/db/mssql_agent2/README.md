@@ -7,7 +7,7 @@ This template is designed for the effortless deployment of MSSQL monitoring by Z
 
 ## Requirements
 
-Zabbix version: 7.4 and higher.
+Zabbix version: 8.0 and higher.
 
 ## Tested versions
 
@@ -16,15 +16,14 @@ This template has been tested on:
 
 ## Configuration
 
-> Zabbix should be configured according to the instructions in the [Templates out of the box](https://www.zabbix.com/documentation/7.4/manual/config/templates_out_of_the_box) section.
+> Zabbix should be configured according to the instructions in the [Templates out of the box](https://www.zabbix.com/documentation/8.0/manual/config/templates_out_of_the_box) section.
 
 ## Setup
 
-1. Deploy Zabbix agent 2 with the MSSQL plugin. You can use this template starting with version 7.4.0 of both Zabbix and the MSSQL plugin. For more information, see [MSSQL plugin documentation](https://git.zabbix.com/projects/AP/repos/mssql/browse).
+1. Deploy Zabbix agent 2 with the MSSQL plugin. You can use this template starting with version 8.0.0 of both Zabbix and the MSSQL plugin. For more information, see [MSSQL plugin documentation](https://git.zabbix.com/projects/AP/repos/mssql/browse).
 
-**Important!** Starting with version 7.4-1 of this template, the MSSQL plugin must be updated to a version equal to or above 7.4.0. (You can check the version of the template in its YAML file under the "vendor" section.)
 
-Loadable plugin requires installation of a separate package or binary file or [compilation from sources](https://www.zabbix.com/documentation/7.4/manual/extensions/plugins/build).
+Loadable plugin requires installation of a separate package or binary file or [compilation from sources](https://www.zabbix.com/documentation/8.0/manual/extensions/plugins/build).
 
 2. Create a monitoring user on MSSQL for Zabbix to connect to:
 - for MSSQL version 2022
@@ -76,10 +75,10 @@ Note: Since version 7.2.0, you can also connect to the MSSQL instance using its 
 
 |Name|Description|Default|
 |----|-----------|-------|
-|{$MSSQL.URI}|<p>Connection string.</p>||
+|{$MSSQL.URI}|<p>Connection string for the MSSQL instance.</p>||
 |{$MSSQL.USER}|<p>MSSQL database username.</p>||
 |{$MSSQL.PASSWORD}|<p>MSSQL database password.</p>||
-|{$MSSQL.HOST}|<p>The hostname or IP address of the MSSQL instance.</p>|`localhost`|
+|{$MSSQL.HOST}|<p>Hostname or IP address of the MSSQL instance.</p>|`localhost`|
 |{$MSSQL.PORT}|<p>MSSQL TCP port.</p>|`1433`|
 |{$MSSQL.WORK_FILES.MAX}|<p>The maximum number of work files created per second - for the trigger expression.</p>|`20`|
 |{$MSSQL.WORK_TABLES.MAX}|<p>The maximum number of work tables created per second - for the trigger expression.</p>|`20`|

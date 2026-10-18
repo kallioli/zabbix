@@ -19,7 +19,9 @@ namespace Widgets\HostCard\Actions;
 use API,
 	CArrayHelper,
 	CControllerDashboardWidgetView,
-	CControllerResponseData;
+	CControllerResponseData,
+	CProxyHelper,
+	CTagHelper;
 
 use Widgets\HostCard\Includes\CWidgetFieldHostSections;
 
@@ -212,18 +214,10 @@ class WidgetView extends CControllerDashboardWidgetView {
 
 		if (in_array(CWidgetFieldHostSections::SECTION_MONITORED_BY, $this->fields_values['sections'])) {
 			if ($host['monitored_by'] == ZBX_MONITORED_BY_PROXY) {
-				$db_proxies = API::Proxy()->get([
-					'output' => ['name'],
-					'proxyids' => [$host['proxyid']]
-				]);
-				$host['proxy'] = $db_proxies[0];
+				$host['proxy'] = CProxyHelper::resolveProxyOption($host['proxyid']);
 			}
 			elseif ($host['monitored_by'] == ZBX_MONITORED_BY_PROXY_GROUP) {
-				$db_proxy_groups = API::ProxyGroup()->get([
-					'output' => ['name'],
-					'proxy_groupids' => [$host['proxy_groupid']]
-				]);
-				$host['proxy_group'] = $db_proxy_groups[0];
+				$host['proxy_group'] = CProxyHelper::resolveProxyGroupOption($host['proxy_groupid']);
 			}
 		}
 
@@ -253,32 +247,9 @@ class WidgetView extends CControllerDashboardWidgetView {
 		}
 
 		if (in_array(CWidgetFieldHostSections::SECTION_TAGS, $this->fields_values['sections'])) {
-			// Merge host tags with template tags, and skip duplicate tags and values.
-			if (!$host['inheritedTags']) {
-				$tags = $host['tags'];
-			}
-			elseif (!$host['tags']) {
-				$tags = $host['inheritedTags'];
-			}
-			else {
-				$tags = $host['tags'];
+			CTagHelper::mergeOwnAndInheritedTagsForObject($host);
 
-				foreach ($host['inheritedTags'] as $template_tag) {
-					foreach ($tags as $host_tag) {
-						// Skip tags with same name and value.
-						if ($host_tag['tag'] === $template_tag['tag']
-								&& $host_tag['value'] === $template_tag['value']) {
-							continue 2;
-						}
-					}
-
-					$tags[] = $template_tag;
-				}
-			}
-
-			CArrayHelper::sort($tags, ['tag', 'value']);
-
-			$host['tags'] = $tags;
+			CArrayHelper::sort($host['tags'], ['tag', 'value']);
 		}
 
 		return $host;

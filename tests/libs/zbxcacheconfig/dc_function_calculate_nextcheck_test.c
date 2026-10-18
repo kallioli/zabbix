@@ -12,6 +12,9 @@
 ** If not, see <https://www.gnu.org/licenses/>.
 **/
 
+#include "zbxcacheconfig.h"
+
+#include "../../src/libs/zbxcacheconfig/dbconfig.c"
 /* since zbx_dc_um_handle_t is defined in source file and not accessible */
 /* define mock handle with the same structure                            */
 typedef struct

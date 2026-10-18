@@ -19,14 +19,19 @@ window.proxy_edit_popup = new class {
 
 	constructor() {
 		this.clone_proxyid = null;
+		this.form = null;
+		this.form_element = null;
+		this.warnings = [];
 	}
 
-	init({proxyid}) {
+	init({proxyid, rules, warnings}) {
 		this.proxyid = proxyid;
+		this.warnings = warnings;
 
 		this.overlay = overlays_stack.getById('proxy.edit');
 		this.dialogue = this.overlay.$dialogue[0];
-		this.form = this.overlay.$dialogue.$body[0].querySelector('form');
+		this.form_element = this.overlay.$dialogue.$body[0].querySelector('form');
+		this.form = new CForm(this.form_element, rules);
 		this.footer = this.overlay.$dialogue.$footer[0];
 
 		this.dialogue.classList.add('modal-popup-proxy-edit')
@@ -36,7 +41,7 @@ window.proxy_edit_popup = new class {
 		ZABBIX.PopupManager.setReturnUrl(return_url.href);
 
 		this.display_change_psk =
-			this.form.querySelector('#tls_connect input:checked').value == <?= HOST_ENCRYPTION_PSK ?>
+			this.form_element.querySelector('#tls_connect input:checked').value == <?= HOST_ENCRYPTION_PSK ?>
 				|| document.getElementById('tls_accept_psk').checked;
 
 		if (this.display_change_psk) {
@@ -44,7 +49,7 @@ window.proxy_edit_popup = new class {
 				.getElementById('tls-psk-change')
 				.addEventListener('click', () => this._changePsk());
 
-			for (const element of this.form.querySelectorAll('.js-tls-psk-identity, .js-tls-psk')) {
+			for (const element of this.form_element.querySelectorAll('.js-tls-psk-identity, .js-tls-psk')) {
 				element.style.display = 'none';
 			}
 		}
@@ -52,7 +57,7 @@ window.proxy_edit_popup = new class {
 		jQuery('#proxy_groupid').on('change', () => this._update());
 
 		for (const id of ['operating_mode', 'tls_connect', 'tls_accept_psk', 'tls_accept_certificate',
-				'custom_timeouts']) {
+				'custom_timeouts', 'data_collection_status', 'quota_mode']) {
 			document
 				.getElementById(id)
 				.addEventListener('change', () => this._update());
@@ -65,11 +70,13 @@ window.proxy_edit_popup = new class {
 	}
 
 	_changePsk() {
-		for (const element of this.form.querySelectorAll('.js-tls-psk-change')) {
+		document.getElementById('update_psk').value = 1;
+
+		for (const element of this.form_element.querySelectorAll('.js-tls-psk-change')) {
 			element.remove();
 		}
 
-		for (const element of this.form.querySelectorAll('.js-tls-psk-identity, .js-tls-psk')) {
+		for (const element of this.form_element.querySelectorAll('.js-tls-psk-identity, .js-tls-psk')) {
 			element.style.display = '';
 		}
 
@@ -77,28 +84,42 @@ window.proxy_edit_popup = new class {
 			document.getElementById(id).disabled = false;
 		}
 
+		document.getElementById('tls_psk_identity').focus();
+
 		this.display_change_psk = false;
 	}
 
 	_update() {
 		const $proxy_group = jQuery('#proxy_groupid').multiSelect('getData');
+		const has_selection = $proxy_group.length > 0;
 
-		for (const element of this.form.querySelectorAll('.js-local-address')) {
+		if (has_selection && this.warnings.length) {
+			this.#removePopupMessages();
+
+			const message_box = makeMessageBox('warning', this.warnings, null, true, false)[0];
+
+			this.form_element.parentNode.insertBefore(message_box, this.form_element);
+		}
+		else if (!has_selection) {
+			this.#removePopupMessages();
+		}
+
+		for (const element of this.form_element.querySelectorAll('.js-local-address')) {
 			element.style.display = $proxy_group.length ? '' : 'none';
 		}
 
 		const operating_mode_active =
 			document.querySelector('#operating_mode input:checked').value == <?= PROXY_OPERATING_MODE_ACTIVE ?>;
 
-		for (const element of this.form.querySelectorAll('.js-interface')) {
+		for (const element of this.form_element.querySelectorAll('.js-interface')) {
 			element.style.display = operating_mode_active ? 'none' : '';
 		}
 
-		for (const element of this.form.querySelectorAll('.js-proxy-address')) {
+		for (const element of this.form_element.querySelectorAll('.js-proxy-address')) {
 			element.style.display = operating_mode_active ? '' : 'none';
 		}
 
-		for (const element of this.form.querySelectorAll('#tls_connect input')) {
+		for (const element of this.form_element.querySelectorAll('#tls_connect input')) {
 			element.disabled = operating_mode_active;
 		}
 
@@ -106,14 +127,14 @@ window.proxy_edit_popup = new class {
 			document.getElementById(id).disabled = !operating_mode_active;
 		}
 
-		const tls_connect = this.form.querySelector('#tls_connect input:checked').value;
+		const tls_connect = this.form_element.querySelector('#tls_connect input:checked').value;
 		const tls_connect_psk = tls_connect == <?= HOST_ENCRYPTION_PSK ?>;
 		const tls_connect_certificate = tls_connect == <?= HOST_ENCRYPTION_CERTIFICATE ?>;
 
 		const tls_accept_psk = document.getElementById('tls_accept_psk').checked;
 		const tls_accept_certificate = document.getElementById('tls_accept_certificate').checked;
 
-		for (const element of this.form.querySelectorAll('.js-tls-issuer, .js-tls-subject')) {
+		for (const element of this.form_element.querySelectorAll('.js-tls-issuer, .js-tls-subject')) {
 			element.style.display = tls_connect_certificate || tls_accept_certificate ? '' : 'none';
 		}
 
@@ -123,11 +144,13 @@ window.proxy_edit_popup = new class {
 		}
 
 		if (this.display_change_psk) {
+			document.getElementById('update_psk').value = 0;
+
 			for (const id of ['tls_psk_identity', 'tls_psk']) {
 				document.getElementById(id).disabled = true;
 			}
 
-			for (const element of this.form.querySelectorAll('.js-tls-psk-change')) {
+			for (const element of this.form_element.querySelectorAll('.js-tls-psk-change')) {
 				element.style.display = tls_connect_psk || tls_accept_psk ? '' : 'none';
 			}
 
@@ -135,7 +158,9 @@ window.proxy_edit_popup = new class {
 				!(operating_mode_active && tls_accept_psk || !operating_mode_active && tls_connect_psk);
 		}
 		else {
-			for (const element of this.form.querySelectorAll('.js-tls-psk-identity, .js-tls-psk')) {
+			document.getElementById('update_psk').value = tls_connect_psk || tls_accept_psk ? 1 : 0;
+
+			for (const element of this.form_element.querySelectorAll('.js-tls-psk-identity, .js-tls-psk')) {
 				element.style.display = tls_connect_psk || tls_accept_psk ? '' : 'none';
 			}
 
@@ -145,14 +170,53 @@ window.proxy_edit_popup = new class {
 			}
 		}
 
-		const custom_timeouts_enabled =
-			this.form.querySelector('#custom_timeouts input:checked').value == <?= ZBX_PROXY_CUSTOM_TIMEOUTS_ENABLED ?>;
+		const custom_timeouts_enabled = this.form_element
+				.querySelector('#custom_timeouts input:checked').value == <?= ZBX_PROXY_CUSTOM_TIMEOUTS_ENABLED ?>;
 
 		for (const id of ['timeout_zabbix_agent', 'timeout_simple_check', 'timeout_snmp_agent',
 				'timeout_external_check', 'timeout_db_monitor', 'timeout_http_agent', 'timeout_ssh_agent',
-				'timeout_telnet_agent', 'timeout_script', 'timeout_browser']) {
+				'timeout_telnet_agent', 'timeout_script', 'timeout_browser', 'timeout_telemetry_query']) {
 			document.getElementById(id).readOnly = !custom_timeouts_enabled;
 		}
+
+		const data_collection_status = this.form
+			.findFieldByName('data_collection_status')?.getField()?.checked ?? false;
+
+		for (const field of this.dialogue.querySelectorAll('.js-apm-quota-mode, .js-apm-attributes')) {
+			field?.toggleAttribute('hidden', !data_collection_status);
+		}
+
+		const fields = this.getAllValues();
+		const quota_mode_unlimited = fields.quota_mode === PROXY_APM_QUOTA_MODE_UNLIMITED;
+
+		const max_messages_per_second = this.form.findFieldByName('max_messages_per_second')?.getField();
+		max_messages_per_second?.toggleAttribute('disabled', quota_mode_unlimited);
+
+		for (const field of this.dialogue.querySelectorAll('.js-apm-quota-mode-custom')) {
+			field?.toggleAttribute('hidden', quota_mode_unlimited);
+		}
+
+		const additional_resource_attributes = this.form
+			.findFieldByName('additional_resource_attributes')?.getFields() ?? [];
+
+		for (const [, field] of Object.entries(additional_resource_attributes)) {
+			field?.getField()?.toggleAttribute('disabled', !data_collection_status);
+		}
+	}
+
+	/**
+	 * @returns {Object<string, any>}
+	 */
+	getAllValues() {
+		const values = this.form.getAllValues();
+		const data_collection_status = parseInt(values.data_collection_status);
+		const quota_mode = parseInt(document.querySelector('[name="quota_mode"]:checked')?.value);
+
+		return {
+			...values,
+			data_collection_status,
+			quota_mode
+		};
 	}
 
 	refreshConfig() {
@@ -160,22 +224,17 @@ window.proxy_edit_popup = new class {
 		curl.setArgument('action', 'proxy.config.refresh');
 		curl.setArgument(CSRF_TOKEN_NAME, <?= json_encode(CCsrfTokenHelper::get('proxy')) ?>);
 
-		this._post(curl.getUrl(), {proxyids: [this.proxyid]}, (response) => {
-			for (const element of this.form.parentNode.children) {
-				if (element.matches('.msg-good, .msg-bad, .msg-warning')) {
-					element.parentNode.removeChild(element);
-				}
-			}
-
-			const message_box = makeMessageBox('good', response.success.messages, response.success.title)[0];
-
-			this.form.parentNode.insertBefore(message_box, this.form);
-		});
+		this._post(curl.getUrl(), {proxyids: [this.proxyid]}, true);
 	}
 
-	clone({title, buttons}) {
+	clone({title, buttons, rules}) {
+		this.#removePopupMessages();
+
+		this.warnings = [];
 		this.clone_proxyid = this.proxyid;
 		this.proxyid = null;
+
+		this.form.reload(rules);
 
 		this.overlay.unsetLoading();
 		this.overlay.setProperties({title, buttons});
@@ -184,53 +243,51 @@ window.proxy_edit_popup = new class {
 	}
 
 	delete() {
+		this.#removePopupMessages();
+
 		const curl = new Curl('zabbix.php');
 		curl.setArgument('action', 'proxy.delete');
 		curl.setArgument(CSRF_TOKEN_NAME, <?= json_encode(CCsrfTokenHelper::get('proxy')) ?>);
 
-		this._post(curl.getUrl(), {proxyids: [this.proxyid]}, (response) => {
-			overlayDialogueDestroy(this.overlay.dialogueid);
-
-			this.dialogue.dispatchEvent(new CustomEvent('dialogue.submit', {detail: response}));
-		});
+		this._post(curl.getUrl(), {proxyids: [this.proxyid]});
 	}
 
 	submit() {
-		const fields = getFormFields(this.form);
+		this.#removePopupMessages();
+
+		const fields = this.form.getAllValues();
 
 		if (this.proxyid !== null) {
 			fields.proxyid = this.proxyid;
-			fields.update_psk = !this.display_change_psk;
 		}
 		else if (this.clone_proxyid !== null) {
 			fields.clone_proxyid = this.clone_proxyid;
-			fields.clone_psk = this.display_change_psk;
-		}
-		else {
-			fields.clone_psk = false;
 		}
 
-		for (const name of ['name', 'local_address', 'local_port', 'allowed_addresses', 'address', 'port',
-				'description', 'tls_psk_identity', 'tls_psk', 'tls_issuer', 'tls_subject', 'timeout_zabbix_agent',
-				'timeout_simple_check', 'timeout_snmp_agent', 'timeout_external_check', 'timeout_db_monitor',
-				'timeout_http_agent', 'timeout_ssh_agent', 'timeout_telnet_agent', 'timeout_script',
-				'timeout_browser']) {
-			if (name in fields) {
-				fields[name] = fields[name].trim();
+		if (fields.data_collection_status === PROXY_APM_DATA_COLLECTION_DISABLED) {
+			for (const field of ['max_messages_per_second', 'additional_resource_attributes']) {
+				if (field in fields) {
+					delete fields[field];
+				}
 			}
 		}
 
 		const curl = new Curl('zabbix.php');
 		curl.setArgument('action', this.proxyid !== null ? 'proxy.update' : 'proxy.create');
 
-		this._post(curl.getUrl(), fields, (response) => {
-			overlayDialogueDestroy(this.overlay.dialogueid);
+		this.form.validateSubmit(fields)
+			.then((result) => {
+				if (!result) {
+					this.overlay.unsetLoading();
 
-			this.dialogue.dispatchEvent(new CustomEvent('dialogue.submit', {detail: response}));
-		});
+					return;
+				}
+
+				this._post(curl.getUrl(), fields);
+			});
 	}
 
-	_post(url, data, success_callback) {
+	_post(url, data, keep_open = false) {
 		fetch(url, {
 			method: 'POST',
 			headers: {'Content-Type': 'application/json'},
@@ -242,11 +299,30 @@ window.proxy_edit_popup = new class {
 					throw {error: response.error};
 				}
 
-				return response;
+				if ('form_errors' in response) {
+					this.form.setErrors(response.form_errors, true, true);
+					this.form.renderErrors();
+
+					return;
+				}
+
+				if (keep_open) {
+					const message_box = makeMessageBox('good', response.success.messages, response.success.title)[0];
+
+					this.form_element.parentNode.querySelectorAll('.msg-good,.msg-bad,.msg-warning')
+						.forEach(node => node.remove());
+					this.form_element.parentNode.insertBefore(message_box, this.form_element);
+				}
+				else {
+					const action = (new Curl(url)).getArgument('action');
+
+					overlayDialogueDestroy(this.overlay.dialogueid);
+
+					this.dialogue.dispatchEvent(new CustomEvent('dialogue.submit', {detail: {action, ...response}}));
+				}
 			})
-			.then(success_callback)
 			.catch((exception) => {
-				for (const element of this.form.parentNode.children) {
+				for (const element of this.form_element.parentNode.children) {
 					if (element.matches('.msg-good, .msg-bad, .msg-warning')) {
 						element.parentNode.removeChild(element);
 					}
@@ -264,10 +340,18 @@ window.proxy_edit_popup = new class {
 
 				const message_box = makeMessageBox('bad', messages, title)[0];
 
-				this.form.parentNode.insertBefore(message_box, this.form);
+				this.form_element.parentNode.insertBefore(message_box, this.form_element);
 			})
 			.finally(() => {
 				this.overlay.unsetLoading();
 			});
+	}
+
+	#removePopupMessages() {
+		for (const el of this.form_element.parentNode.children) {
+			if (el.matches('.msg-good, .msg-bad, .msg-warning')) {
+				el.parentNode.removeChild(el);
+			}
+		}
 	}
 };

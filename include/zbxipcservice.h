@@ -35,6 +35,8 @@
 
 #define ZBX_IPC_WAIT_FOREVER	-1
 
+#define ZBX_IPC_HEADER_SIZE	(int)(sizeof(zbx_uint32_t) * 2)
+
 typedef struct
 {
 	/* the message code */
@@ -75,7 +77,10 @@ typedef struct
 	struct event_base		*ev;
 	struct event			*ev_listener;
 	struct event			*ev_timer;
+
+	/* internally used to wake up ipc service from recv wait */
 	struct event			*ev_alert;
+	int				alert_pipe[2];
 
 	/* the unix socket path */
 	char				*path;
@@ -85,6 +90,9 @@ typedef struct
 
 	/* the clients with messages */
 	zbx_queue_ptr_t			clients_recv;
+
+	/* incremental id for next connected client */
+	zbx_uint64_t			next_clientid;
 }
 zbx_ipc_service_t;
 

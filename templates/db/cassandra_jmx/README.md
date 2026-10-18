@@ -7,7 +7,7 @@ This template is designed for the effortless deployment of Apache Cassandra moni
 
 ## Requirements
 
-Zabbix version: 7.4 and higher.
+Zabbix version: 8.0 and higher.
 
 ## Tested versions
 
@@ -16,7 +16,7 @@ This template has been tested on:
 
 ## Configuration
 
-> Zabbix should be configured according to the instructions in the [Templates out of the box](https://www.zabbix.com/documentation/7.4/manual/config/templates_out_of_the_box) section.
+> Zabbix should be configured according to the instructions in the [Templates out of the box](https://www.zabbix.com/documentation/8.0/manual/config/templates_out_of_the_box) section.
 
 ## Setup
 
@@ -31,12 +31,12 @@ Metrics are collected by JMX.
 
 |Name|Description|Default|
 |----|-----------|-------|
-|{$CASSANDRA.USER}||`zabbix`|
-|{$CASSANDRA.PASSWORD}||`zabbix`|
-|{$CASSANDRA.KEY_SPACE.MATCHES}|<p>Filter of discoverable key spaces</p>|`.*`|
-|{$CASSANDRA.KEY_SPACE.NOT_MATCHES}|<p>Filter to exclude discovered key spaces</p>|`(system\|system_auth\|system_distributed\|system_schema)`|
-|{$CASSANDRA.PENDING_TASKS.MAX.HIGH}||`500`|
-|{$CASSANDRA.PENDING_TASKS.MAX.WARN}||`350`|
+|{$CASSANDRA.USER}|<p>Cassandra JMX user.</p>|`zabbix`|
+|{$CASSANDRA.PASSWORD}|<p>Cassandra JMX password.</p>|`zabbix`|
+|{$CASSANDRA.KEY_SPACE.MATCHES}|<p>Filter of discoverable key spaces.</p>|`.*`|
+|{$CASSANDRA.KEY_SPACE.NOT_MATCHES}|<p>Filter to exclude discovered key spaces.</p>|`(system\|system_auth\|system_distributed\|system_schema)`|
+|{$CASSANDRA.PENDING_TASKS.MAX.HIGH}|<p>High threshold for the maximum number of pending Cassandra tasks detected via JMX.</p>|`500`|
+|{$CASSANDRA.PENDING_TASKS.MAX.WARN}|<p>Warning threshold for the maximum number of pending Cassandra tasks detected via JMX.</p>|`350`|
 
 ### Items
 

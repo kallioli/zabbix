@@ -33,7 +33,8 @@ class CJsRpcInputValidator {
 		$rules = ['type' => API_OBJECT, 'flags' => API_ALLOW_UNEXPECTED, 'fields' => [
 			'method' => ['type' => API_STRING_UTF8, 'flags' => API_REQUIRED, 'in' => implode(',', ['search',
 				'zabbix.status', 'screen.get', 'trigger.get', 'multiselect.get', 'patternselect.get',
-				'item_value_type.get', 'get_scripts_by_hosts', 'get_scripts_by_events', 'link_thresholds.validate'
+				'item_value_type.get', 'item_prototype_value_type.get', 'get_scripts_by_hosts', 'get_scripts_by_events',
+				'link_thresholds.validate'
 			])]
 		]];
 
@@ -61,6 +62,7 @@ class CJsRpcInputValidator {
 				return self::validatePatternselectGet($data);
 
 			case 'item_value_type.get':
+			case 'item_prototype_value_type.get':
 				return self::validateItemValueTypeGet($data);
 
 			case 'get_scripts_by_hosts':
@@ -208,7 +210,7 @@ class CJsRpcInputValidator {
 				'templateGroup', 'hosts', 'templates', 'items', 'item_prototypes', 'graphs', 'graph_prototypes',
 				'triggers', 'users', 'usersGroups', 'drules', 'api_methods', 'valuemap_names', 'valuemaps',
 				'template_valuemaps', 'sla', 'proxies', 'proxy_groups', 'roles', 'actions', 'media_types', 'dashboard',
-				'services', 'sysmaps', 'host_inventory'
+				'services', 'sysmaps', 'host_inventory', 'devices'
 			])],
 			'search' => ['type' => API_STRING_UTF8, 'flags' => API_REQUIRED],
 			'curtime' => ['type' => API_STRING_UTF8, 'flags' => API_REQUIRED],
@@ -339,6 +341,7 @@ class CJsRpcInputValidator {
 				$rules = ['type' => API_OBJECT, 'fields' => $head_rules['fields'] + [
 					'real_hosts' => ['type' => API_INT32],
 					'templated' => ['type' => API_INT32],
+					'editable' => ['type' => API_INT32],
 
 					// Options not relevant to trigger API and are not passed either.
 					'with_triggers' => ['type' => API_INT32],
@@ -349,7 +352,8 @@ class CJsRpcInputValidator {
 			case 'users':
 				$rules = ['type' => API_OBJECT, 'fields' => $head_rules['fields'] + [
 					'context' => ['type' => API_STRING_UTF8],
-					'exclude_provisioned' => ['type' => API_STRING_UTF8]
+					'exclude_provisioned' => ['type' => API_STRING_UTF8],
+					'has_devices_access' => ['type' => API_INT32, 'in' => '1']
 				]];
 				break;
 
@@ -393,11 +397,9 @@ class CJsRpcInputValidator {
 			case 'template_valuemaps':
 				$rules = ['type' => API_OBJECT, 'fields' => $head_rules['fields'] + [
 					'hostids' => ['type' => API_IDS, 'flags' => API_NORMALIZE | API_REQUIRED],
-					'context' => ['type' => API_STRING_UTF8, 'flags' => API_REQUIRED, 'in' => implode(',', ['host',
-						'template'
-					])],
 
 					// Option is not passed to API.
+					'context' => ['type' => API_STRING_UTF8],
 					'editable' => ['type' => API_INT32]
 				]];
 				break;
@@ -408,8 +410,19 @@ class CJsRpcInputValidator {
 				]];
 				break;
 
-			// "search" parameter has already been validated at this point. Skip further validation for these methods.
+			case 'devices':
+				$rules = ['type' => API_OBJECT, 'fields' => $head_rules['fields'] + [
+					'userid' => ['type' => API_ID]
+				]];
+				break;
+
 			case 'proxies':
+				$rules = ['type' => API_OBJECT, 'fields' => $head_rules['fields'] + [
+					'without_proxy_group' => ['type' => API_INT32]
+				]];
+				break;
+
+			// "search" parameter has already been validated at this point. Skip further validation for these methods.
 			case 'proxy_groups':
 			case 'roles':
 			case 'actions':
@@ -479,7 +492,7 @@ class CJsRpcInputValidator {
 	}
 
 	/**
-	 * Validate the input parameters for "item_value_type.get".
+	 * Validate the input parameters for "item_value_type.get" and "item_prototype_value_type.get".
 	 *
 	 * @param array $data  Input data to validate.
 	 *
@@ -489,7 +502,9 @@ class CJsRpcInputValidator {
 		$error = '';
 
 		$rules = ['type' => API_OBJECT, 'fields' => [
-			'method' => ['type' => API_STRING_UTF8, 'flags' => API_REQUIRED, 'in' => 'item_value_type.get'],
+			'method' => ['type' => API_STRING_UTF8, 'flags' => API_REQUIRED, 'in' => implode(',', [
+				'item_value_type.get', 'item_prototype_value_type.get'
+			])],
 			'type' => ['type' => API_INT32, 'flags' => API_REQUIRED, 'in' => PAGE_TYPE_TEXT_RETURN_JSON],
 			'itemid' => ['type' => API_ID]
 		]];

@@ -37,14 +37,41 @@ static zbx_on_exit_t	zbx_on_exit_cb;
 static zbx_get_config_str_f	get_zbx_service_name_cb = NULL;
 static zbx_get_config_str_f	get_zbx_event_source_cb = NULL;
 
+/* A thread may answer ZBX_IS_RUNNING() from its own state instead of the program's: the supervisor units do, */
+/* so that the supervisor can wind them down one by one. The default, and what the main thread and every  */
+/* other worker see, is the program-wide flag. */
+static ZBX_THREAD_LOCAL int	(*is_running_impl)(void *args) = NULL;
+static ZBX_THREAD_LOCAL void	*is_running_args = NULL;
+
 int	ZBX_IS_RUNNING(void)
 {
+	if (NULL != is_running_impl)
+		return is_running_impl(is_running_args);
+
 	return application_status;
+}
+
+void	zbx_set_is_running(int (*is_running_func)(void *args), void *args)
+{
+	is_running_impl = is_running_func;
+	is_running_args = args;
+}
+
+/* Called right after a stop request has been flagged, so that a main thread blocked in a wait can be woken */
+/* without waiting for its timeout. Registered by the program; nothing is called when none is. */
+static void	(*stop_notify_cb)(void) = NULL;
+
+void	zbx_service_set_stop_notify(void (*cb)(void))
+{
+	stop_notify_cb = cb;
 }
 
 void	ZBX_DO_EXIT(void)
 {
 	application_status = ZBX_APP_STOPPED;
+
+	if (NULL != stop_notify_cb)
+		stop_notify_cb();
 }
 #undef ZBX_APP_STOPPED
 #undef ZBX_APP_RUNNING

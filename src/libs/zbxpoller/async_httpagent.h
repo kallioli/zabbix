@@ -25,10 +25,8 @@
 typedef struct
 {
 	zbx_uint64_t	itemid;
-	zbx_uint64_t	hostid;
 	unsigned char	value_type;
 	unsigned char	flags;
-	unsigned char	state;
 	char		*posts;
 	char		*status_codes;
 	unsigned char	preprocessing;
@@ -42,7 +40,7 @@ typedef struct
 }
 zbx_httpagent_context;
 
-int	zbx_async_check_httpagent(zbx_dc_item_t *item, AGENT_RESULT *result, const char *config_source_ip,
+int	zbx_async_check_httpagent(zbx_dc_httpagent_item_t *item, AGENT_RESULT *result, const char *config_source_ip,
 		const char *config_ssl_ca_location, const char *config_ssl_cert_location,
 		const char *config_ssl_key_location, CURLM *curl_handle);
 void	zbx_async_check_httpagent_clean(zbx_httpagent_context *httpagent_context);

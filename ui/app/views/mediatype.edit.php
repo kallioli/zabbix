@@ -35,8 +35,9 @@ $mediatype_form_grid = (new CFormGrid())
 	->addItem([
 		(new CLabel(_('Name'), 'name'))->setAsteriskMark(),
 		(new CFormField(
-			(new CTextBox('name', $data['name'], false, DB::getFieldLength('media_type', 'name')))
+			(new CTextAreaFlexible('name', $data['name']))
 				->setWidth(ZBX_TEXTAREA_STANDARD_WIDTH)
+				->setMaxlength(DB::getFieldLength('media_type', 'name'))
 				->setAriaRequired()
 				->setAttribute('autofocus', 'autofocus')
 		))->setId('name-field')
@@ -47,7 +48,12 @@ $mediatype_form_grid = (new CFormGrid())
 			(new CSelect('type'))
 				->setId('type')
 				->setFocusableElementId('label-type')
-				->addOptions(CSelect::createOptionsFromArray(CMediatypeHelper::getMediaTypes()))
+				->addOptions(CSelect::createOptionsFromArray(
+					array_intersect_key(
+						CMediatypeHelper::getMediaTypes(),
+						array_flip(CMediatypeHelper::getSupportedMediaTypes())
+					)
+				))
 				->setValue($data['type'])
 		))->setId('type-field')
 	])
@@ -109,13 +115,17 @@ $mediatype_form_grid = (new CFormGrid())
 	->addItem([
 		(new CLabel(_('SSL verify peer'), 'smtp_verify_peer'))->setId('verify-peer-label'),
 		(new CFormField(
-			(new CCheckBox('smtp_verify_peer'))->setChecked($data['smtp_verify_peer'])
+			(new CCheckBox('smtp_verify_peer'))
+				->setChecked($data['smtp_verify_peer'])
+				->setUncheckedValue(0)
 		))->setId('verify-peer-field')
 	])
 	->addItem([
 		(new CLabel(_('SSL verify host'), 'smtp_verify_host'))->setId('verify-host-label'),
 		(new CFormField(
-			(new CCheckBox('smtp_verify_host'))->setChecked($data['smtp_verify_host'])
+			(new CCheckBox('smtp_verify_host'))
+				->setChecked($data['smtp_verify_host'])
+				->setUncheckedValue(0)
 		))->setId('verify-host-field')
 	])
 	->addItem([
@@ -145,7 +155,11 @@ $mediatype_form_grid = (new CFormGrid())
 		]))->setId('exec-path-field')
 	]);
 
-$oauth_status = [];
+$oauth_status = [
+	(new CVar('tokens_status', $data['tokens_status']))
+		->setAttribute('data-error-container', 'oauth-error-container')
+		->removeId()
+];
 
 if ($data['mediatypeid'] && $data['smtp_authentication'] == SMTP_AUTHENTICATION_OAUTH) {
 	$time = time();
@@ -174,11 +188,18 @@ if ($data['mediatypeid'] && $data['smtp_authentication'] == SMTP_AUTHENTICATION_
 
 	// Add input elements after icon to prevent left margin because icon will be not first child.
 	$oauth_status = array_merge($oauth_status, [
-		(new CVar('redirection_url', $data['redirection_url']))->removeId(),
-		(new CVar('client_id', $data['client_id']))->removeId(),
-		(new CVar('authorization_url', $data['authorization_url']))->removeId(),
-		(new CVar('token_url', $data['token_url']))->removeId(),
-		(new CVar('tokens_status', $data['tokens_status']))->removeId()
+		(new CVar('redirection_url', $data['redirection_url']))
+			->setAttribute('data-error-container', 'oauth-error-container')
+			->removeId(),
+		(new CVar('client_id', $data['client_id']))
+			->setAttribute('data-error-container', 'oauth-error-container')
+			->removeId(),
+		(new CVar('authorization_url', $data['authorization_url']))
+			->setAttribute('data-error-container', 'oauth-error-container')
+			->removeId(),
+		(new CVar('token_url', $data['token_url']))
+			->setAttribute('data-error-container', 'oauth-error-container')
+			->removeId()
 	]);
 }
 
@@ -193,7 +214,8 @@ $mediatype_form_grid->addItem([
 		(new CButtonLink(_('Configure')))
 			->setId('js-oauth-configure')
 			->setEnabled(!array_key_exists('curl_error', $data)),
-		array_key_exists('curl_error', $data) ? makeErrorIcon($data['curl_error']) : null
+		array_key_exists('curl_error', $data) ? makeErrorIcon($data['curl_error']) : null,
+		(new CDiv())->setId('oauth-error-container')
 	]))->setId('oauth-token-field')
 ]);
 
@@ -204,6 +226,8 @@ $parameters_exec_table = (new CTable())
 		(new CColHeader(_('Value')))->setWidth('100%'),
 		''
 	])
+	->setAttribute('data-field-type', 'set')
+	->setAttribute('data-field-name', 'parameters_exec')
 	->addStyle('width: 100%;')
 	->addItem(
 		(new CTag('tfoot', true))
@@ -262,12 +286,18 @@ if (!$data['display_password_input']) {
 		(new CPassBox('passwd', ''))
 			->setWidth(ZBX_TEXTAREA_SMALL_WIDTH)
 			->setAriaRequired()
+			->setAttribute('autocomplete', 'off')
+			->setAttribute('data-notrim', '')
 			->addStyle('display: none;')
+			->addClass('js-inactive')
 			->setEnabled(false)
 	];
 }
 else {
-	$passwd_field = (new CPassBox('passwd', ''))->setWidth(ZBX_TEXTAREA_SMALL_WIDTH);
+	$passwd_field = (new CPassBox('passwd', ''))
+		->setAttribute('autocomplete', 'off')
+		->setAttribute('data-notrim', '')
+		->setWidth(ZBX_TEXTAREA_SMALL_WIDTH);
 }
 
 // MEDIA_TYPE_WEBHOOK
@@ -278,6 +308,8 @@ $parameters_table = (new CTable())
 		(new CColHeader(_('Value')))->setWidth('50%'),
 		''
 	])
+	->setAttribute('data-field-type', 'set')
+	->setAttribute('data-field-name', 'parameters_webhook')
 	->addStyle('width: 100%;')
 	->addItem(
 		(new CTag('tfoot', true))
@@ -291,18 +323,28 @@ $parameters_table = (new CTable())
 $webhook_params_template = (new CTemplateTag('webhook_params_template'))
 	->addItem(
 		(new CRow([
-			(new CTextBox('parameters_webhook[name][]', '', false, DB::getFieldLength('media_type_param', 'name')))
+			(new CTextBox('parameters_webhook[#{row_num}][name]', '', false, DB::getFieldLength('media_type_param', 'name')))
 				->addStyle('width: 100%;')
 				->setAttribute('value', '#{name}')
+				->setAttribute('data-error-container', 'parameters-webhook-#{row_num}-error-container')
 				->removeId(),
-			(new CTextBox('parameters_webhook[value][]', '', false, DB::getFieldLength('media_type_param', 'value')))
+			(new CTextBox('parameters_webhook[#{row_num}][value]', '', false, DB::getFieldLength('media_type_param', 'value')))
 				->addStyle('width: 100%;')
 				->setAttribute('value', '#{value}')
+				->setAttribute('data-error-container', 'parameters-webhook-#{row_num}-error-container')
 				->removeId(),
 			(new CButtonLink(_('Remove')))
 				->removeId()
 				->addClass('js-remove')
 		]))->addClass('form_row')
+	)
+	->addItem(
+		(new CRow([
+			(new CCol((new CDiv())
+				->setId('parameters-webhook-#{row_num}-error-container')))
+				->addClass(ZBX_STYLE_ERROR_CONTAINER)
+				->setColSpan(3)
+		]))->addClass('error-container-row')
 	);
 
 $form->addItem($webhook_params_template);
@@ -382,6 +424,7 @@ $mediatype_form_grid
 			))
 				->setWidth(ZBX_TEXTAREA_STANDARD_WIDTH)
 				->setEnabled($data['show_event_menu'] == ZBX_EVENT_MENU_SHOW)
+				->addClass($data['show_event_menu'] == ZBX_EVENT_MENU_SHOW ? '' : 'js-inactive')
 				->setAriaRequired($data['show_event_menu'] == ZBX_EVENT_MENU_SHOW)
 		))->setId('webhook_url_name_field')
 	])
@@ -390,11 +433,12 @@ $mediatype_form_grid
 			->setId('webhook_event_menu_url_label')
 			->setAsteriskMark($data['show_event_menu'] == ZBX_EVENT_MENU_SHOW),
 		(new CFormField(
-			(new CTextBox('event_menu_url', $data['event_menu_url'], false,
-				DB::getFieldLength('media_type', 'event_menu_url')
-			))
+			(new CTextAreaFlexible('event_menu_url', $data['event_menu_url']))
 				->setWidth(ZBX_TEXTAREA_STANDARD_WIDTH)
+				->setMaxlength(DB::getFieldLength('media_type', 'event_menu_url'))
 				->setEnabled($data['show_event_menu'] == ZBX_EVENT_MENU_SHOW)
+				->addClass($data['show_event_menu'] == ZBX_EVENT_MENU_SHOW ? '' : 'js-inactive')
+				->addClass(ZBX_STYLE_ALIGN_TOP)
 				->setAriaRequired($data['show_event_menu'] == ZBX_EVENT_MENU_SHOW)
 		))->setId('webhook_event_menu_url_field')
 	])
@@ -409,20 +453,40 @@ $mediatype_form_grid
 	->addItem([
 		new CLabel(_('Enabled'), 'status'),
 		new CFormField(
-			(new CCheckBox('status', MEDIA_TYPE_STATUS_ACTIVE))->setChecked($data['status'] == MEDIA_TYPE_STATUS_ACTIVE)
+			(new CCheckBox('status', MEDIA_TYPE_STATUS_ACTIVE))
+				->setChecked($data['status'] == MEDIA_TYPE_STATUS_ACTIVE)
+				->setUncheckedValue(MEDIA_TYPE_STATUS_DISABLED)
 		)
+	])
+	->addItem([
+		(new CLabel([
+			_('Bridge adapter connection'),
+			makeHelpIcon(_('Bridge Adapter connection details can be found in Zabbix configuration file.'))
+		]))
+			->setId('bridge_adapter_label'),
+		(new CFormField(
+			CSettingsHelper::isBridgeAdapterConfigured() ? _('Configured') : _('Not configured')
+		))
+			->setId('bridge_adapter_field')
+			->addClass(CSettingsHelper::isBridgeAdapterConfigured() ? ZBX_STYLE_GREEN : ZBX_STYLE_RED)
 	]);
 
 $message_template = (new CTemplateTag('message-templates-row-tmpl'))
 	->addItem(
 		(new CRow([
-			new CCol('#{message_type_name}'),
+			(new CCol('#{message_type_name}'))
+				->addClass(ZBX_STYLE_OVERFLOW_ELLIPSIS)
+				->addStyle('max-width: '.ZBX_TEXTAREA_SMALL_WIDTH.'px;'),
 			(new CCol([
 				new CSpan('#{message}'),
-				new CInput('hidden', 'message_templates[#{message_type}][eventsource]', '#{eventsource}'),
-				new CInput('hidden', 'message_templates[#{message_type}][recovery]', '#{recovery}'),
-				new CInput('hidden', 'message_templates[#{message_type}][subject]', '#{subject}'),
-				new CInput('hidden', 'message_templates[#{message_type}][message]', '#{message}')
+				(new CInput('hidden', 'message_templates[#{message_type}][eventsource]', '#{eventsource}'))
+					->setAttribute('data-field-type', 'hidden'),
+				(new CInput('hidden', 'message_templates[#{message_type}][recovery]', '#{recovery}'))
+					->setAttribute('data-field-type', 'hidden'),
+				(new CInput('hidden', 'message_templates[#{message_type}][subject]', '#{subject}'))
+					->setAttribute('data-field-type', 'hidden'),
+				(new CInput('hidden', 'message_templates[#{message_type}][message]', '#{message}'))
+					->setAttribute('data-field-type', 'hidden')
 			]))
 				->addClass(ZBX_STYLE_OVERFLOW_ELLIPSIS)
 				->addStyle('max-width: '.ZBX_TEXTAREA_MEDIUM_WIDTH.'px;'),
@@ -437,7 +501,7 @@ $message_template = (new CTemplateTag('message-templates-row-tmpl'))
 $message_templates_form_grid = (new CFormGrid())
 	->setId('messageTemplatesFormlist')
 	->addItem([
-		(new CLabel(_('Message templates')))->addClass(ZBX_STYLE_WORDBREAK),
+		(new CLabel(_('Message templates'))),
 		(new CFormField(
 			(new CTable())
 				->addStyle('width: 100%;')
@@ -457,6 +521,8 @@ $message_templates_form_grid = (new CFormGrid())
 							))->setColSpan(2)
 						)
 				)
+				->setAttribute('data-field-type', 'set')
+				->setAttribute('data-field-name', 'message_templates')
 		))
 			->setId('message-templates')
 			->addClass(ZBX_STYLE_TABLE_FORMS_SEPARATOR)
@@ -526,55 +592,27 @@ $email_defaults =  CMediatypeHelper::getEmailProviders(CMediatypeHelper::EMAIL_P
 // Append tabs to form.
 $form
 	->addItem($tabs)
-	->addItem($parameters_exec_template)
-	->addItem(
-		(new CScriptTag('mediatype_edit_popup.init('.json_encode([
-			'mediatype' => $data,
-			'message_templates' => CMediatypeHelper::getAllMessageTemplates(),
-			'smtp_server_default' => $email_defaults['smtp_server'],
-			'smtp_email_default' =>  $email_defaults['smtp_email'],
-			'oauth_defaults_by_provider' => CMediatypeHelper::getOauthDefaultsByProvider()
-		]).');'))->setOnDocumentReady()
-	);
+	->addItem($parameters_exec_template);
 
 if ($data['mediatypeid']) {
 	$buttons = [
 		[
 			'title' => _('Update'),
+			'class' => 'js-submit',
 			'keepOpen' => true,
-			'isSubmit' => true,
-			'action' => 'mediatype_edit_popup.submit();'
+			'isSubmit' => true
 		],
 		[
 			'title' => _('Clone'),
-			'class' => ZBX_STYLE_BTN_ALT,
+			'class' => implode(' ', [ZBX_STYLE_BTN_ALT, 'js-clone']),
 			'keepOpen' => true,
-			'isSubmit' => false,
-			'action' => 'mediatype_edit_popup.clone('.json_encode([
-					'title' => _('New media type'),
-					'buttons' => [
-						[
-							'title' => _('Add'),
-							'keepOpen' => true,
-							'isSubmit' => true,
-							'action' => 'mediatype_edit_popup.submit();'
-						],
-						[
-							'title' => _('Cancel'),
-							'class' => ZBX_STYLE_BTN_ALT,
-							'cancel' => true,
-							'action' => ''
-						]
-					]
-				]).');'
+			'isSubmit' => false
 		],
 		[
 			'title' => _('Delete'),
-			'confirmation' => _('Delete media type?'),
-			'class' => ZBX_STYLE_BTN_ALT,
+			'class' => implode(' ', [ZBX_STYLE_BTN_ALT, 'js-delete']),
 			'keepOpen' => true,
-			'isSubmit' => false,
-			'action' => 'mediatype_edit_popup.delete();'
+			'isSubmit' => false
 		]
 	];
 }
@@ -582,9 +620,9 @@ else {
 	$buttons = [
 		[
 			'title' => _('Add'),
+			'class' => 'js-submit',
 			'keepOpen' => true,
-			'isSubmit' => true,
-			'action' => 'mediatype_edit_popup.submit();'
+			'isSubmit' => true
 		]
 	];
 }
@@ -594,7 +632,18 @@ $output = [
 	'doc_url' => CDocHelper::getUrl(CDocHelper::ALERTS_MEDIATYPE_EDIT),
 	'body' => $form->toString(),
 	'buttons' => $buttons,
-	'script_inline' => getPagePostJs().$this->readJsFile('mediatype.edit.js.php'),
+	'script_inline' => getPagePostJs().
+		$this->readJsFile('mediatype.edit.js.php').
+		'mediatype_edit_popup.init('.json_encode([
+			'rules' => $data['js_validation_rules'],
+			'clone_rules' => $data['js_clone_validation_rules'],
+			'mediatype' => $data,
+			'message_templates' => CMediatypeHelper::getAllMessageTemplates(),
+			'smtp_server_default' => $email_defaults['smtp_server'],
+			'smtp_email_default' =>  $email_defaults['smtp_email'],
+			'oauth_defaults_by_provider' => CMediatypeHelper::getOauthDefaultsByProvider()
+		]).');'
+	,
 	'dialogue_class' => 'modal-popup-static'
 ];
 

@@ -48,7 +48,8 @@ class TabIndicators {
 		const AUTHENTICATION = document.querySelector('#authentication-form');
 		const GRAPH = document.querySelector('form.dashboard-widget-svggraph');
 		const HOST = document.querySelector('#host-form');
-		const HOST_DISCOVERY = document.querySelector('#host-discovery-form');
+		const HOST_DISCOVERY = document.querySelector('#lldrule-form');
+		const HOST_DISCOVERY_PROTOTYPE = document.querySelector('#lldrule-prototype-form');
 		const HOST_PROTOTYPE = document.querySelector('#host-prototype-form');
 		const ITEM = document.querySelector('#item-form');
 		const ITEM_PROTOTYPE = document.querySelector('#item-prototype-form');
@@ -56,6 +57,7 @@ class TabIndicators {
 		const MEDIA_TYPE = document.querySelector('#media-type-form');
 		const PIE_CHART = document.querySelector('form.dashboard-widget-piechart');
 		const PROXY = document.querySelector('#proxy-form');
+		const SCATTER_PLOT = document.querySelector('form.dashboard-widget-scatterplot');
 		const SERVICE = document.querySelector('#service-form');
 		const SLA = document.querySelector('#sla-form');
 		const TEMPLATE = document.querySelector('#templates-form');
@@ -79,10 +81,10 @@ class TabIndicators {
 				return HOST;
 			case !!HOST_DISCOVERY:
 				return HOST_DISCOVERY;
+			case !!HOST_DISCOVERY_PROTOTYPE:
+				return HOST_DISCOVERY_PROTOTYPE;
 			case !!HOST_PROTOTYPE:
 				return HOST_PROTOTYPE;
-			case !!PROXY:
-				return PROXY;
 			case !!ITEM:
 				return ITEM;
 			case !!ITEM_PROTOTYPE:
@@ -95,6 +97,8 @@ class TabIndicators {
 				return PIE_CHART;
 			case !!PROXY:
 				return PROXY;
+			case !!SCATTER_PLOT:
+				return SCATTER_PLOT;
 			case !!SERVICE:
 				return SERVICE;
 			case !!SLA:
@@ -234,6 +238,8 @@ class TabIndicatorFactory {
 				return new TemplatePermissionsTabIndicatorItem;
 			case 'HostPermissions':
 				return new HostPermissionsTabIndicatorItem;
+			case 'ProxyAccessList':
+				return new ProxyAccessListTabIndicatorItem;
 			case 'PieDataset':
 				return new PieDatasetTabIndicatorItem;
 			case 'PieDisplayOptions':
@@ -246,10 +252,24 @@ class TabIndicatorFactory {
 				return new PreprocessingTabIndicatorItem;
 			case 'ProxyEncryption':
 				return new ProxyEncryptionTabIndicatorItem;
+			case 'ProxyApm':
+				return new ProxyApmTabIndicatorItem;
 			case 'ProxyTimeouts':
 				return new ProxyTimeoutsTabIndicatorItem;
 			case 'Saml':
 				return new SamlTabIndicatorItem;
+			case 'ScatterPlotAxes':
+				return new ScatterPlotAxesTabIndicatorItem;
+			case 'ScatterPlotDataset':
+				return new ScatterPlotDatasetTabIndicatorItem;
+			case 'ScatterPlotLegend':
+				return new ScatterPlotLegendTabIndicatorItem;
+			case 'ScatterPlotDisplayOptions':
+				return new ScatterPlotDisplayOptionsTabIndicatorItem;
+			case 'ScatterPlotTimePeriod':
+				return new ScatterPlotTimePeriodTabIndicatorItem;
+			case 'ScatterPlotThresholds':
+				return new ScatterPlotThresholdsTabIndicatorItem;
 			case 'Sharing':
 				return new SharingTabIndicatorItem;
 			case 'ExcludedDowntimes':
@@ -363,7 +383,7 @@ class HostMacrosTabIndicatorItem extends TabIndicatorItem {
 	getValue() {
 		return [...document.querySelectorAll('#tbl_macros .form_row')]
 			.filter((row) => {
-				const macro = row.querySelector('textarea[name$="[macro]"]');
+				const macro = row.querySelector('z-textarea-flexible[name$="[macro]"]');
 				const inherited_type = row.querySelector('input[name$="[inherited_type]"]');
 
 				if (inherited_type !== null
@@ -387,7 +407,7 @@ class HostMacrosTabIndicatorItem extends TabIndicatorItem {
 			observer.observe(target_node, {
 				childList: true,
 				attributes: true,
-				attributeFilter: ['value', 'style'], // Use style because textarea don't have value attribute.
+				attributeFilter: ['value'],
 				subtree: true
 			});
 		}
@@ -405,7 +425,7 @@ class HostPrototypeMacrosTabIndicatorItem extends TabIndicatorItem {
 	getValue() {
 		return [...document.querySelectorAll('#tbl_macros .form_row')]
 			.filter((row) => {
-				const macro = row.querySelector('textarea[name$="[macro]"]');
+				const macro = row.querySelector('z-textarea-flexible[name$="[macro]"]');
 				const inherited_type = row.querySelector('input[name$="[inherited_type]"]');
 
 				if (inherited_type !== null
@@ -429,7 +449,7 @@ class HostPrototypeMacrosTabIndicatorItem extends TabIndicatorItem {
 			observer.observe(target_node, {
 				childList: true,
 				attributes: true,
-				attributeFilter: ['value', 'style'], // Use style because textarea don't have value attribute.
+				attributeFilter: ['value'],
 				subtree: true
 			});
 		}
@@ -447,7 +467,7 @@ class TemplateMacrosTabIndicatorItem extends TabIndicatorItem {
 	getValue() {
 		return [...document.querySelectorAll('#tbl_macros .form_row')]
 			.filter((row) => {
-				const macro = row.querySelector('textarea[name$="[macro]"]');
+				const macro = row.querySelector('z-textarea-flexible[name$="[macro]"]');
 				const inherited_type = row.querySelector('input[name$="[inherited_type]"]');
 
 				if (inherited_type !== null
@@ -471,7 +491,7 @@ class TemplateMacrosTabIndicatorItem extends TabIndicatorItem {
 			observer.observe(target_node, {
 				childList: true,
 				attributes: true,
-				attributeFilter: ['value', 'style'], // Use style because textarea don't have value attribute.
+				attributeFilter: ['value'],
 				subtree: true
 			});
 		}
@@ -489,7 +509,7 @@ class TagsTabIndicatorItem extends TabIndicatorItem {
 	getValue() {
 		return [...document.querySelectorAll(this.getElement().getAttribute('href') + ' .tags-table .form_row')]
 			.filter((row) => {
-				const tag = row.querySelector('textarea[name$="[tag]"]');
+				const tag = row.querySelector('z-textarea-flexible[name$="[tag]"]');
 				const type = row.querySelector('input[name$="[type]"]');
 
 				if (type !== null && type.value == TagsTabIndicatorItem.ZBX_PROPERTY_INHERITED) {
@@ -512,7 +532,7 @@ class TagsTabIndicatorItem extends TabIndicatorItem {
 			observer.observe(target_node, {
 				childList: true,
 				attributes: true,
-				attributeFilter: ['value', 'style'], // Use style because textarea don't have value attribute.
+				attributeFilter: ['value'],
 				subtree: true
 			});
 		}
@@ -798,6 +818,25 @@ class ProxyEncryptionTabIndicatorItem extends TabIndicatorItem {
 	}
 }
 
+class ProxyApmTabIndicatorItem extends TabIndicatorItem {
+
+	#data_collection_status;
+
+	constructor() {
+		super(TAB_INDICATOR_TYPE_MARK);
+
+		this.#data_collection_status = document.querySelector('[name="data_collection_status"]');
+	}
+
+	getValue() {
+		return this.#data_collection_status?.checked ?? false;
+	}
+
+	initObserver(element) {
+		this.#data_collection_status?.addEventListener('change', () => this.addAttributes());
+	}
+}
+
 class ProxyTimeoutsTabIndicatorItem extends TabIndicatorItem {
 
 	constructor() {
@@ -815,6 +854,54 @@ class ProxyTimeoutsTabIndicatorItem extends TabIndicatorItem {
 			input.addEventListener('click', () => {
 				this.addAttributes();
 			});
+		}
+	}
+}
+
+class ProxyAccessListTabIndicatorItem extends TabIndicatorItem {
+
+	static PROXY_MODE_ALLOW = 1;
+	static PROXY_GROUP_MODE_ALLOW = 1;
+
+	constructor() {
+		super(TAB_INDICATOR_TYPE_MARK);
+	}
+
+	getValue() {
+		const proxy_mode = document.querySelector('[name="proxy_mode"]:checked');
+
+		if (proxy_mode !== null && proxy_mode.value != ProxyAccessListTabIndicatorItem.PROXY_MODE_ALLOW) {
+			return true;
+		}
+
+		const proxy_group_mode = document.querySelector('[name="proxy_group_mode"]:checked');
+
+		if (proxy_group_mode !== null
+				&& proxy_group_mode.value != ProxyAccessListTabIndicatorItem.PROXY_GROUP_MODE_ALLOW) {
+			return true;
+		}
+
+		return document
+			.querySelectorAll('#proxyids_ .multiselect-list li, #proxy_groupids_ .multiselect-list li')
+			.length > 0;
+	}
+
+	initObserver() {
+		for (const input of document.querySelectorAll('[name="proxy_mode"], [name="proxy_group_mode"]')) {
+			input.addEventListener('change', () => this.addAttributes());
+		}
+
+		for (const id of ['proxyids_', 'proxy_groupids_']) {
+			const target_node = document.getElementById(id);
+
+			if (target_node !== null) {
+				const observer = new MutationObserver(() => this.addAttributes());
+
+				observer.observe(target_node, {
+					childList: true,
+					subtree: true
+				});
+			}
 		}
 	}
 }
@@ -854,8 +941,10 @@ class LldMacrosTabIndicatorItem extends TabIndicatorItem {
 	}
 
 	getValue() {
-		return document
-			.querySelectorAll('#lld_macro_paths tbody tr.form_row > td:first-child > textarea:not(:placeholder-shown)')
+		return [...document.querySelectorAll(
+				'#lld_macro_paths tbody tr.form_row > td:first-child > z-textarea-flexible'
+			)]
+			.filter(z_textarea_flexible => z_textarea_flexible.value !== '')
 			.length;
 	}
 
@@ -870,7 +959,7 @@ class LldMacrosTabIndicatorItem extends TabIndicatorItem {
 			observer.observe(target_node, {
 				childList: true,
 				attributes: true,
-				attributeFilter: ['value', 'style'], // Use style because textarea don't have value attribute.
+				attributeFilter: ['value'],
 				subtree: true
 			});
 		}
@@ -884,10 +973,9 @@ class FiltersTabIndicatorItem extends TabIndicatorItem {
 	}
 
 	getValue() {
-		const form_rows = document
-			.querySelectorAll('#conditions tbody .form_row > td > input.macro:not(:placeholder-shown)');
-
-		return [...form_rows].filter((row) => !row.readOnly || row.dataset.discovered).length;
+		return [...document.querySelectorAll('#conditions tbody .form_row > td > z-textarea-flexible.js-macro')]
+			.filter(el => el.value !== '')
+			.length;
 	}
 
 	initObserver() {
@@ -1081,7 +1169,7 @@ class ExcludedDowntimesTabIndicatorItem extends TabIndicatorItem {
 
 	getValue() {
 		return document
-			.querySelectorAll('#excluded-downtimes tbody tr')
+			.querySelectorAll('#excluded-downtimes tbody tr:not(.error-container-row)')
 			.length;
 	}
 
@@ -1370,6 +1458,12 @@ class GraphAxesTabIndicatorItem extends TabIndicatorItem {
 			}
 		}
 
+		for (const checkbox of document.querySelectorAll('#lefty_unsigned, #righty_unsigned')) {
+			if (checkbox.checked) {
+				return true;
+			}
+		}
+
 		for (const input of document.querySelectorAll('#lefty_min, #lefty_max, #righty_min, #righty_max')) {
 			if (!input.disabled && input.value !== '') {
 				return true;
@@ -1433,7 +1527,9 @@ class GraphDisplayOptionsTabIndicatorItem extends TabIndicatorItem {
 	}
 
 	getValue() {
-		const names = ['source', 'simple_triggers', 'working_time', 'percentile_left', 'percentile_right'];
+		const names = ['source', 'simple_triggers', 'working_time', 'show_hostnames', 'percentile_left',
+			'percentile_right'
+		];
 
 		for (const name of names) {
 			const elem = document.querySelector("[name='" + name + "']:checked");
@@ -1829,6 +1925,207 @@ class PieLegendTabIndicatorItem extends TabIndicatorItem {
 		if (legend_columns !== null
 				&& legend_columns.value != PieLegendTabIndicatorItem.PIE_CHART_LEGEND_COLUMNS_MAX) {
 			return true;
+		}
+
+		return false;
+	}
+
+	initObserver() {
+		document.getElementById('tabs').addEventListener(TAB_INDICATOR_UPDATE_EVENT, () => {
+			this.addAttributes();
+		});
+	}
+}
+
+class ScatterPlotAxesTabIndicatorItem extends TabIndicatorItem {
+
+	static SCATTER_PLOT_AXIS_UNITS_AUTO = 0;
+
+	constructor() {
+		super(TAB_INDICATOR_TYPE_MARK);
+	}
+
+	getValue() {
+		for (const checkbox of document.querySelectorAll('#x_axis, #y_axis')) {
+			if (!checkbox.checked) {
+				return true;
+			}
+		}
+
+		for (const input of document.querySelectorAll('#x_axis_min, #y_axis_min, #x_axis_max, #y_axis_max')) {
+			if (!input.disabled && input.value !== '') {
+				return true;
+			}
+		}
+
+		for (const input of document.querySelectorAll('#x_axis_units, #y_axis_units')) {
+			if (!input.disabled && input.value != ScatterPlotAxesTabIndicatorItem.SCATTER_PLOT_AXIS_UNITS_AUTO) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	initObserver() {
+		document.getElementById('tabs').addEventListener(TAB_INDICATOR_UPDATE_EVENT, () => {
+			this.addAttributes();
+		});
+	}
+}
+
+class ScatterPlotDatasetTabIndicatorItem extends TabIndicatorItem {
+
+	constructor() {
+		super(TAB_INDICATOR_TYPE_COUNT);
+	}
+
+	getValue() {
+		return document
+			.querySelectorAll('#data_set .list-accordion-item')
+			.length;
+	}
+
+	initObserver() {
+		const target_node = document.querySelector('#data_set');
+
+		if (target_node !== null) {
+			const observer = new MutationObserver(() => {
+				this.addAttributes();
+			});
+
+			observer.observe(target_node, {
+				childList: true,
+				subtree: true
+			});
+		}
+	}
+}
+
+class ScatterPlotDisplayOptionsTabIndicatorItem extends TabIndicatorItem {
+
+	constructor() {
+		super(TAB_INDICATOR_TYPE_MARK);
+	}
+
+	getValue() {
+		const names = ['source', 'show_hostnames'];
+
+		for (const name of names) {
+			const elem = document.querySelector("[name='" + name + "']:checked");
+			if (elem !== null && elem.value > 0) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	initObserver() {
+		document.getElementById('tabs').addEventListener(TAB_INDICATOR_UPDATE_EVENT, () => {
+			this.addAttributes();
+		});
+	}
+}
+
+class ScatterPlotTimePeriodTabIndicatorItem extends TabIndicatorItem {
+
+	constructor() {
+		super(TAB_INDICATOR_TYPE_MARK);
+	}
+
+	getValue() {
+		const element = document.querySelector('input[name="time_period[data_source]"]');
+
+		if (element !== null) {
+			return !element.checked;
+		}
+
+		return false;
+	}
+
+	initObserver() {
+		document.getElementById('tabs').addEventListener(TAB_INDICATOR_UPDATE_EVENT, () => {
+			this.addAttributes();
+		});
+	}
+}
+
+class ScatterPlotLegendTabIndicatorItem extends TabIndicatorItem {
+
+	static SCATTER_PLOT_LEGEND_LINES_MIN = 1;
+	static SCATTER_PLOT_LEGEND_COLUMNS_MAX = 4;
+	static SCATTER_PLOT_LEGEND_LINES_MODE_FIXED = 0;
+
+	constructor() {
+		super(TAB_INDICATOR_TYPE_MARK);
+	}
+
+	getValue() {
+		const legend = document.getElementById('legend');
+
+		if (legend !== null && !legend.checked) {
+			return true;
+		}
+
+		const legend_aggregation = document.getElementById('legend_aggregation');
+
+		if (legend_aggregation !== null && legend_aggregation.checked) {
+			return true;
+		}
+
+		const legend_lines_mode = document.querySelector('[name="legend_lines_mode"]:checked');
+
+		if (legend_lines_mode !== null
+				&& legend_lines_mode.value != ScatterPlotLegendTabIndicatorItem.SCATTER_PLOT_LEGEND_LINES_MODE_FIXED) {
+			return true;
+		}
+
+		const legend_lines = document.getElementById('legend_lines');
+
+		if (legend_lines !== null
+				&& legend_lines.value != ScatterPlotLegendTabIndicatorItem.SCATTER_PLOT_LEGEND_LINES_MIN) {
+			return true;
+		}
+
+		const legend_columns = document.getElementById('legend_columns');
+
+		if (legend_columns !== null
+				&& legend_columns.value != ScatterPlotLegendTabIndicatorItem.SCATTER_PLOT_LEGEND_COLUMNS_MAX) {
+			return true;
+		}
+
+		return false;
+	}
+
+	initObserver() {
+		document.getElementById('tabs').addEventListener(TAB_INDICATOR_UPDATE_EVENT, () => {
+			this.addAttributes();
+		});
+	}
+}
+
+class ScatterPlotThresholdsTabIndicatorItem extends TabIndicatorItem {
+
+	constructor() {
+		super(TAB_INDICATOR_TYPE_MARK);
+	}
+
+	getValue() {
+		const interpolation = document.getElementById('interpolation');
+
+		if (interpolation !== null && interpolation.checked) {
+			return true;
+		}
+
+		const thresholds_table = document.getElementById('thresholds-table');
+
+		if (thresholds_table !== null) {
+			for (const input of thresholds_table.querySelectorAll('input[name$="_axis_threshold]"]')) {
+				if (input.value !== '') {
+					return true;
+				}
+			}
 		}
 
 		return false;

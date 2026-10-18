@@ -16,6 +16,7 @@
 #include "async_worker.h"
 #include "async_queue.h"
 
+#include "zbxcacheconfig.h"
 #include "zbxstr.h"
 #include "zbxalgo.h"
 #include "zbxpoller.h"
@@ -141,13 +142,27 @@ void	zbx_async_manager_queue_get(zbx_async_manager_t *manager, zbx_vector_poller
 	async_task_queue_unlock(&manager->queue);
 }
 
-void	zbx_async_manager_requeue(zbx_async_manager_t *manager, zbx_uint64_t itemid, int errcode, int lastclock)
+void	zbx_async_manager_requeue(zbx_async_manager_t *manager, zbx_uint64_t itemid, int errcode, int lastclock,
+		const zbx_dc_cached_data_t *cached_data)
 {
 	async_task_queue_lock(&manager->queue);
 
 	zbx_vector_uint64_append(&manager->queue.itemids, itemid);
 	zbx_vector_int32_append(&manager->queue.errcodes, errcode);
 	zbx_vector_int32_append(&manager->queue.lastclocks, lastclock);
+
+	if (SUCCEED == zbx_dc_config_poller_type_has_cached_data(manager->queue.poller_type))
+	{
+		if (NULL != cached_data)
+			zbx_vector_dc_cached_data_append(&manager->queue.cached_datas, *cached_data);
+		else
+		{
+			zbx_dc_cached_data_t	default_cached_data;
+
+			zbx_dc_config_cached_data_init(&default_cached_data);
+			zbx_vector_dc_cached_data_append(&manager->queue.cached_datas, default_cached_data);
+		}
+	}
 
 	async_task_queue_unlock(&manager->queue);
 }
@@ -216,10 +231,32 @@ void	zbx_interface_status_free(zbx_interface_status_t *interface_status)
 
 void	zbx_poller_item_free(zbx_poller_item_t *poller_item)
 {
-	zbx_clean_items(poller_item->items, poller_item->num, poller_item->results);
-	zbx_dc_config_clean_items(poller_item->items, NULL, (size_t)poller_item->num);
+	switch (poller_item->poller_type)
+	{
+		case ZBX_POLLER_TYPE_AGENT:
+			zbx_clean_agent_items(poller_item->items.agent_items, poller_item->num, poller_item->results);
+			break;
+		case ZBX_POLLER_TYPE_SNMP:
+			zbx_clean_snmp_items(poller_item->items.snmp_items, poller_item->num, poller_item->results);
+			break;
+		case ZBX_POLLER_TYPE_HTTPAGENT:
+			zbx_clean_httpagent_items(poller_item->items.httpagent_items, poller_item->num,
+					poller_item->results);
+			break;
+		case ZBX_POLLER_TYPE_TELEMETRY_QUERY:
+			zbx_clean_telemetry_query_items(poller_item->items.telemetry_query_items, poller_item->num,
+					poller_item->results);
+			break;
+	}
 	zbx_free(poller_item->results);
 	zbx_free(poller_item->errcodes);
-	zbx_free(poller_item->items);
+	zbx_free(poller_item->items.any);
+
+	if (NULL != poller_item->apm_db_config)
+	{
+		zbx_apm_db_config_clear(poller_item->apm_db_config);
+		zbx_free(poller_item->apm_db_config);
+	}
+
 	zbx_free(poller_item);
 }

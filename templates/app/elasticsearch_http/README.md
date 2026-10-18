@@ -10,7 +10,7 @@ They are getting values from REST API `_cluster/health`, `_cluster/stats`, `_nod
 
 ## Requirements
 
-Zabbix version: 7.4 and higher.
+Zabbix version: 8.0 and higher.
 
 ## Tested versions
 
@@ -19,7 +19,7 @@ This template has been tested on:
 
 ## Configuration
 
-> Zabbix should be configured according to the instructions in the [Templates out of the box](https://www.zabbix.com/documentation/7.4/manual/config/templates_out_of_the_box) section.
+> Zabbix should be configured according to the instructions in the [Templates out of the box](https://www.zabbix.com/documentation/8.0/manual/config/templates_out_of_the_box) section.
 
 ## Setup
 
@@ -33,11 +33,11 @@ This template has been tested on:
 
 |Name|Description|Default|
 |----|-----------|-------|
-|{$ELASTICSEARCH.USERNAME}|<p>The username of the Elasticsearch.</p>||
-|{$ELASTICSEARCH.PASSWORD}|<p>The password of the Elasticsearch.</p>||
-|{$ELASTICSEARCH.HOST}|<p>The hostname or IP address of the Elasticsearch host.</p>|`<SET ELASTICSEARCH HOST>`|
-|{$ELASTICSEARCH.PORT}|<p>The port of the Elasticsearch host.</p>|`9200`|
-|{$ELASTICSEARCH.SCHEME}|<p>The scheme of the Elasticsearch (http/https).</p>|`http`|
+|{$ELASTICSEARCH.USERNAME}|<p>Elasticsearch username.</p>||
+|{$ELASTICSEARCH.PASSWORD}|<p>Elasticsearch password.</p>||
+|{$ELASTICSEARCH.HOST}|<p>Elasticsearch host.</p>||
+|{$ELASTICSEARCH.PORT}|<p>Elasticsearch port.</p>|`9200`|
+|{$ELASTICSEARCH.SCHEME}|<p>Elasticsearch HTTP scheme.</p>|`http`|
 |{$ELASTICSEARCH.RESPONSE_TIME.MAX.WARN}|<p>The ES cluster maximum response time in seconds for trigger expression.</p>|`10s`|
 |{$ELASTICSEARCH.QUERY_LATENCY.MAX.WARN}|<p>Maximum of query latency in milliseconds for trigger expression.</p>|`100`|
 |{$ELASTICSEARCH.FETCH_LATENCY.MAX.WARN}|<p>Maximum of fetch latency in milliseconds for trigger expression.</p>|`100`|

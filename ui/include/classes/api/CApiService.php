@@ -55,6 +55,13 @@ class CApiService {
 	protected $sortColumns = [];
 
 	/**
+	 * An array of fields that can be used for grouping.
+	 *
+	 * @var array
+	 */
+	protected $groupByColumns = [];
+
+	/**
 	 * An array of allowed get() options that are supported by all APIs.
 	 *
 	 * @var array
@@ -273,24 +280,17 @@ class CApiService {
 	 */
 	protected function unsetExtraFields(array $objects, array $fields, $output = []) {
 		// find the fields that have not been requested
-		$extraFields = [];
+		$extra_fields = [];
 		foreach ($fields as $field) {
 			if (!$this->outputIsRequested($field, $output)) {
-				$extraFields[] = $field;
+				$extra_fields[$field] = true;
 			}
 		}
 
 		// unset these fields
-		if ($extraFields) {
-			foreach ($objects as &$object) {
-				foreach ($extraFields as $field) {
-					unset($object[$field]);
-				}
-			}
-			unset($object);
-		}
-
-		return $objects;
+		return $extra_fields
+			? array_map(static fn (array $row) => array_diff_key($row, $extra_fields), $objects)
+			: $objects;
 	}
 
 	/**
@@ -390,7 +390,7 @@ class CApiService {
 
 		$sqlParts = [
 			'select' => [$this->fieldId($this->pk($tableName), $tableAlias)],
-			'from' => [$this->tableId($tableName, $tableAlias)],
+			'from' => $this->tableId($tableName, $tableAlias),
 			'where' => [],
 			'group' => [],
 			'order' => [],
@@ -411,72 +411,74 @@ class CApiService {
 
 	/**
 	 * Returns DISTINCT modifier for sql statements with multiple joins and without aggregations.
-	 *
-	 * @param array $sql_parts  An SQL parts array.
-	 *
-	 * @return string
 	 */
-	protected static function dbDistinct(array $sql_parts) {
-		if (preg_grep('/^COUNT\(/', $sql_parts['select'])) {
-			return '';
-		}
+	private static function dbDistinct(array $sql_parts): bool {
+		if (array_key_exists('join', $sql_parts)) {
+			foreach ($sql_parts['join'] as $join) {
+				$r_table = DB::getSchema($join['table']);
+				$r_table_key = explode(',', $r_table['key']);
+				sort($r_table_key);
 
-		$count = count($sql_parts['from']);
+				$r_table_fields = array_key_exists('using', $join) ? (array) $join['using'] : $join['on'];
+				sort($r_table_fields);
 
-		if ($count == 1 && array_key_exists('left_join', $sql_parts)) {
-			foreach ($sql_parts['left_join'] as $left_join) {
-				$r_table = DB::getSchema($left_join['table']);
-
-				// Increase count when table linked by non-unique column.
-				if ((array_key_exists('using', $left_join) && $left_join['using'] !== $r_table['key'])
-						|| (!array_key_exists('using', $left_join) && $left_join['use_distinct'])) {
-					$count++;
-					break;
+				// Apply DISTINCT when table linked by non-unique column(s).
+				if ($r_table_key !== $r_table_fields) {
+					return true;
 				}
 			}
 		}
 
-		return ($count > 1 ? ' DISTINCT' : '');
+		return false;
 	}
 
 	/**
 	 * Creates a SELECT SQL query from the given SQL parts array.
-	 *
-	 * @param array $sqlParts	An SQL parts array
-	 *
-	 * @return string			The resulting SQL query
 	 */
-	protected static function createSelectQueryFromParts(array $sqlParts) {
-		$sql_left_join = '';
-		if (array_key_exists('left_join', $sqlParts)) {
-			$l_table = DB::getSchema($sqlParts['left_table']['table']);
-
-			foreach ($sqlParts['left_join'] as $left_join) {
-				$sql_left_join .= ' LEFT JOIN '.$left_join['table'].' '.$left_join['alias'].' ON ';
-				$sql_left_join .= array_key_exists('condition', $left_join)
-					? $left_join['condition']
-					: $sqlParts['left_table']['alias'].'.'.$l_table['key'].'='.
-						$left_join['alias'].'.'.$left_join['using'];
-			}
-
-			// Moving a left table to the end.
-			$table_id = $sqlParts['left_table']['table'].' '.$sqlParts['left_table']['alias'];
-			unset($sqlParts['from'][array_search($table_id, $sqlParts['from'])]);
-			$sqlParts['from'][] = $table_id;
+	protected static function createSelectQueryFromParts(array $sql_parts): string {
+		if (array_key_exists('left_join', $sql_parts)) {
+			trigger_error('The CApiService database framework no longer supports "left_join". '.
+				'Please use "join" with the "type" => "left" option instead.', E_USER_ERROR
+			);
 		}
 
-		$sqlSelect = implode(',', array_unique($sqlParts['select']));
-		$sqlFrom = implode(',', array_unique($sqlParts['from']));
-		$sqlWhere = empty($sqlParts['where']) ? '' : ' WHERE '.implode(' AND ', array_unique($sqlParts['where']));
-		$sqlGroup = empty($sqlParts['group']) ? '' : ' GROUP BY '.implode(',', array_unique($sqlParts['group']));
-		$sqlOrder = empty($sqlParts['order']) ? '' : ' ORDER BY '.implode(',', array_unique($sqlParts['order']));
+		$sql_from = ' FROM '.$sql_parts['from'];
+		$from_alias = explode(' ', $sql_parts['from']);
+		$from_alias = end($from_alias);
 
-		return 'SELECT'.self::dbDistinct($sqlParts).' '.$sqlSelect.
-				' FROM '.$sqlFrom.
-				$sql_left_join.
-				$sqlWhere.
-				$sqlGroup.
-				$sqlOrder;
+		if (array_key_exists('join', $sql_parts)) {
+			foreach ($sql_parts['join'] as $r_alias => $join) {
+				$l_alias = array_key_exists('left_table', $join) ? $join['left_table'] : $from_alias;
+
+				$sql_join_conditions = [];
+
+				if (array_key_exists('using', $join)) {
+					foreach ((array) $join['using'] as $field) {
+						$sql_join_conditions[] = $l_alias.'.'.$field.'='.$r_alias.'.'.$field;
+					}
+				}
+				else {
+					foreach ($join['on'] as $l_field => $r_field) {
+						$sql_join_conditions[] = $l_alias.'.'.$l_field.'='.$r_alias.'.'.$r_field;
+					}
+				}
+
+				if (array_key_exists('type', $join) && $join['type'] === 'left') {
+					$sql_from .= ' LEFT';
+				}
+				$sql_from .= ' JOIN '.$join['table'].' '.$r_alias.' ON '.implode(' AND ', $sql_join_conditions);
+			}
+		}
+
+		$sql_select = implode(',', array_unique($sql_parts['select']));
+		if (!str_starts_with($sql_select, 'COUNT(')) {
+			$sql_select = (self::dbDistinct($sql_parts) ? 'DISTINCT ' : '').$sql_select;
+		}
+		$sql_where = $sql_parts['where'] ? ' WHERE '.implode(' AND ', array_unique($sql_parts['where'])) : '';
+		$sql_group = $sql_parts['group'] ? ' GROUP BY '.implode(',', array_unique($sql_parts['group'])) : '';
+		$sql_order = $sql_parts['order'] ? ' ORDER BY '.implode(',', array_unique($sql_parts['order'])) : '';
+
+		return 'SELECT '.$sql_select.$sql_from.$sql_where.$sql_group.$sql_order;
 	}
 
 	/**
@@ -498,15 +500,15 @@ class CApiService {
 
 		if (array_key_exists('countOutput', $options) && $options['countOutput']
 				&& !$this->requiresPostSqlFiltering($options)) {
-			$has_joins = count($sql_parts['from']) > 1
-				|| (array_key_exists('left_join', $sql_parts) && $sql_parts['left_join']);
+			$has_joins = array_key_exists('join', $sql_parts) && $sql_parts['join'];
 
 			if ($pk_composite && $has_joins) {
 				throw new Exception('Joins with composite primary keys are not supported in this API version.');
 			}
 
 			$sql_parts['select'] = $has_joins
-				? ['COUNT(DISTINCT '.$this->fieldId($pk, $table_alias).') AS rowscount']
+				? ['COUNT('.(self::dbDistinct($sql_parts) ? 'DISTINCT ' : '').$this->fieldId($pk, $table_alias).')'.
+					' AS rowscount']
 				: ['COUNT(*) AS rowscount'];
 
 			// Select columns used by group count.
@@ -515,9 +517,10 @@ class CApiService {
 					$sql_parts['select'][] = $fields;
 				}
 			}
-			elseif (array_key_exists('groupBy', $options) && is_array($options['groupBy'])) {
+			elseif ($this->groupByColumns && array_key_exists('groupBy', $options) && is_array($options['groupBy'])) {
 				foreach ($options['groupBy'] as $field) {
-					if (is_string($field) && $this->hasField($field, $table_name)) {
+					if (is_string($field) && in_array($field, $this->groupByColumns)
+							&& $this->hasField($field, $table_name)) {
 						$field = $this->fieldId($field, $table_alias);
 
 						array_unshift($sql_parts['select'], $field);
@@ -526,11 +529,13 @@ class CApiService {
 				}
 			}
 		}
-		elseif (array_key_exists('groupBy', $options) && is_array($options['groupBy']) && $options['groupBy']) {
+		elseif ($this->groupByColumns && array_key_exists('groupBy', $options) && is_array($options['groupBy'])
+					&& $options['groupBy']) {
 			$sql_parts['select'] = [];
 
 			foreach ($options['groupBy'] as $field) {
-				if (is_string($field) && $this->hasField($field, $table_name)) {
+				if (is_string($field) && in_array($field, $this->groupByColumns)
+						&& $this->hasField($field, $table_name)) {
 					$field = $this->fieldId($field, $table_alias);
 
 					array_unshift($sql_parts['select'], $field);
@@ -614,8 +619,9 @@ class CApiService {
 
 		$allowed_sort_fields = $this->sortColumns;
 
-		if (array_key_exists('groupBy', $options) && is_array($options['groupBy']) && $options['groupBy']) {
-			$allowed_sort_fields = array_intersect($this->sortColumns, $options['groupBy']);
+		if ($this->groupByColumns && array_key_exists('groupBy', $options) && is_array($options['groupBy'])
+				&& $options['groupBy']) {
+			$allowed_sort_fields = array_intersect($this->sortColumns, $this->groupByColumns, $options['groupBy']);
 
 			if (array_key_exists('countOutput', $options) && $options['countOutput']) {
 				$allowed_sort_fields[] = 'rowscount';
@@ -659,7 +665,7 @@ class CApiService {
 	 */
 	protected function applyQuerySortField($sortfield, $sortorder, $alias, array $sqlParts) {
 		// add sort field to select if distinct is used
-		if ((count($sqlParts['from']) > 1 || (isset($sqlParts['left_join']) && count($sqlParts['left_join'])))
+		if (array_key_exists('join', $sqlParts) && $sqlParts['join']
 				&& !str_in_array($alias.'.'.$sortfield, $sqlParts['select'])
 				&& !str_in_array($alias.'.*', $sqlParts['select'])) {
 
@@ -706,24 +712,6 @@ class CApiService {
 	}
 
 	/**
-	 * Adds the given field to the ORDER BY part of the $sqlParts array.
-	 *
-	 * @param string $fieldId
-	 * @param array  $sqlParts
-	 * @param string $sortorder		sort direction, ZBX_SORT_UP or ZBX_SORT_DOWN
-	 *
-	 * @return array
-	 */
-	protected function addQueryOrder($fieldId, array $sqlParts, $sortorder = null) {
-		// some databases require the sortable column to be present in the SELECT part of the query
-		$sqlParts = $this->addQuerySelect($fieldId, $sqlParts);
-
-		$sqlParts['order'][$fieldId] = $fieldId.($sortorder ? ' '.$sortorder : '');
-
-		return $sqlParts;
-	}
-
-	/**
 	 * Adds the related objects requested by "select*" options to the resulting object set.
 	 *
 	 * @param array $options
@@ -735,19 +723,6 @@ class CApiService {
 		// must be implemented in each API separately
 
 		return $result;
-	}
-
-	/**
-	 * Deletes the object with the given IDs with respect to relative objects.
-	 *
-	 * The method must be extended to handle relative objects.
-	 *
-	 * @param array $ids
-	 */
-	protected function deleteByIds(array $ids) {
-		DB::delete($this->tableName(), [
-			$this->pk() => $ids
-		]);
 	}
 
 	/**
@@ -777,23 +752,6 @@ class CApiService {
 		}
 
 		return $objects;
-	}
-
-	/**
-	 * An extendObjects() wrapper for singular objects.
-	 *
-	 * @see extendObjects()
-	 *
-	 * @param string $tableName
-	 * @param array  $object
-	 * @param array  $fields
-	 *
-	 * @return mixed
-	 */
-	protected function extendObject($tableName, array $object, array $fields) {
-		$objects = $this->extendObjects($tableName, [$object], $fields);
-
-		return reset($objects);
 	}
 
 	/**
@@ -845,50 +803,6 @@ class CApiService {
 	}
 
 	/**
-	 * Checks that each object has a valid ID.
-	 *
-	 * @param array $objects
-	 * @param $idField			name of the field that contains the id
-	 * @param $messageRequired	error message if no ID is given
-	 * @param $messageEmpty		error message if the ID is empty
-	 * @param $messageInvalid	error message if the ID is invalid
-	 */
-	protected function checkObjectIds(array $objects, $idField, $messageRequired, $messageEmpty, $messageInvalid) {
-		$idValidator = new CIdValidator([
-			'messageEmpty' => $messageEmpty,
-			'messageInvalid' => $messageInvalid
-		]);
-		foreach ($objects as $object) {
-			if (!isset($object[$idField])) {
-				self::exception(ZBX_API_ERROR_PARAMETERS, _params($messageRequired, [$idField]));
-			}
-
-			$this->checkValidator($object[$idField], $idValidator);
-		}
-	}
-
-	/**
-	 * Checks if the object has any fields, that are not defined in the schema or in $extraFields.
-	 *
-	 * @param string $tableName
-	 * @param array  $object
-	 * @param string $error
-	 * @param array  $extraFields	an array of field names, that are not present in the schema, but may be
-	 *								used in requests
-	 *
-	 * @throws APIException
-	 */
-	protected function checkUnsupportedFields($tableName, array $object, $error, array $extraFields = []) {
-		$extraFields = array_flip($extraFields);
-
-		foreach ($object as $field => $value) {
-			if (!DB::hasField($tableName, $field) && !isset($extraFields[$field])) {
-				self::exception(ZBX_API_ERROR_PARAMETERS, $error);
-			}
-		}
-	}
-
-	/**
 	 * Checks if an object contains any of the given parameters.
 	 *
 	 * Example:
@@ -915,11 +829,11 @@ class CApiService {
 	/**
 	 * Throws an API exception.
 	 *
-	 * @param int    $code
-	 * @param string $error
+	 * @throws APIException
 	 */
-	protected static function exception($code = ZBX_API_ERROR_INTERNAL, $error = '') {
-		throw new APIException($code, $error);
+	protected static function exception(int $code = ZBX_API_ERROR_INTERNAL, string $error = '',
+			string $debug_message = '') {
+		throw new APIException($code, $error, $debug_message);
 	}
 
 	/**

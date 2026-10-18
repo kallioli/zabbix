@@ -866,7 +866,7 @@ class WidgetCommunication {
 									[
 										'type' => ZBX_WIDGET_FIELD_TYPE_INT32,
 										'name' => 'layout',
-										'value' => STYLE_TOP
+										'value' => 1 // WidgetForm::LAYOUT_VERTICAL
 									],
 									[
 										'type' => ZBX_WIDGET_FIELD_TYPE_INT32,
@@ -1712,7 +1712,7 @@ class WidgetCommunication {
 									[
 										'type' => ZBX_WIDGET_FIELD_TYPE_INT32,
 										'name' => 'layout',
-										'value' => STYLE_TOP
+										'value' => 1 // WidgetForm::LAYOUT_VERTICAL
 									],
 									[
 										'type' => ZBX_WIDGET_FIELD_TYPE_INT32,
@@ -2070,6 +2070,11 @@ class WidgetCommunication {
 										'value' => 0
 									],
 									[
+										'type' => ZBX_WIDGET_FIELD_TYPE_INT32,
+										'name' => 'show_hostnames',
+										'value' => 1
+									],
+									[
 										'type' => ZBX_WIDGET_FIELD_TYPE_STR,
 										'name' => 'reference',
 										'value' => 'GYNQD'
@@ -2343,6 +2348,11 @@ class WidgetCommunication {
 										'type' => ZBX_WIDGET_FIELD_TYPE_INT32,
 										'name' => 'rf_rate',
 										'value' => 0
+									],
+									[
+										'type' => ZBX_WIDGET_FIELD_TYPE_INT32,
+										'name' => 'show_hostnames',
+										'value' => SVG_GRAPH_LABELS_IN_HOSTNAMES_SHOW
 									]
 								]
 							],
@@ -3413,10 +3423,10 @@ class WidgetCommunication {
 										'name' => 'hostids._reference',
 										'value' => 'CEPBS._hostids'
 									],
-																		[
+									[
 										'type' => ZBX_WIDGET_FIELD_TYPE_INT32,
 										'name' => 'layout',
-										'value' => 1
+										'value' => 1 // WidgetForm::LAYOUT_VERTICAL
 									],
 									[
 										'type' => ZBX_WIDGET_FIELD_TYPE_INT32,

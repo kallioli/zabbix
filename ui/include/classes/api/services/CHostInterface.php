@@ -24,7 +24,6 @@ class CHostInterface extends CApiService {
 		'create' => ['min_user_type' => USER_TYPE_ZABBIX_ADMIN],
 		'update' => ['min_user_type' => USER_TYPE_ZABBIX_ADMIN],
 		'delete' => ['min_user_type' => USER_TYPE_ZABBIX_ADMIN],
-		'replacehostinterfaces' => ['min_user_type' => USER_TYPE_ZABBIX_ADMIN],
 		'massadd' => ['min_user_type' => USER_TYPE_ZABBIX_ADMIN],
 		'massremove' => ['min_user_type' => USER_TYPE_ZABBIX_ADMIN]
 	];
@@ -54,7 +53,7 @@ class CHostInterface extends CApiService {
 
 		$sqlParts = [
 			'select'	=> ['interface' => 'hi.interfaceid'],
-			'from'		=> ['interface' => 'interface hi'],
+			'from'		=> 'interface hi',
 			'where'		=> [],
 			'group'		=> [],
 			'order'		=> [],
@@ -96,10 +95,8 @@ class CHostInterface extends CApiService {
 				return $options['countOutput'] ? '0' : [];
 			}
 
-			$sqlParts['from'][] = 'host_hgset hh';
-			$sqlParts['from'][] = 'permission p';
-			$sqlParts['where'][] = 'hi.hostid=hh.hostid';
-			$sqlParts['where'][] = 'hh.hgsetid=p.hgsetid';
+			$sqlParts['join']['hh'] = ['table' => 'host_hgset', 'using' => 'hostid'];
+			$sqlParts['join']['p'] = ['left_table' => 'hh', 'table' => 'permission', 'using' => 'hgsetid'];
 			$sqlParts['where'][] = 'p.ugsetid='.self::$userData['ugsetid'];
 
 			if ($options['editable']) {
@@ -127,20 +124,17 @@ class CHostInterface extends CApiService {
 		if (!is_null($options['itemids'])) {
 			zbx_value2array($options['itemids']);
 
-			$sqlParts['from']['items'] = 'items i';
+			$sqlParts['join']['i'] = ['table' => 'items', 'using' => 'interfaceid'];
 			$sqlParts['where'][] = dbConditionInt('i.itemid', $options['itemids']);
-			$sqlParts['where']['hi'] = 'hi.interfaceid=i.interfaceid';
 		}
 
 		// triggerids
 		if (!is_null($options['triggerids'])) {
 			zbx_value2array($options['triggerids']);
 
-			$sqlParts['from']['functions'] = 'functions f';
-			$sqlParts['from']['items'] = 'items i';
+			$sqlParts['join']['i'] = ['table' => 'items', 'using' => 'interfaceid'];
+			$sqlParts['join']['f'] = ['left_table' => 'i', 'table' => 'functions', 'using' => 'itemid'];
 			$sqlParts['where'][] = dbConditionInt('f.triggerid', $options['triggerids']);
-			$sqlParts['where']['hi'] = 'hi.hostid=i.hostid';
-			$sqlParts['where']['fi'] = 'f.itemid=i.itemid';
 		}
 
 		// search
@@ -159,8 +153,7 @@ class CHostInterface extends CApiService {
 		}
 
 		if (!$options['countOutput'] && $this->outputIsRequested('details', $options['output'])) {
-			$sqlParts['left_join'][] = ['alias' => 'his', 'table' => 'interface_snmp', 'using' => 'interfaceid'];
-			$sqlParts['left_table'] = ['alias' => $this->tableAlias, 'table' => $this->tableName];
+			$sqlParts['join']['his'] = ['type' => 'left', 'table' => 'interface_snmp', 'using' => 'interfaceid'];
 		}
 
 		$sqlParts = $this->applyQueryOutputOptions($this->tableName(), $this->tableAlias(), $options, $sqlParts);
@@ -197,7 +190,7 @@ class CHostInterface extends CApiService {
 		if ($this->outputIsRequested('details', $options['output'])) {
 			foreach ($result as &$value) {
 				$snmp_fields = ['version', 'bulk', 'community', 'securityname', 'securitylevel', 'authpassphrase',
-					'privpassphrase', 'authprotocol', 'privprotocol', 'contextname', 'max_repetitions'
+					'privpassphrase', 'authprotocol', 'privprotocol', 'contextname', 'max_repetitions', 'retries'
 				];
 
 				$interface_type = $value['type'];
@@ -391,6 +384,8 @@ class CHostInterface extends CApiService {
 
 			$this->checkSnmpMaxRepetitions($interface);
 
+			$this->checkSnmpRetries($interface);
+
 			$this->checkSnmpBulk($interface);
 
 			$this->checkSnmpSecurityLevel($interface);
@@ -411,7 +406,8 @@ class CHostInterface extends CApiService {
 	protected function sanitizeSnmpFields(array $interfaces): array {
 		$default_fields = [
 			'community' => '',
-			'max_repetitions' =>  DB::getDefault('interface_snmp', 'max_repetitions'),
+			'max_repetitions' => DB::getDefault('interface_snmp', 'max_repetitions'),
+			'retries' => DB::getDefault('interface_snmp', 'retries'),
 			'securityname' => '',
 			'securitylevel' => DB::getDefault('interface_snmp', 'securitylevel'),
 			'authpassphrase' => '',
@@ -1072,11 +1068,33 @@ class CHostInterface extends CApiService {
 	 */
 	protected function checkSnmpMaxRepetitions(array $interface) {
 		if (($interface['details']['version'] == SNMP_V2C || $interface['details']['version'] == SNMP_V3)
-				&& (array_key_exists('max_repetitions', $interface['details'])
-					&& (!is_numeric($interface['details']['max_repetitions'])
-						|| $interface['details']['max_repetitions'] < 1
-						|| $interface['details']['max_repetitions'] > ZBX_MAX_INT32))) {
-			self::exception(ZBX_API_ERROR_PARAMETERS, _('Incorrect arguments passed to function.'));
+				&& array_key_exists('max_repetitions', $interface['details'])) {
+			$rules = ['type' => API_OBJECT, 'flags' => API_ALLOW_UNEXPECTED, 'fields' => [
+				'max_repetitions' =>	['type' => API_INT32, 'flags' => API_ALLOW_USER_MACRO, 'in' => implode(':', [1, ZBX_MAX_INT32]), 'length' => DB::getFieldLength('interface_snmp', 'max_repetitions')]
+			]];
+
+			if (!CApiInputValidator::validate($rules, $interface['details'], '', $error)) {
+				self::exception(ZBX_API_ERROR_PARAMETERS, _('Incorrect arguments passed to function.'));
+			}
+		}
+	}
+
+	/**
+	 * Check SNMP retries.
+	 *
+	 * @param array $interface
+	 *
+	 * @throws APIException if "retries" value is incorrect.
+	 */
+	protected function checkSnmpRetries(array $interface) {
+		if (array_key_exists('retries', $interface['details'])) {
+			$rules = ['type' => API_OBJECT, 'flags' => API_ALLOW_UNEXPECTED, 'fields' => [
+				'retries' =>	['type' => API_INT32, 'flags' => API_ALLOW_USER_MACRO, 'in' => implode(':', [SNMP_RETRIES_MIN, SNMP_RETRIES_MAX]), 'length' => DB::getFieldLength('interface_snmp', 'retries')]
+			]];
+
+			if (!CApiInputValidator::validate($rules, $interface['details'], '', $error)) {
+				self::exception(ZBX_API_ERROR_PARAMETERS, _('Incorrect arguments passed to function.'));
+			}
 		}
 	}
 
@@ -1163,6 +1181,7 @@ class CHostInterface extends CApiService {
 			$sqlParts = $this->addQuerySelect(dbConditionCoalesce('his.max_repetitions', '10', 'max_repetitions'),
 				$sqlParts
 			);
+			$sqlParts = $this->addQuerySelect(dbConditionCoalesce('his.retries', '5', 'retries'), $sqlParts);
 			$sqlParts = $this->addQuerySelect(dbConditionCoalesce('his.securityname', '', 'securityname'), $sqlParts);
 			$sqlParts = $this->addQuerySelect(
 				dbConditionCoalesce('his.securitylevel', ITEM_SNMPV3_SECURITYLEVEL_NOAUTHNOPRIV, 'securitylevel'),

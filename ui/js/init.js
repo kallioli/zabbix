@@ -56,6 +56,12 @@ document.addEventListener('click', e => {
 	}
 });
 
+document.addEventListener('mouseover', ({target}) => {
+	if (target.matches('label') && target.scrollWidth > target.clientWidth) {
+		target.title = target.textContent;
+	}
+});
+
 jQuery(function($) {
 
 	$.propHooks.disabled = {
@@ -117,10 +123,6 @@ jQuery(function($) {
 		var sections;
 
 		switch (data.type) {
-			case 'history':
-				sections = getMenuPopupHistory(data);
-				break;
-
 			case 'host':
 				sections = getMenuPopupHost(data, $obj);
 				break;

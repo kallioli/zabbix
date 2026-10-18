@@ -7,7 +7,7 @@ This template is designed for the effortless deployment of Apache Kafka monitori
 
 ## Requirements
 
-Zabbix version: 7.4 and higher.
+Zabbix version: 8.0 and higher.
 
 ## Tested versions
 
@@ -16,7 +16,7 @@ This template has been tested on:
 
 ## Configuration
 
-> Zabbix should be configured according to the instructions in the [Templates out of the box](https://www.zabbix.com/documentation/7.4/manual/config/templates_out_of_the_box) section.
+> Zabbix should be configured according to the instructions in the [Templates out of the box](https://www.zabbix.com/documentation/8.0/manual/config/templates_out_of_the_box) section.
 
 ## Setup
 
@@ -29,8 +29,8 @@ Metrics are collected by JMX.
 
 |Name|Description|Default|
 |----|-----------|-------|
-|{$KAFKA.USER}||`zabbix`|
-|{$KAFKA.PASSWORD}||`zabbix`|
+|{$KAFKA.USER}|<p>Kafka JMX user.</p>|`zabbix`|
+|{$KAFKA.PASSWORD}|<p>Kafka JMX password.</p>|`zabbix`|
 |{$KAFKA.TOPIC.MATCHES}|<p>Filter of discoverable topics</p>|`.*`|
 |{$KAFKA.TOPIC.NOT_MATCHES}|<p>Filter to exclude discovered topics</p>|`__consumer_offsets`|
 |{$KAFKA.NET_PROC_AVG_IDLE.MIN.WARN}|<p>The minimum Network processor average idle percent for trigger expression.</p>|`30`|

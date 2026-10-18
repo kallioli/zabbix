@@ -19,15 +19,12 @@
 #include "zbxdb.h"
 #include "zbxdbschema.h"
 #include "zbxtypes.h"
+#include "zbxalgo.h"
 
 #if defined(HAVE_MYSQL)
 #	include "mysql.h"
 #	include "errmsg.h"
 #	include "mysqld_error.h"
-#elif defined(HAVE_ORACLE)
-#	include "zbxcrypto.h"
-#	include "zbxdbschema.h"
-#	include "oci.h"
 #elif defined(HAVE_POSTGRESQL)
 #	include <libpq-fe.h>
 #elif defined(HAVE_SQLITE3)
@@ -35,12 +32,21 @@
 #	include <zbxmutexs.h>
 #endif
 
+ZBX_PTR_VECTOR_DECL(dbconn_ptr, zbx_dbconn_t *)
+
 typedef enum
 {
 	DBCONN_TYPE_UNMANAGED,
 	DBCONN_TYPE_MANAGED
 }
 zbx_dbconn_type_t;
+
+typedef enum
+{
+	DBCONN_MODE_DEFAULT,
+	DBCONN_MODE_DEFERRED_BEGIN
+}
+zbx_dbconn_mode_t;
 
 struct zbx_dbconn
 {
@@ -57,8 +63,10 @@ struct zbx_dbconn
 	int			connect_options;
 
 	zbx_dbconn_type_t	managed;	/* managed by connection pool */
-
+	zbx_dbconn_mode_t	mode;
 	const zbx_db_config_t	*config;
+
+	double			last_used;	/* last time the connection was used */
 
 #if defined(HAVE_MYSQL)
 	MYSQL			*conn;
@@ -66,6 +74,7 @@ struct zbx_dbconn
 	int			txn_begin;		/* transaction begin statement is executed */
 #elif defined(HAVE_POSTGRESQL)
 	PGconn			*conn;
+	char			pg_escape_backslash;
 #elif defined(HAVE_SQLITE3)
 	sqlite3			*conn;
 	zbx_mutex_t		*sqlite_access;
@@ -75,13 +84,20 @@ struct zbx_dbconn
 int	dbconn_init(char **error);
 void	dbconn_deinit(void);
 
-void	dbconn_set_managed(zbx_dbconn_t *db);
+void	dbconn_set_managed(zbx_dbconn_t *db, zbx_dbconn_type_t type);
+int	dbconn_is_open(zbx_dbconn_t *db);
+int	dbconn_open_retry(zbx_dbconn_t *db);
+void	dbconn_close(zbx_dbconn_t *db);
 
-char	*db_dyn_escape_string(const char *src, size_t max_bytes, size_t max_chars, zbx_escape_sequence_t flag);
-char	*db_dyn_escape_field_len(const zbx_db_field_t *field, const char *src, zbx_escape_sequence_t flag);
-int	db_is_escape_sequence(char c);
+char	*dbconn_dyn_escape_string(const zbx_dbconn_t *db, const char *src, size_t max_bytes, size_t max_chars,
+		zbx_escape_sequence_t flag);
+char	*dbconn_dyn_escape_field_len(const zbx_dbconn_t *db, const zbx_db_field_t *field, const char *src,
+		zbx_escape_sequence_t flag);
+int	dbconn_is_escape_sequence(const zbx_dbconn_t *db, char c);
 
 zbx_uint32_t	db_get_server_version(void);
+
+void	dbconn_pool_sync_info(zbx_dbconn_pool_stats_t *stats, zbx_dbconn_pool_config_t *cfg);
 
 #endif
 

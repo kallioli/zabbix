@@ -161,7 +161,7 @@ class testFormAdministrationMediaTypes extends CWebTest {
 		$this->assertEquals(['Media type', 'Message templates', 'Options'], $form->getTabs());
 
 		// Check available media type types.
-		$this->assertEquals(['Email', 'SMS', 'Script', 'Webhook'], $form->getField('Type')->getOptions()->asText());
+		$this->assertEquals(['Email', 'Push', 'SMS', 'Script', 'Webhook'], $form->getField('Type')->getOptions()->asText());
 
 		// Check common fields in Media type and Options tabs. Message templates are covered in separate test.
 		$tabs = [
@@ -689,7 +689,7 @@ class testFormAdministrationMediaTypes extends CWebTest {
 
 	public function getMediaTypeData() {
 		return [
-			// Check that OAuth field is mandatory.
+			// #0 Check that OAuth field is mandatory.
 			[
 				[
 					'expected' => TEST_BAD,
@@ -697,10 +697,12 @@ class testFormAdministrationMediaTypes extends CWebTest {
 						'Name' => 'Test',
 						'Authentication' => 'OAuth'
 					],
-					'error' => 'Field "oauth" is mandatory.'
+					'inline_errors' => [
+						'name:tokens_status' => 'Invalid OAuth configuration'
+					]
 				]
 			],
-			// Check OAuth form validation using Generic SMTP provider.
+			// #1 Check OAuth form validation using Generic SMTP provider.
 			[
 				[
 					'expected' => TEST_BAD,
@@ -716,17 +718,17 @@ class testFormAdministrationMediaTypes extends CWebTest {
 						'Token endpoint' => '',
 						'id:authorization_mode' => 'Manual'
 					],
-					'error' => [
-						'Incorrect value for field "redirection_url": cannot be empty.',
-						'Incorrect value for field "client_id": cannot be empty.',
-						'Incorrect value for field "client_secret": cannot be empty.',
-						'Incorrect value for field "authorization_url": cannot be empty.',
-						'Incorrect value for field "token_url": cannot be empty.',
-						'Incorrect value for field "code": cannot be empty.'
+					'inline_errors' => [
+						'Redirection endpoint' => 'This field cannot be empty.',
+						'Client ID' => 'This field cannot be empty.',
+						'Client secret' => 'This field cannot be empty.',
+						'Authorization endpoint' => 'This field cannot be empty.',
+						'id:code' => 'This field cannot be empty.',
+						'Token endpoint' => 'This field cannot be empty.'
 					]
 				]
 			],
-			// Check OAuth form validation using Gmail provider.
+			// #2 Check OAuth form validation using Gmail provider.
 			[
 				[
 					'expected' => TEST_BAD,
@@ -739,14 +741,14 @@ class testFormAdministrationMediaTypes extends CWebTest {
 						'Client ID' => '',
 						'Client secret' => ''
 					],
-					'error' => [
-						'Incorrect value for field "redirection_url": cannot be empty.',
-						'Incorrect value for field "client_id": cannot be empty.',
-						'Incorrect value for field "client_secret": cannot be empty.'
+					'inline_errors' => [
+						'Redirection endpoint' => 'This field cannot be empty.',
+						'Client ID' => 'This field cannot be empty.',
+						'Client secret' => 'This field cannot be empty.'
 					]
 				]
 			],
-			// Error message when redirection url is empty.
+			// #3 Error message when redirection url is empty.
 			[
 				[
 					'expected' => TEST_BAD,
@@ -759,12 +761,12 @@ class testFormAdministrationMediaTypes extends CWebTest {
 						'Client ID' => 'test',
 						'Client secret' => 'test'
 					],
-					'error' => [
-						'Incorrect value for field "redirection_url": cannot be empty.'
+					'inline_errors' => [
+						'Redirection endpoint' => 'This field cannot be empty.'
 					]
 				]
 			],
-			// Error message when client ID is empty.
+			// #4 Error message when client ID is empty.
 			[
 				[
 					'expected' => TEST_BAD,
@@ -777,12 +779,12 @@ class testFormAdministrationMediaTypes extends CWebTest {
 						'Client ID' => '',
 						'Client secret' => 'test'
 					],
-					'error' => [
-						'Incorrect value for field "client_id": cannot be empty.'
+					'inline_errors' => [
+						'Client ID' => 'This field cannot be empty.'
 					]
 				]
 			],
-			// Error message when client secret is empty.
+			// #5 Error message when client secret is empty.
 			[
 				[
 					'expected' => TEST_BAD,
@@ -797,12 +799,12 @@ class testFormAdministrationMediaTypes extends CWebTest {
 						'Authorization endpoint' => 'test',
 						'Token endpoint' => 'test'
 					],
-					'error' => [
-						'Incorrect value for field "client_secret": cannot be empty.'
+					'inline_errors' => [
+						'Client secret' => 'This field cannot be empty.'
 					]
 				]
 			],
-			// Error message when authorization endpoint is empty.
+			// #6 Error message when authorization endpoint is empty.
 			[
 				[
 					'expected' => TEST_BAD,
@@ -817,12 +819,12 @@ class testFormAdministrationMediaTypes extends CWebTest {
 						'Authorization endpoint' => '',
 						'Token endpoint' => 'test'
 					],
-					'error' => [
-						'Incorrect value for field "authorization_url": cannot be empty.'
+					'inline_errors' => [
+						'Authorization endpoint' => 'This field cannot be empty.'
 					]
 				]
 			],
-			// Error message when authorization endpoint is empty.
+			// #7 Error message when token endpoint is empty.
 			[
 				[
 					'expected' => TEST_BAD,
@@ -837,12 +839,12 @@ class testFormAdministrationMediaTypes extends CWebTest {
 						'Authorization endpoint' => 'test',
 						'Token endpoint' => ''
 					],
-					'error' => [
-						'Incorrect value for field "token_url": cannot be empty.'
+					'inline_errors' => [
+						'Token endpoint' => 'This field cannot be empty.'
 					]
 				]
 			],
-			// Error message when authorization code is empty.
+			// #8 Error message when authorization code is empty.
 			[
 				[
 					'expected' => TEST_BAD,
@@ -858,97 +860,69 @@ class testFormAdministrationMediaTypes extends CWebTest {
 						'Token endpoint' => 'test',
 						'id:authorization_mode' => 'Manual'
 					],
-					'error' => [
-						'Incorrect value for field "code": cannot be empty.'
+					'inline_errors' => [
+						'id:code' => 'This field cannot be empty.'
 					]
 				]
 			],
-			// Empty name.
+			// #9 Empty mandatory fields.
 			[
 				[
 					'expected' => TEST_BAD,
 					'mediatype_tab' => [
-						'Name' => ''
+						'Name' => '',
+						'SMTP server' => '',
+						'Email' => ''
 					],
-					'error' => 'Incorrect value for field "name": cannot be empty.'
+					'inline_errors' => [
+						'Name' => 'This field cannot be empty.',
+						'SMTP server' => 'This field cannot be empty.',
+						'Email' => 'This field cannot be empty.'
+					]
 				]
 			],
-			// Empty space in name.
+			// #10 Mandatory fields with multiple spaces.
 			[
 				[
 					'expected' => TEST_BAD,
 					'mediatype_tab' => [
-						'Name' => '   '
+						'Name' => '   ',
+						'SMTP server' => '   ',
+						'Email' => '   '
 					],
-					'error' => 'Incorrect value for field "name": cannot be empty.'
+					'inline_errors' => [
+						'Name' => 'This field cannot be empty.',
+						'SMTP server' => 'This field cannot be empty.',
+						'Email' => 'This field cannot be empty.'
+					]
 				]
 			],
-			// Duplicate mediatype name.
+			// #11 Duplicate mediatype name.
 			[
 				[
 					'expected' => TEST_BAD,
 					'mediatype_tab' => [
 						'Name' => 'Discord'
 					],
-					'error' => 'Media type "Discord" already exists.'
+					'inline_errors' => [
+						'Name' => 'This object already exists.'
+					]
 				]
 			],
-			// Empty SMTP server.
+			// #12 Too high SMTP server port.
 			[
 				[
 					'expected' => TEST_BAD,
 					'mediatype_tab' => [
-						'Name' => 'Empty SMTP server',
-						'SMTP server' => ''
-					],
-					'error' => 'Invalid parameter "/1/smtp_server": cannot be empty.'
-				]
-			],
-			// Empty space in SMTP server.
-			[
-				[
-					'expected' => TEST_BAD,
-					'mediatype_tab' => [
-						'Name' => 'Empty space in SMTP server',
-						'SMTP server' => '   '
-					],
-					'error' => 'Invalid parameter "/1/smtp_server": cannot be empty.'
-				]
-			],
-			// Too high SMTP server port.
-			[
-				[
-					'expected' => TEST_BAD,
-					'mediatype_tab' => [
-						'Name' => 'Too high SMTP server port',
+						'Name' => 'Too large value in SMTP server port',
 						'SMTP server port' => '99999'
 					],
-					'error' => 'Invalid parameter "/1/smtp_port": value must be one of 0-65535.'
+					'inline_errors' => [
+						'SMTP server port' => 'Value must be less than or equal to 65535.'
+					]
 				]
 			],
-			// Empty Email.
-			[
-				[
-					'expected' => TEST_BAD,
-					'mediatype_tab' => [
-						'Name' => 'Empty email',
-						'Email' => ''
-					],
-					'error' => 'Invalid email address "".'
-				]
-			],
-			// Empty space in Email.
-			[
-				[
-					'expected' => TEST_BAD,
-					'mediatype_tab' => [
-						'Name' => 'Empty space in Email',
-						'Email' => '   '
-					],
-					'error' => 'Invalid email address "".'
-				]
-			],
-			// Empty password for Gmail provider email.
+			// #13 Empty password for Gmail provider email.
 			[
 				[
 					'expected' => TEST_BAD,
@@ -957,10 +931,12 @@ class testFormAdministrationMediaTypes extends CWebTest {
 						'Email provider' => 'Gmail',
 						'Password' => ''
 					],
-					'error' => 'Invalid parameter "/1/passwd": cannot be empty.'
+					'inline_errors' => [
+						'Password' => 'This field cannot be empty.'
+					]
 				]
 			],
-			// Empty password for Gmail relay provider email.
+			// #14 Empty password for Gmail relay provider email.
 			[
 				[
 					'expected' => TEST_BAD,
@@ -970,10 +946,12 @@ class testFormAdministrationMediaTypes extends CWebTest {
 						'Authentication' => 'Email and password',
 						'Password' => ''
 					],
-					'error' => 'Invalid parameter "/1/passwd": cannot be empty.'
+					'inline_errors' => [
+						'Password' => 'This field cannot be empty.'
+					]
 				]
 			],
-			// Empty password for Office365 provider email.
+			// #15 Empty password for Office365 provider email.
 			[
 				[
 					'expected' => TEST_BAD,
@@ -982,10 +960,12 @@ class testFormAdministrationMediaTypes extends CWebTest {
 						'Email provider' => 'Office365',
 						'Password' => ''
 					],
-					'error' => 'Invalid parameter "/1/passwd": cannot be empty.'
+					'inline_errors' => [
+						'Password' => 'This field cannot be empty.'
+					]
 				]
 			],
-			// Empty password for Office365 relay provider email.
+			// #16 Empty password for Office365 relay provider email.
 			[
 				[
 					'expected' => TEST_BAD,
@@ -995,10 +975,12 @@ class testFormAdministrationMediaTypes extends CWebTest {
 						'Authentication' => 'Email and password',
 						'Password' => ''
 					],
-					'error' => 'Invalid parameter "/1/passwd": cannot be empty.'
+					'inline_errors' => [
+						'Password' => 'This field cannot be empty.'
+					]
 				]
 			],
-			// Empty GSM modem.
+			// #17 Empty GSM modem.
 			[
 				[
 					'expected' => TEST_BAD,
@@ -1007,10 +989,12 @@ class testFormAdministrationMediaTypes extends CWebTest {
 						'Type' => 'SMS',
 						'GSM modem' => ''
 					],
-					'error' => 'Invalid parameter "/1/gsm_modem": cannot be empty.'
+					'inline_errors' => [
+						'GSM modem' => 'This field cannot be empty.'
+					]
 				]
 			],
-			// Empty space in GSM modem.
+			// #18 Empty space in GSM modem.
 			[
 				[
 					'expected' => TEST_BAD,
@@ -1019,10 +1003,12 @@ class testFormAdministrationMediaTypes extends CWebTest {
 						'Type' => 'SMS',
 						'GSM modem' => '   '
 					],
-					'error' => 'Invalid parameter "/1/gsm_modem": cannot be empty.'
+					'inline_errors' => [
+						'GSM modem' => 'This field cannot be empty.'
+					]
 				]
 			],
-			// Empty Script name.
+			// #19 Empty Script name.
 			[
 				[
 					'expected' => TEST_BAD,
@@ -1031,10 +1017,12 @@ class testFormAdministrationMediaTypes extends CWebTest {
 						'Type' => 'Script',
 						'Script name' => ''
 					],
-					'error' => 'Invalid parameter "/1/exec_path": cannot be empty.'
+					'inline_errors' => [
+						'Script name' => 'This field cannot be empty.'
+					]
 				]
 			],
-			// Empty space in Script name.
+			// #20 Empty space in Script name.
 			[
 				[
 					'expected' => TEST_BAD,
@@ -1043,10 +1031,12 @@ class testFormAdministrationMediaTypes extends CWebTest {
 						'Type' => 'Script',
 						'Script name' => '   '
 					],
-					'error' => 'Invalid parameter "/1/exec_path": cannot be empty.'
+					'inline_errors' => [
+						'Script name' => 'This field cannot be empty.'
+					]
 				]
 			],
-			// Options validation - Attempts.
+			// #21 Options validation - Attempts.
 			[
 				[
 					'expected' => TEST_BAD,
@@ -1056,9 +1046,12 @@ class testFormAdministrationMediaTypes extends CWebTest {
 					'options_tab' => [
 						'Attempts' => 0
 					],
-					'error' => 'Invalid parameter "/1/maxattempts": value must be one of 1-100.'
+					'inline_errors' => [
+						'Attempts' => 'Value must be greater than or equal to 1.'
+					]
 				]
 			],
+			// #22 Email with empty attempt.
 			[
 				[
 					'expected' => TEST_BAD,
@@ -1068,9 +1061,12 @@ class testFormAdministrationMediaTypes extends CWebTest {
 					'options_tab' => [
 						'Attempts' => ''
 					],
-					'error' => 'Invalid parameter "/1/maxattempts": value must be one of 1-100.'
+					'inline_errors' => [
+						'Attempts' => 'Value must be greater than or equal to 1.'
+					]
 				]
 			],
+			// #23 Email with 101 attempts.
 			[
 				[
 					'expected' => TEST_BAD,
@@ -1080,9 +1076,12 @@ class testFormAdministrationMediaTypes extends CWebTest {
 					'options_tab' => [
 						'Attempts' => 101
 					],
-					'error' => 'Invalid parameter "/1/maxattempts": value must be one of 1-100.'
+					'inline_errors' => [
+						'Attempts' => 'Value must be less than or equal to 100.'
+					]
 				]
 			],
+			// #24 Email attempts with symbols.
 			[
 				[
 					'expected' => TEST_BAD,
@@ -1092,9 +1091,12 @@ class testFormAdministrationMediaTypes extends CWebTest {
 					'options_tab' => [
 						'Attempts' => 'æų'
 					],
-					'error' => 'Invalid parameter "/1/maxattempts": value must be one of 1-100.'
+					'inline_errors' => [
+						'Attempts' => 'Value must be greater than or equal to 1.'
+					]
 				]
 			],
+			// #25 Email attempts with symbols.
 			[
 				[
 					'expected' => TEST_BAD,
@@ -1104,10 +1106,12 @@ class testFormAdministrationMediaTypes extends CWebTest {
 					'options_tab' => [
 						'Attempts' => '☺'
 					],
-					'error' => 'Invalid parameter "/1/maxattempts": value must be one of 1-100.'
+					'inline_errors' => [
+						'Attempts' => 'Value must be greater than or equal to 1.'
+					]
 				]
 			],
-			// Options validation - Attempt interval.
+			// #26 Options validation - Attempt interval.
 			[
 				[
 					'expected' => TEST_BAD,
@@ -1117,9 +1121,12 @@ class testFormAdministrationMediaTypes extends CWebTest {
 					'options_tab' => [
 						'Attempt interval' => '3601s'
 					],
-					'error' => 'Invalid parameter "/1/attempt_interval": value must be one of 0-3600.'
+					'inline_errors' => [
+						'Attempt interval' => 'Value must be between 0 and 3600s (1h).'
+					]
 				]
 			],
+			// #31 Email with 3601 in interval.
 			[
 				[
 					'expected' => TEST_BAD,
@@ -1129,9 +1136,12 @@ class testFormAdministrationMediaTypes extends CWebTest {
 					'options_tab' => [
 						'Attempt interval' => '3601'
 					],
-					'error' => 'Invalid parameter "/1/attempt_interval": value must be one of 0-3600.'
+					'inline_errors' => [
+						'Attempt interval' => 'Value must be between 0 and 3600s (1h).'
+					]
 				]
 			],
+			// #32 Email with 61m in interval.
 			[
 				[
 					'expected' => TEST_BAD,
@@ -1141,9 +1151,12 @@ class testFormAdministrationMediaTypes extends CWebTest {
 					'options_tab' => [
 						'Attempt interval' => '61m'
 					],
-					'error' => 'Invalid parameter "/1/attempt_interval": value must be one of 0-3600.'
+					'inline_errors' => [
+						'Attempt interval' => 'Value must be between 0 and 3600s (1h).'
+					]
 				]
 			],
+			// #33 Email with 2h in interval.
 			[
 				[
 					'expected' => TEST_BAD,
@@ -1153,9 +1166,12 @@ class testFormAdministrationMediaTypes extends CWebTest {
 					'options_tab' => [
 						'Attempt interval' => '2h'
 					],
-					'error' => 'Invalid parameter "/1/attempt_interval": value must be one of 0-3600.'
+					'inline_errors' => [
+						'Attempt interval' => 'Value must be between 0 and 3600s (1h).'
+					]
 				]
 			],
+			// #34 Email with symbols in interval.
 			[
 				[
 					'expected' => TEST_BAD,
@@ -1165,9 +1181,12 @@ class testFormAdministrationMediaTypes extends CWebTest {
 					'options_tab' => [
 						'Attempt interval' => '1msms'
 					],
-					'error' => 'Invalid parameter "/1/attempt_interval": a time unit is expected.'
+					'inline_errors' => [
+						'Attempt interval' => 'A time unit is expected.'
+					]
 				]
 			],
+			// #35 Email with smiley in interval.
 			[
 				[
 					'expected' => TEST_BAD,
@@ -1177,9 +1196,12 @@ class testFormAdministrationMediaTypes extends CWebTest {
 					'options_tab' => [
 						'Attempt interval' => '☺'
 					],
-					'error' => 'Invalid parameter "/1/attempt_interval": a time unit is expected.'
+					'inline_errors' => [
+						'Attempt interval' => 'A time unit is expected.'
+					]
 				]
 			],
+			// #36 Email with -1s interval.
 			[
 				[
 					'expected' => TEST_BAD,
@@ -1189,9 +1211,12 @@ class testFormAdministrationMediaTypes extends CWebTest {
 					'options_tab' => [
 						'Attempt interval' => '-1s'
 					],
-					'error' => 'Invalid parameter "/1/attempt_interval": value must be one of 0-3600.'
+					'inline_errors' => [
+						'Attempt interval' => 'A time unit is expected.'
+					]
 				]
 			],
+			// #37 Email with -1 interval.
 			[
 				[
 					'expected' => TEST_BAD,
@@ -1201,10 +1226,12 @@ class testFormAdministrationMediaTypes extends CWebTest {
 					'options_tab' => [
 						'Attempt interval' => -1
 					],
-					'error' => 'Invalid parameter "/1/attempt_interval": value must be one of 0-3600.'
+					'inline_errors' => [
+						'Attempt interval' => 'A time unit is expected.'
+					]
 				]
 			],
-			// Options validation - Concurrent sessions.
+			// #38 Options validation - Concurrent sessions.
 			[
 				[
 					'expected' => TEST_BAD,
@@ -1215,10 +1242,12 @@ class testFormAdministrationMediaTypes extends CWebTest {
 						'id:maxsessions_type' => 'Custom',
 						'id:maxsessions' => 101
 					],
-					'error' => 'Invalid parameter "/1/maxsessions": value must be one of 0-100.'
+					'inline_errors' => [
+						'id:maxsessions' => 'Value must be less than or equal to 100.'
+					]
 				]
 			],
-			// Successful mediatype creation/update.
+			// #39 Successful mediatype creation/update.
 			[
 				[
 					'mediatype_tab' => [
@@ -1226,7 +1255,7 @@ class testFormAdministrationMediaTypes extends CWebTest {
 					]
 				]
 			],
-			// SMTP generic email with all possible parameters defined.
+			// #40 SMTP generic email with all possible parameters defined.
 			[
 				[
 					'mediatype_tab' => [
@@ -1253,7 +1282,7 @@ class testFormAdministrationMediaTypes extends CWebTest {
 					]
 				]
 			],
-			// Gmail relay email with all possible parameters defined.
+			// #41 Gmail relay email with all possible parameters defined.
 			[
 				[
 					'mediatype_tab' => [
@@ -1274,7 +1303,7 @@ class testFormAdministrationMediaTypes extends CWebTest {
 					]
 				]
 			],
-			// Office365 relay email with all possible parameters defined.
+			// #42 Office365 relay email with all possible parameters defined.
 			[
 				[
 					'mediatype_tab' => [
@@ -1295,6 +1324,7 @@ class testFormAdministrationMediaTypes extends CWebTest {
 					]
 				]
 			],
+			// #43 SMS media type with default values.
 			[
 				[
 					'mediatype_tab' => [
@@ -1303,6 +1333,7 @@ class testFormAdministrationMediaTypes extends CWebTest {
 					]
 				]
 			],
+			// #44 SMS media type with all possible parameters.
 			[
 				[
 					'mediatype_tab' => [
@@ -1319,6 +1350,7 @@ class testFormAdministrationMediaTypes extends CWebTest {
 					]
 				]
 			],
+			// #45 Script media type with minimalset of values.
 			[
 				[
 					'mediatype_tab' => [
@@ -1328,6 +1360,7 @@ class testFormAdministrationMediaTypes extends CWebTest {
 					]
 				]
 			],
+			// #46 Script media type with parameters and options.
 			[
 				[
 					'mediatype_tab' => [
@@ -1357,7 +1390,7 @@ class testFormAdministrationMediaTypes extends CWebTest {
 					'substitute_maxsessions' => true
 				]
 			],
-			// Successfully create media type with different options.
+			// #47 Successfully create media type with different options.
 			[
 				[
 					'mediatype_tab' => [
@@ -1372,6 +1405,7 @@ class testFormAdministrationMediaTypes extends CWebTest {
 					]
 				]
 			],
+			// #48 Office365 email with options: 1h interval and default maxsessions (0).
 			[
 				[
 					'mediatype_tab' => [
@@ -1387,6 +1421,7 @@ class testFormAdministrationMediaTypes extends CWebTest {
 					'substitute_maxsessions' => true
 				]
 			],
+			// #49 Email with trailing and leading spaces in params.
 			[
 				[
 					'mediatype_tab' => [
@@ -1424,6 +1459,7 @@ class testFormAdministrationMediaTypes extends CWebTest {
 					]
 				]
 			],
+			// #50 SMS with trailing and leading spaces in params.
 			[
 				[
 					'mediatype_tab' => [
@@ -1439,6 +1475,7 @@ class testFormAdministrationMediaTypes extends CWebTest {
 					]
 				]
 			],
+			// #51 Script with trailing and leading spaces in params.
 			[
 				[
 					'mediatype_tab' => [
@@ -1705,14 +1742,13 @@ class testFormAdministrationMediaTypes extends CWebTest {
 		$this->page->waitUntilReady();
 
 		if (CTestArrayHelper::get($data, 'expected') === TEST_BAD) {
-			$title = array_key_exists('oauth_form', $data)
-				? 'Invalid OAuth configuration'
-				: ($create ? 'Cannot add media type' : 'Cannot update media type');
-			$this->assertMessage(TEST_BAD, $title, $data['error']);
-			$this->assertEquals($old_hash, CDBHelper::getHash(self::$mediatype_sql));
-
 			if (array_key_exists('oauth_form', $data)) {
+				$this->assertInlineError($oauth_overlay->waitUntilReady()->asForm(), $data['inline_errors']);
 				$oauth_overlay->close();
+			}
+			else {
+				$this->assertInlineError($form, $data['inline_errors']);
+				$this->assertEquals($old_hash, CDBHelper::getHash(self::$mediatype_sql));
 			}
 		}
 		else {

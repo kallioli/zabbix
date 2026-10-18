@@ -21,7 +21,6 @@
 
 $dir = '/../../include/views/js/';
 $scripts = [
-	$this->readJsFile('item.preprocessing.js.php', $data, $dir),
 	$this->readJsFile('itemtest.js.php', $data + ['hostid' => $data['host']['hostid']], $dir)
 ];
 $item = $data['item'];
@@ -31,7 +30,8 @@ $value_types = [
 	ITEM_VALUE_TYPE_STR => _('Character'),
 	ITEM_VALUE_TYPE_LOG => _('Log'),
 	ITEM_VALUE_TYPE_TEXT => _('Text'),
-	ITEM_VALUE_TYPE_BINARY => _('Binary')
+	ITEM_VALUE_TYPE_BINARY => _('Binary'),
+	ITEM_VALUE_TYPE_JSON => _('JSON')
 ];
 $type_with_key_select = [
 	ITEM_TYPE_ZABBIX, ITEM_TYPE_ZABBIX_ACTIVE, ITEM_TYPE_SIMPLE, ITEM_TYPE_INTERNAL, ITEM_TYPE_DB_MONITOR,
@@ -94,7 +94,7 @@ if ($item['itemid']) {
 			'class' => implode(' ', [ZBX_STYLE_BTN_ALT, 'js-test-item']),
 			'keepOpen' => true,
 			'isSubmit' => false,
-			'action' => 'item_edit_form.test('.json_encode(['rules' => $data['js_test_validation_rules']]).');'
+			'action' => 'item_edit_form.test();'
 		],
 		[
 			'title' => _('Delete'),
@@ -120,7 +120,7 @@ else {
 			'class' => implode(' ', [ZBX_STYLE_BTN_ALT, 'js-test-item']),
 			'keepOpen' => true,
 			'isSubmit' => false,
-			'action' => 'item_edit_form.test('.json_encode(['rules' => $data['js_test_validation_rules']]).');'
+			'action' => 'item_edit_form.test();'
 		]
 	];
 }
@@ -144,11 +144,11 @@ $tabs = (new CTabView(['id' => $tabsid]))
 	)
 	->addTab('tags-tab', _('Tags'),
 		new CPartial('configuration.tags.tab', [
-			'readonly' => $item['discovered'],
-			'show_inherited_tags' => $item['show_inherited_tags'],
-			'source' => 'item',
-			'tabs_id' => $tabsid,
+			'source' => 'item_prototype',
 			'tags' => $item['tags'],
+			'show_inherited_tags' => $item['show_inherited_tags'],
+			'readonly' => $item['discovered'],
+			'tabs_id' => $tabsid,
 			'tags_tab_id' => 'tags-tab',
 			'has_inline_validation' => true
 		]),
@@ -156,10 +156,8 @@ $tabs = (new CTabView(['id' => $tabsid]))
 	)
 	->addTab('processing-tab', _('Preprocessing'),
 		new CPartial('item.edit.preprocessing.tab', [
-			'item' => $item,
-			'preprocessing' => $item['preprocessing'],
 			'preprocessing_types' => $data['preprocessing_types'],
-			'readonly' => $item['templated'] || $item['discovered'],
+			'value_type' => $item['value_type'],
 			'value_types' => $value_types
 		]),
 		TAB_INDICATOR_PREPROCESSING
@@ -182,6 +180,10 @@ $form
 				'delete' => 'item.prototype.delete'
 			],
 			'field_switches' => CItemData::fieldSwitchingConfiguration(['is_discovery_rule' => false]),
+			'telemetry_columns_config' => CTelemetryHelper::getColumnConfig(),
+			'telemetry_function_labels' => CTelemetryHelper::getFunctionLabels(),
+			'telemetry_operator_labels' => CTelemetryHelper::getOperatorLabels(),
+			'telemetry_signal_type_metrics' => CItemTypeTelemetryQuery::SIGNAL_TYPE_METRICS,
 			'form_data' => $item,
 			'host' => $data['host'],
 			'inherited_timeouts' => $data['inherited_timeouts'],
@@ -191,7 +193,8 @@ $form
 			'testable_item_types' => $data['testable_item_types'],
 			'type_with_key_select' => $type_with_key_select,
 			'value_type_keys' => $data['value_type_keys'],
-			'return_url' => $return_url
+			'return_url' => $return_url,
+			'test_rules' =>$data['js_test_validation_rules']
 		]).');'))->setOnDocumentReady()
 	);
 $output = [
@@ -201,6 +204,7 @@ $output = [
 	'buttons' => $buttons,
 	'script_inline' => getPagePostJs().
 		$this->readJsFile('item.edit.js.php').
+		$this->readJsFile('item.edit.preprocessing.tab.js.php', null, '/../partials/js').
 		$this->readJsFile('host.interface.selector.js.php', null, '/../partials/js'),
 	'dialogue_class' => 'modal-popup-large'
 ];

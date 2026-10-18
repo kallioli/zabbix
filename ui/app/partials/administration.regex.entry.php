@@ -1,0 +1,83 @@
+<?php
+/*
+** Copyright (C) 2001-2026 Zabbix SIA
+**
+** This program is free software: you can redistribute it and/or modify it under the terms of
+** the GNU Affero General Public License as published by the Free Software Foundation, version 3.
+**
+** This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+** without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+** See the GNU Affero General Public License for more details.
+**
+** You should have received a copy of the GNU Affero General Public License along with this program.
+** If not, see <https://www.gnu.org/licenses/>.
+**/
+
+
+/**
+ * @var CPartial $this
+ * @var array    $data
+ */
+
+(new CRow())
+	->setAttribute('data-index', $data['index'])
+	->addItem((new CSelect('expressions['.$data['index'].'][expression_type]'))
+		->setId('expressions_'.$data['index'].'_expression_type')
+		->addClass('js-expression-type-select')
+		->addOptions($data['options_expression_type'])
+		->setValue($data['type'])
+		->setErrorContainer('expressions-'.$data['index'].'-error-container')
+		->setErrorLabel(_('Expression type'))
+		->setWidth(ZBX_TEXTAREA_MEDIUM_WIDTH)
+	)
+	->addItem(
+		(new CCol(
+			(new CTextAreaFlexible('expressions['.$data['index'].'][expression]', $data['expression']))
+			->setAttribute('data-notrim', '')
+			->setWidth(ZBX_TEXTAREA_MEDIUM_WIDTH)
+			->setMaxlength(DB::getFieldLength('expressions', 'expression'))
+			->setAriaRequired()
+			->setErrorContainer('expressions-'.$data['index'].'-error-container')
+			->setErrorLabel(_('Expression'))
+		))->addClass(ZBX_STYLE_ALIGN_TOP)
+	)
+	->addItem((new CSelect('expressions['.$data['index'].'][exp_delimiter]'))
+		->setValue($data['delimiter'])
+		->setId('expressions_'.$data['index'].'_exp_delimiter')
+		->addClass('js-expression-delimiter-select')
+		->addClass('js-clear-row-result')
+		->addOptions($data['options_delimiter'])
+		->addClass($data['type'] != REGEX_TYPE_CONTAINS_ANY_SUBSTRING ? ZBX_STYLE_DISPLAY_NONE : null)
+		->setDisabled($data['type'] != REGEX_TYPE_CONTAINS_ANY_SUBSTRING)
+		->setErrorContainer('expressions-'.$data['index'].'-error-container')
+		->setErrorLabel(_('Delimiter'))
+	)
+	->addItem((new CCheckBox('expressions['.$data['index'].'][case_sensitive]'))
+		->addClass('js-clear-row-result')
+		->setChecked($data['case_sensitive'] == 1)
+		->setUncheckedValue('0')
+		->setErrorContainer('expressions-'.$data['index'].'-error-container')
+		->setErrorLabel(_('Case sensitive'))
+	)
+	->addItem((new CCol())
+		->setId('expressions_'.$data['index'].'_result')
+		->addClass('js-expression-result')
+		->addClass(ZBX_STYLE_NOWRAP)
+	)
+	->addItem((new CCol())
+		->addClass(ZBX_STYLE_NOWRAP)
+		->addItem((new CButton('remove', _('Remove')))
+			->addClass(ZBX_STYLE_BTN_LINK)
+			->addClass('js-remove')
+			->removeId()
+		)
+	)
+	->show();
+
+(new CRow())
+	->addClass('error-container-row')
+	->addItem((new CCol())
+	->setId('expressions-'.$data['index'].'-error-container')
+	->addClass(ZBX_STYLE_ERROR_CONTAINER)
+	->setAttribute('colspan', 6))
+	->show();

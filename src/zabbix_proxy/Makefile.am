@@ -1,6 +1,6 @@
 ## Process this file with automake to produce Makefile.in
 
-SUBDIRS = \
+SUBDIRS_COMMON = \
 	autoreg \
 	cachehistory \
 	diag \
@@ -16,23 +16,40 @@ SUBDIRS = \
 	proxyconfigwrite \
 	poller
 
+DIST_SUBDIRS = $(SUBDIRS_COMMON) apm
+
+SUBDIRS = $(SUBDIRS_COMMON)
+if HAVE_APM
+SUBDIRS += apm
+endif
+
 sbin_PROGRAMS = zabbix_proxy
 
 zabbix_proxy_SOURCES = proxy.c
+
+if HAVE_ARES
+RESOLVER_LIB = $(top_builddir)/src/libs/zbxresolver/libzbxresolver.a
+else
+RESOLVER_LIB =
+endif
 
 zabbix_proxy_LDADD = \
 	cachehistory/libzbxcachehistory_proxy.a \
 	diag/libzbxdiag_proxy.a \
 	$(top_builddir)/src/libs/zbxdbsyncer/libzbxdbsyncer.a \
+	$(top_builddir)/src/libs/zbxsupervisor/libzbxsupervisor.a \
 	$(top_builddir)/src/libs/zbxdiscoverer/libzbxdiscoverer.a \
 	housekeeper/libzbxhousekeeper_proxy.a \
 	proxyconfig/libzbxproxyconfig.a \
 	$(top_builddir)/src/libs/zbxpinger/libzbxpinger.a \
 	$(top_builddir)/src/libs/zbxpoller/libzbxpoller.a \
+	$(top_builddir)/src/libs/zbxmw/libzbxmw.a \
 	$(top_builddir)/src/zabbix_proxy/poller/libzbxpoller_proxy.a \
+	$(top_builddir)/src/libs/zbxcep_client/libzbxcep_client.a \
 	$(top_builddir)/src/libs/zbxtrapper/libzbxtrapper.a \
 	trapper/libzbxtrapper_proxy.a \
 	$(top_builddir)/src/libs/zbxsnmptrapper/libzbxsnmptrapper.a \
+	$(top_builddir)/src/libs/zbxsnmp/libzbxsnmp.a \
 	datasender/libzbxdatasender.a \
 	proxyconfigwrite/libzbxproxyconfigwrite.a \
 	preproc/libpreproc_proxy.a \
@@ -56,17 +73,18 @@ zabbix_proxy_LDADD = \
 	$(top_builddir)/src/libs/zbxsysinfo/alias/libalias.a \
 	$(top_builddir)/src/libs/zbxscripts/libzbxscripts.a \
 	$(top_builddir)/src/libs/zbxlog/libzbxlog.a \
-	$(top_builddir)/src/libs/zbxexpression/libzbxexpression.a \
+	$(top_builddir)/src/libs/zbxcalc/libzbxcalc.a \
 	$(top_builddir)/src/libs/zbxcacheconfig/libzbxcacheconfig.a \
 	$(top_builddir)/src/libs/zbxpgservice/libzbxpgservice.a \
 	cachehistory/libzbxcachehistory_proxy.a \
 	$(top_builddir)/src/libs/zbxcachehistory/libzbxcachehistory.a \
-	$(top_builddir)/src/libs/zbxcacheconfig/libzbxcacheconfig.a \
-	$(top_builddir)/src/libs/zbxexpression/libzbxexpression.a \
 	$(top_builddir)/src/libs/zbxproxybuffer/libzbxproxybuffer.a \
 	$(top_builddir)/src/libs/zbxcachevalue/libzbxcachevalue.a \
 	$(top_builddir)/src/libs/zbxevent/libzbxevent.a \
+	$(top_builddir)/src/libs/zbxcalc/libzbxcalc.a \
+	$(top_builddir)/src/libs/zbxcacheconfig/libzbxcacheconfig.a \
 	stats/libzbxstats_proxy.a \
+	$(top_builddir)/src/libs/zbxsupervisor_client/libzbxsupervisor_client.a \
 	$(top_builddir)/src/libs/zbxeval/libzbxeval.a \
 	$(top_builddir)/src/libs/zbxserialize/libzbxserialize.a \
 	$(top_builddir)/src/libs/zbxhistory/libzbxhistory.a \
@@ -87,13 +105,16 @@ zabbix_proxy_LDADD = \
 	$(top_builddir)/src/libs/zbxcomms/libzbxcomms.a \
 	$(top_builddir)/src/libs/zbxcrypto/libzbxcrypto.a \
 	$(top_builddir)/src/libs/zbxcommshigh/libzbxcommshigh.a \
+	$(RESOLVER_LIB) \
 	$(top_builddir)/src/libs/zbxjson/libzbxjson.a \
 	$(top_builddir)/src/libs/zbxhttp/libzbxhttp.a \
+	$(top_builddir)/src/libs/zbxtelemetry/libzbxtelemetry.a \
 	$(top_builddir)/src/libs/zbxexec/libzbxexec.a \
 	$(top_builddir)/src/libs/zbxicmpping/libzbxicmpping.a \
 	$(top_builddir)/src/libs/zbxdbupgrade/libzbxdbupgrade.a \
 	$(top_builddir)/src/libs/zbxdbhigh/libzbxdbhigh.a \
 	$(top_builddir)/src/libs/zbxdbwrap/libzbxdbwrap.a \
+	$(top_builddir)/src/libs/zbxcacheconfig/libzbxcacheconfig.a \
 	autoreg/libzbxautoreg_proxy.a \
 	$(top_builddir)/src/libs/zbxautoreg/libzbxautoreg.a \
 	$(top_builddir)/src/libs/zbxdb/libzbxdb.a \
@@ -127,6 +148,7 @@ zabbix_proxy_LDADD = \
 	$(top_builddir)/src/libs/zbxhttppoller/libzbxhttppoller.a \
 	$(top_builddir)/src/libs/zbxasynchttppoller/libzbxasynchttppoller.a \
 	$(top_builddir)/src/libs/zbxpoller/libzbxpoller.a \
+	$(top_builddir)/src/libs/zbxapm_client/libzbxapm_client.a \
 	$(top_builddir)/src/libs/zbxagentget/libzbxagentget.a \
 	$(top_builddir)/src/libs/zbxcurl/libzbxcurl.a \
 	$(top_builddir)/src/libs/zbxalgo/libzbxalgo.a \
@@ -134,6 +156,12 @@ zabbix_proxy_LDADD = \
 
 if HAVE_IPMI
 zabbix_proxy_LDADD += $(top_builddir)/src/libs/zbxipmi/libzbxipmi.a
+endif
+
+if HAVE_APM
+zabbix_proxy_LDADD += \
+	apm/libzbxapm.a \
+	$(APM_LIBS)
 endif
 
 zabbix_proxy_LDADD += $(PROXY_LIBS)

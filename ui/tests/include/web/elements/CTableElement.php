@@ -15,9 +15,8 @@
 
 
 require_once 'vendor/autoload.php';
-require_once __DIR__.'/../CElement.php';
 
-use Facebook\WebDriver\Exception\StaleElementReferenceException;
+require_once __DIR__.'/../CElement.php';
 
 /**
  * Table element.
@@ -189,13 +188,7 @@ class CTableElement extends CElement {
 	 * @return CTableRow|CNullElement
 	 */
 	public function findRow($column, $value, $contains = false) {
-		try {
-			$headers = $this->getColumnNames();
-		}
-		catch (StaleElementReferenceException $exception) {
-			$this->invalidate();
-			$headers = $this->getColumnNames();
-		}
+		$headers = $this->getColumnNames();
 
 		if (is_string($column)) {
 			$index = array_search($column, $headers);
@@ -206,9 +199,13 @@ class CTableElement extends CElement {
 			$column = $index + 1;
 		}
 
-		$suffix = $contains ? '['.$column.'][contains(string(), '.CXPathHelper::escapeQuotes($value).')]/..'
+		$suffix = $contains
+			? '['.$column.'][contains(string(), '.CXPathHelper::escapeQuotes($value).')]/..'
 			: '['.$column.'][string()='.CXPathHelper::escapeQuotes($value).']/..';
-		$xpaths = ['.//tbody/tr/td'.$suffix, './/tbody/tr/th'.$suffix];
+		$textarea_suffix = $contains
+			? '['.$column.']/z-textarea-flexible[contains(@value, '.CXPathHelper::escapeQuotes($value).')]/../..'
+			: '['.$column.']/z-textarea-flexible[@value='.CXPathHelper::escapeQuotes($value).']/../..';
+		$xpaths = ['.//tbody/tr/td'.$suffix, './/tbody/tr/td'.$textarea_suffix, './/tbody/tr/th'.$suffix];
 
 		return $this->query('xpath', implode('|', $xpaths))->asTableRow([
 			'parent' => $this,

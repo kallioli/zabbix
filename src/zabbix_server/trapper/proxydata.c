@@ -83,6 +83,27 @@ int	zbx_send_proxy_data_response(const zbx_dc_proxy_t *proxy, zbx_socket_t *sock
 
 /******************************************************************************
  *                                                                            *
+ * Purpose: checks if 'proxy data' packet has more flag                       *
+ *                                                                            *
+ * Return value: SUCCEED - 'proxy data' contains more flag                    *
+ *               FAIL    - otherwise                                          *
+ *                                                                            *
+ ******************************************************************************/
+static int	proxy_data_has_pending_history(const struct zbx_json_parse *jp)
+{
+	char	value[MAX_STRING_LEN];
+
+	if (SUCCEED == zbx_json_value_by_name(jp, ZBX_PROTO_TAG_MORE, value, sizeof(value), NULL) &&
+			1 == atoi(value))
+	{
+		return ZBX_PROXY_PENDING_HISTORY_YES;
+	}
+
+	return ZBX_PROXY_PENDING_HISTORY_NO;
+}
+
+/******************************************************************************
+ *                                                                            *
  * Purpose: checks if 'proxy data' packet has historical data                 *
  *                                                                            *
  * Return value: SUCCEED - 'proxy data' contains no historical records        *
@@ -112,7 +133,8 @@ static int	proxy_data_no_history(const struct zbx_json_parse *jp)
  *                                                                            *
  * Purpose: receives 'proxy data' request from proxy                          *
  *                                                                            *
- * Parameters: sock                - [IN] connection socket                   *
+ * Parameters: rtc                 - [IN] RTC socket                          *
+ *             sock                - [IN] connection socket                   *
  *             jp                  - [IN] received JSON data                  *
  *             ts                  - [IN] connection timestamp                *
  *             events_cbs          - [IN]                                     *
@@ -120,12 +142,13 @@ static int	proxy_data_no_history(const struct zbx_json_parse *jp)
  *             proxydata_frequency - [IN]                                     *
  *                                                                            *
  ******************************************************************************/
-void	recv_proxy_data(zbx_socket_t *sock, const struct zbx_json_parse *jp, const zbx_timespec_t *ts,
-		const zbx_events_funcs_t *events_cbs, int config_timeout, int proxydata_frequency)
+void	recv_proxy_data(zbx_ipc_async_socket_t *rtc, zbx_socket_t *sock, const struct zbx_json_parse *jp,
+		const zbx_timespec_t *ts, const zbx_events_funcs_t *events_cbs, int config_timeout,
+		int proxydata_frequency)
 {
 	int			ret = FAIL, upload_status = 0, status, version_int, responded = 0;
 	char			*error = NULL, *version_str = NULL;
-	zbx_dc_proxy_t		proxy;
+	zbx_dc_proxy_t		proxy = {0};
 
 	zabbix_log(LOG_LEVEL_DEBUG, "In %s()", __func__);
 
@@ -153,18 +176,19 @@ void	recv_proxy_data(zbx_socket_t *sock, const struct zbx_json_parse *jp, const 
 		goto reply;
 	}
 
-	if (FAIL == (ret = zbx_hc_check_proxy(proxy.proxyid)) || SUCCEED == zbx_vps_monitor_capped())
+	upload_status = ZBX_PROXY_UPLOAD_ENABLED;
+
+	if (FAIL == (ret = zbx_hc_check_proxy(proxy.proxyid, proxy_data_has_pending_history(jp)))
+			|| SUCCEED == zbx_vps_monitor_capped())
 	{
 		upload_status = ZBX_PROXY_UPLOAD_DISABLED;
 		ret = proxy_data_no_history(jp);
 	}
-	else
-		upload_status = ZBX_PROXY_UPLOAD_ENABLED;
 
 	if (SUCCEED == ret)
 	{
-		if (SUCCEED != (ret = zbx_process_proxy_data(&proxy, jp, ts, PROXY_OPERATING_MODE_ACTIVE, events_cbs,
-				proxydata_frequency, zbx_discovery_update_host_server,
+		if (SUCCEED != (ret = zbx_process_proxy_data(rtc, &proxy, jp, ts, PROXY_OPERATING_MODE_ACTIVE,
+				events_cbs, proxydata_frequency, zbx_discovery_update_host_server,
 				zbx_discovery_update_hosts_server, zbx_discovery_update_service_server,
 				zbx_discovery_update_service_down_server, zbx_discovery_find_host_server,
 				zbx_discovery_update_drule_server, zbx_autoreg_host_free_server,
@@ -198,7 +222,7 @@ out:
 		else
 			lastaccess = ts->sec;
 
-		zbx_update_proxy_data(&proxy, version_str, version_int, lastaccess, 0);
+		zbx_update_proxy_data(&proxy, version_str, version_int, lastaccess, 0, 0);
 	}
 
 	if (0 == responded)
@@ -213,6 +237,8 @@ out:
 
 	zbx_free(error);
 	zbx_free(version_str);
+
+	zbx_dc_proxy_clear(&proxy);
 
 	zabbix_log(LOG_LEVEL_DEBUG, "End of %s():%s", __func__, zbx_result_string(ret));
 }

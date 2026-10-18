@@ -224,6 +224,10 @@ typedef struct
 	unsigned char				retrieve_mode;
 	unsigned char				request_method;
 	unsigned char				output_format;
+	char					*query;
+	char					*time_shift;
+	char					*lookback_limit;
+	char					*granularity;
 	unsigned char				type;
 	unsigned char				value_type;
 	unsigned char				status;
@@ -244,8 +248,10 @@ typedef struct
 	int					evaltype;
 	int					item_flags;
 
+#define ZBX_LLD_ITEM_PROTOTYPE_MACRO_PATH_COLS_NUM	2
+#define ZBX_LLD_ITEM_PROTOTYPE_FILTERS_COLS_NUM		3
 	zbx_sync_rowset_t			macro_paths;
-	zbx_sync_rowset_t                       filters;
+	zbx_sync_rowset_t			filters;
 	zbx_sync_rowset_t			overrides;
 }
 zbx_lld_item_prototype_t;
@@ -311,6 +317,10 @@ struct zbx_lld_item_full_s
 #define ZBX_FLAG_LLD_ITEM_UPDATE_EVALTYPE		__UINT64_C(0x0000800000000000)
 #define ZBX_FLAG_LLD_ITEM_UPDATE_STATUS			__UINT64_C(0x0001000000000000)
 #define ZBX_FLAG_LLD_ITEM_UPDATE_DISCOVER		__UINT64_C(0x0002000000000000)
+#define ZBX_FLAG_LLD_ITEM_UPDATE_QUERY			__UINT64_C(0x0004000000000000)
+#define ZBX_FLAG_LLD_ITEM_UPDATE_TIME_SHIFT		__UINT64_C(0x0008000000000000)
+#define ZBX_FLAG_LLD_ITEM_UPDATE_LOOKBACK_LIMIT		__UINT64_C(0x0010000000000000)
+#define ZBX_FLAG_LLD_ITEM_UPDATE_GRANULARITY		__UINT64_C(0x0020000000000000)
 #define ZBX_FLAG_LLD_ITEM_UPDATE			(~ZBX_FLAG_LLD_ITEM_DISCOVERED)
 	zbx_uint64_t				flags;
 	char					*key_proto;
@@ -396,6 +406,13 @@ struct zbx_lld_item_full_s
 	unsigned char				verify_peer_orig;
 	unsigned char				verify_host_orig;
 	unsigned char				allow_traps_orig;
+	char					*query_orig;
+	char					*time_shift;
+	char					*time_shift_orig;
+	char					*lookback_limit;
+	char					*lookback_limit_orig;
+	char					*granularity;
+	char					*granularity_orig;
 
 	char					*lifetime_orig;
 	char					*enabled_lifetime_orig;
@@ -440,25 +457,27 @@ int	lld_validate_lldrule_override_no_discover(const zbx_vector_lld_override_ptr_
 
 int	lld_update_items(zbx_uint64_t hostid, zbx_uint64_t lld_ruleid, zbx_vector_lld_row_ptr_t *lld_rows, char **error,
 		const zbx_lld_lifetime_t *lifetime, const zbx_lld_lifetime_t *enabled_lifetime, int lastcheck,
-		int dflags, zbx_hashset_t *rule_index, const zbx_vector_uint64_t *ruleids);
+		int dflags, zbx_hashset_t *rule_index, const zbx_vector_uint64_t *ruleids, int auditlog_enabled,
+		int auditlog_mode);
 
 void	lld_item_links_sort(zbx_vector_lld_row_ptr_t *lld_rows);
 
 int	lld_update_triggers(zbx_uint64_t hostid, zbx_uint64_t lld_ruleid, const zbx_vector_lld_row_ptr_t *lld_rows,
 		char **error, const zbx_lld_lifetime_t *lifetime, const zbx_lld_lifetime_t *enabled_lifetime,
-		int lastcheck, int dflags, const zbx_vector_uint64_t *ruleids);
+		int lastcheck, int dflags, const zbx_vector_uint64_t *ruleids, int auditlog_enabled, int auditlog_mode);
 
 int	lld_update_graphs(zbx_uint64_t hostid, zbx_uint64_t lld_ruleid, const zbx_vector_lld_row_ptr_t *lld_rows,
 		char **error, const zbx_lld_lifetime_t *lifetime, int lastcheck, int dflags,
-		const zbx_vector_uint64_t *ruleids);
+		const zbx_vector_uint64_t *ruleids, int auditlog_enabled, int auditlog_mode);
 
 void	lld_update_hosts(zbx_uint64_t lld_ruleid, const zbx_vector_lld_row_ptr_t *lld_rows, char **error,
 		const zbx_lld_lifetime_t *lifetime, const zbx_lld_lifetime_t *enabled_lifetime, int lastcheck,
-		int dflags, zbx_hashset_t *rule_index, const zbx_vector_uint64_t *ruleids);
+		int dflags, zbx_hashset_t *rule_index, const zbx_vector_uint64_t *ruleids, int auditlog_enabled,
+		int auditlog_mode);
 
 int	lld_rule_discover_prototypes(zbx_uint64_t hostid, const zbx_vector_lld_row_ptr_t *lld_rows,
 		const zbx_vector_lld_item_prototype_ptr_t *item_prototypes, zbx_vector_lld_item_full_ptr_t *items,
-		char **error, int lastcheck, zbx_hashset_t *items_index);
+		char **error, int lastcheck, zbx_hashset_t *items_index, int auditlog_enabled, int auditlog_mode);
 
 int	lld_end_of_life(int lastcheck, int lifetime);
 
@@ -558,7 +577,7 @@ void	lld_rule_get_prototype_overrides(zbx_vector_lld_item_prototype_ptr_t *item_
 		zbx_vector_uint64_t *protoids);
 void	lld_rule_fetch_override_data(zbx_vector_lld_override_data_ptr_t *overrides);
 void	lld_override_dump(zbx_sync_rowset_t *rowset);
-void	lld_rule_process_nested_rule(zbx_uint64_t hostid, zbx_uint64_t itemid, const zbx_lld_row_t *lld_row);
+void	lld_rule_process_nested_rule(zbx_uint64_t itemid, const zbx_lld_row_t *lld_row);
 
 void	lld_rule_macro_paths_make(zbx_vector_lld_item_full_ptr_t *items);
 void	lld_rule_filters_make(zbx_vector_lld_item_full_ptr_t *items, char **info);

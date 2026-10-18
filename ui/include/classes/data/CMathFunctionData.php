@@ -21,6 +21,7 @@ final class CMathFunctionData {
 
 	/**
 	 * Known math functions along with number or range of required parameters.
+	 * If updated, must be aligned with CTriggerConditionFunctionData.
 	 *
 	 * @var array
 	 */
@@ -45,6 +46,7 @@ final class CMathFunctionData {
 		'ceil' =>				[['count' => 1]],
 		'char' =>				[['count' => 1]],
 		'concat' =>				[['min' => 2]],
+		'contains' =>			[['count' => 2]],
 		'cos' =>				[['count' => 1]],
 		'cosh' =>				[['count' => 1]],
 		'cot' =>				[['count' => 1]],
@@ -89,6 +91,7 @@ final class CMathFunctionData {
 		'sqrt' =>				[['count' => 1]],
 		'stddevpop' =>			[['min' => 1, 'max' => 2]],
 		'stddevsamp' =>			[['min' => 1, 'max' => 2]],
+		'substring' =>			[['count' => 3]],
 		'sum' =>				[['min' => 1]],
 		'sumofsquares' =>		[['min' => 1, 'max' => 2]],
 		'tan' =>				[['count' => 1]],
@@ -115,7 +118,7 @@ final class CMathFunctionData {
 					[
 						'type' => 'require_history_child',
 						'in' => ['avg_foreach', 'count_foreach', 'exists_foreach', 'last_foreach',
-							'max_foreach', 'min_foreach', 'sum_foreach'
+							'max_foreach', 'min_foreach', 'sum_foreach', 'jsonpath', 'xmlxpath'
 						],
 						'position' => 0
 					]
@@ -129,7 +132,7 @@ final class CMathFunctionData {
 					[
 						'type' => 'require_history_child',
 						'in' => ['avg_foreach', 'count_foreach', 'exists_foreach', 'last_foreach',
-							'max_foreach', 'min_foreach', 'sum_foreach'
+							'max_foreach', 'min_foreach', 'sum_foreach', 'jsonpath', 'xmlxpath'
 						],
 						'position' => 0
 					],
@@ -159,7 +162,6 @@ final class CMathFunctionData {
 	 * @var array
 	 */
 	private const CALCULATED_ONLY = [
-		'count',
 		'histogram_quantile'
 	];
 

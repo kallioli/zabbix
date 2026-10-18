@@ -278,7 +278,7 @@ int	ssh_run(zbx_dc_item_t *item, AGENT_RESULT *result, const char *encoding, con
 	}
 
 	if (FAIL == zbx_tcp_connect(&s, config_source_ip, item->interface.addr, item->interface.port, timeout,
-			ZBX_TCP_SEC_UNENCRYPTED, NULL, NULL))
+			ZBX_TCP_SEC_UNENCRYPTED, NULL, NULL, ZBX_DNS_FAILOVER_ENABLED))
 	{
 		SET_MSG_RESULT(result, zbx_dsprintf(NULL, "Cannot connect to SSH server: %s", zbx_socket_strerror()));
 		goto session_free;
@@ -477,7 +477,7 @@ int	ssh_run(zbx_dc_item_t *item, AGENT_RESULT *result, const char *encoding, con
 			goto channel_close;
 		}
 
-		if (0 > (rc = libssh2_channel_write(channel, item->params, strlen(item->params))))
+		if (0 > libssh2_channel_write(channel, item->params, strlen(item->params)))
 		{
 			char	*err;
 

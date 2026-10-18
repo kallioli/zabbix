@@ -387,6 +387,30 @@ class testMacros extends CIntegrationTest {
 		{USER.USERNAME}"
 		EOT;
 
+	const DEPRECATED_MACRO = <<<'EOT'
+		{ACK.DATE}
+		{ACK.TIME}
+		{ACK.MESSAGE}
+		{EVENT.ACK.HISTORY}
+		{IPADDRESS}
+		{HOSTNAME}
+		{TRIGGER.KEY}
+		{TRIGGER.COMMENT}
+		{STATUS}
+		{USER.ALIAS}
+		{PROFILE.DEVICETYPE}
+		{PROFILE.NAME}
+		{PROFILE.OS}
+		{PROFILE.SERIALNO}
+		{PROFILE.TAG}
+		{PROFILE.MACADDRESS}
+		{PROFILE.HARDWARE}
+		{PROFILE.SOFTWARE}
+		{PROFILE.CONTACT}
+		{PROFILE.LOCATION}
+		{PROFILE.NOTES}
+		EOT;
+
 	const MACRO_FUNCS = <<<'EOT'
 		ACTION.NAME.btoa() -> {{ACTION.NAME}.btoa()} <-
 		USER_MACRO_GLOBAL_DOUBLE.fmtnum(15) -> {{$USER_MACRO_GLOBAL_DOUBLE}.fmtnum(15)} <-
@@ -691,7 +715,8 @@ class testMacros extends CIntegrationTest {
 				'name' => self::TRAPPER_ITEM_NAME.$i,
 				'key_' => self::TRAPPER_ITEM_KEY.$i,
 				'type' => ITEM_TYPE_TRAPPER,
-				'value_type' => ITEM_VALUE_TYPE_UINT64
+				'value_type' => ITEM_VALUE_TYPE_UINT64,
+				'trapper_hosts' => '{$TRAPPER.ALLOWED_HOSTS}'
 			];
 		}
 
@@ -770,7 +795,9 @@ class testMacros extends CIntegrationTest {
 							'===7===' . "\n" .
 							'USER_MACRO_GLOBAL -> {$USER_MACRO_GLOBAL} <-' . "\n" .
 							'===8===' . "\n" .
-							self::MACRO_FUNCS
+							self::MACRO_FUNCS . "\n" .
+							'===9===' . "\n" .
+							self::DEPRECATED_MACRO
 					],
 					'opmessage_grp' => [
 						['usrgrpid' => 7]
@@ -808,7 +835,9 @@ class testMacros extends CIntegrationTest {
 							'===8===' . "\n" .
 							'USER_MACRO_GLOBAL -> {$USER_MACRO_GLOBAL} <-' . "\n" .
 							'===9===' . "\n" .
-							self::MACRO_FUNCS
+							self::MACRO_FUNCS . "\n" .
+							'===10===' . "\n" .
+							self::DEPRECATED_MACRO
 					],
 					'opmessage_grp' => [
 						['usrgrpid' => 7]
@@ -937,7 +966,9 @@ class testMacros extends CIntegrationTest {
 			'===7===' . "\n" .
 			'USER_MACRO_GLOBAL -> GLOBAL_LEVEL_' . ALL_PRINTABLE_ASCII . " <-\n" .
 			'===8===' . "\n" .
-			self::MACRO_FUNCS_RESOLVED;
+			self::MACRO_FUNCS_RESOLVED . "\n" .
+			'===9===' . "\n" .
+			self::DEPRECATED_MACRO;
 
 		$this->assertEquals($message_expect, self::$alert_response['result'][0]['message']);
 
@@ -975,7 +1006,9 @@ class testMacros extends CIntegrationTest {
 			'===8===' . "\n" .
 			'USER_MACRO_GLOBAL -> GLOBAL_LEVEL_' . ALL_PRINTABLE_ASCII . " <-\n" .
 			'===9===' . "\n" .
-			self::MACRO_FUNCS_RESOLVED;
+			self::MACRO_FUNCS_RESOLVED . "\n" .
+			'===10===' . "\n" .
+			self::DEPRECATED_MACRO;
 
 		$this->assertEquals($message_expect, self::$alert_response['result'][1]['message']);
 	}
@@ -1348,7 +1381,10 @@ const SUBJECT_INTERNAL = "Internal";
 				'host' => ['Zabbix server']
 			]
 		]);
-		$this->assertArrayHasKey('hostid', $response['result'][0]);
+
+		if (empty($response['result'])) {
+			return;
+		}
 
 		//disable default host to not interrupt testing via not supported items
 		self::$host_id_disable = $response['result'][0]['hostid'];
@@ -1403,7 +1439,9 @@ const SUBJECT_INTERNAL = "Internal";
 							'===6===' . "\n" .
 							'USER_MACRO_GLOBAL -> {$USER_MACRO_GLOBAL} <-' . "\n" .
 							'===7===' . "\n" .
-							self::MACRO_FUNCS
+							self::MACRO_FUNCS . "\n" .
+							'===8===' . "\n" .
+							self::DEPRECATED_MACRO
 					],
 					'opmessage_grp' => [
 						['usrgrpid' => 7]
@@ -1508,17 +1546,21 @@ const SUBJECT_INTERNAL = "Internal";
 			'===6===' . "\n" .
 			'USER_MACRO_GLOBAL -> GLOBAL_LEVEL_' . ALL_PRINTABLE_ASCII . " <-\n" .
 			'===7===' . "\n" .
-			self::MACRO_FUNCS_RESOLVED;
+			self::MACRO_FUNCS_RESOLVED . "\n" .
+			'===8===' . "\n" .
+			self::DEPRECATED_MACRO;
 
 			$this->assertEquals($message_expect, $alert_response_internal['result'][1]['message']);
 
 			// enable default host
-			$response = $this->call('host.update', [
-				'hostid' => self::$host_id_disable,
-				'status' => ITEM_STATUS_ACTIVE
-			]);
-			$this->assertArrayHasKey('hostids', $response['result']);
-			$this->assertEquals(1, count($response['result']['hostids']));
+			if (self::$host_id_disable !== null) {
+				$response = $this->call('host.update', [
+					'hostid' => self::$host_id_disable,
+					'status' => ITEM_STATUS_ACTIVE
+				]);
+				$this->assertArrayHasKey('hostids', $response['result']);
+				$this->assertEquals(1, count($response['result']['hostids']));
+			}
 	}
 
 	/***********************************************************************************************************************
@@ -1805,7 +1847,9 @@ const SUBJECT_INTERNAL = "Internal";
 							'===6===' . "\n" .
 							'USER_MACRO_GLOBAL -> {$USER_MACRO_GLOBAL} <-' . "\n" .
 							'===7===' . "\n" .
-							self::MACRO_FUNCS
+							self::MACRO_FUNCS . "\n" .
+							'===8===' . "\n" .
+							self::DEPRECATED_MACRO
 					],
 					'opmessage_grp' => [
 						['usrgrpid' => 7]
@@ -1919,7 +1963,9 @@ const SUBJECT_INTERNAL = "Internal";
 			'===6===' . "\n" .
 			'USER_MACRO_GLOBAL -> GLOBAL_LEVEL_' . ALL_PRINTABLE_ASCII . " <-\n" .
 			'===7===' . "\n" .
-			self::MACRO_FUNCS_RESOLVED;
+			self::MACRO_FUNCS_RESOLVED . "\n" .
+			'===8===' . "\n" .
+			self::DEPRECATED_MACRO;
 
 			$this->assertEquals($message_expect, $alert_response_internal_LLD['result'][1]['message']);
 	}
@@ -2171,7 +2217,9 @@ const SUBJECT_INTERNAL = "Internal";
 							'===6===' . "\n" .
 							'USER_MACRO_GLOBAL -> {$USER_MACRO_GLOBAL} <-' . "\n" .
 							'===7===' . "\n" .
-							self::MACRO_FUNCS
+							self::MACRO_FUNCS . "\n" .
+							'===8===' . "\n" .
+							self::DEPRECATED_MACRO
 					],
 					'opmessage_grp' => [
 						['usrgrpid' => 7]
@@ -2310,17 +2358,21 @@ const SUBJECT_INTERNAL = "Internal";
 			'===6===' . "\n" .
 			'USER_MACRO_GLOBAL -> GLOBAL_LEVEL_' . ALL_PRINTABLE_ASCII . " <-\n" .
 			'===7===' . "\n" .
-			self::MACRO_FUNCS_RESOLVED;
+			self::MACRO_FUNCS_RESOLVED . "\n" .
+			'===8===' . "\n" .
+			self::DEPRECATED_MACRO;
 
 			$this->assertEquals($message_expect, $alert_response_internal_trigger['result'][1]['message']);
 
-			// enable default host
+		// enable default host
+		if (self::$host_id_disable !== null) {
 			$response = $this->call('host.update', [
 				'hostid' => self::$host_id_disable,
 				'status' => ITEM_STATUS_ACTIVE
 			]);
 			$this->assertArrayHasKey('hostids', $response['result']);
 			$this->assertEquals(1, count($response['result']['hostids']));
+		}
 	}
 
 	/***************************************************************************************************************
@@ -2576,7 +2628,8 @@ const SUBJECT_INTERNAL = "Internal";
 			'name'			=> self::TRAPPER_ITEM_KEY_SERVICE,
 			'key_'			=> self::TRAPPER_ITEM_KEY_SERVICE,
 			'type'			=> ITEM_TYPE_TRAPPER,
-			'value_type'	=> ITEM_VALUE_TYPE_UINT64
+			'value_type'	=> ITEM_VALUE_TYPE_UINT64,
+			'trapper_hosts' => '{$TRAPPER.ALLOWED_HOSTS}'
 		]);
 		$this->assertArrayHasKey('itemids', $response['result']);
 		$this->assertEquals(1, count($response['result']['itemids']));
@@ -2663,7 +2716,9 @@ const SUBJECT_INTERNAL = "Internal";
 							'===6===' . "\n" .
 							'USER_MACRO_GLOBAL -> {$USER_MACRO_GLOBAL} <-' . "\n" .
 							'===7===' . "\n" .
-							self::MACRO_FUNCS
+							self::MACRO_FUNCS . "\n" .
+							'===8===' . "\n" .
+							self::DEPRECATED_MACRO
 					],
 					'opmessage_grp' => [
 						['usrgrpid' => 7]
@@ -2748,7 +2803,9 @@ const SUBJECT_INTERNAL = "Internal";
 			'===6===' . "\n" .
 			'USER_MACRO_GLOBAL -> GLOBAL_LEVEL_' . ALL_PRINTABLE_ASCII . " <-\n" .
 			'===7===' . "\n" .
-			self::MACRO_FUNCS_RESOLVED;
+			self::MACRO_FUNCS_RESOLVED . "\n" .
+			'===8===' . "\n" .
+			self::DEPRECATED_MACRO;
 
 		$this->assertEquals($message_expect, self::$alert_response_service['result'][1]['message']);
 	}
@@ -3061,6 +3118,8 @@ const SUBJECT_INTERNAL = "Internal";
 							'===8===' . "\n" .
 							self::MACRO_FUNCS . "\n" .
 							'===9===' . "\n" .
+							self::DEPRECATED_MACRO . "\n" .
+							'===10===' . "\n" .
 							self::BUILTIN_MACROS_INCONSISTENT_RESOLVE_DRULE
 					],
 					'opmessage_grp' => [
@@ -3086,7 +3145,7 @@ const SUBJECT_INTERNAL = "Internal";
 		$this->assertArrayHasKey('message', $response['result'][0]);
 		$message_got = $response['result'][0]['message'];
 
-		$macros = explode('==9==', $message_got);
+		$macros = explode('==10==', $message_got);
 
 		// setup resolved builtin consistent macros
 
@@ -3118,7 +3177,9 @@ const SUBJECT_INTERNAL = "Internal";
 			'===7===' . "\n" .
 			'USER_MACRO_GLOBAL -> GLOBAL_LEVEL_' . ALL_PRINTABLE_ASCII . " <-\n" .
 			'===8===' . "\n" .
-			self::MACRO_FUNCS_RESOLVED . "\n=";
+			self::MACRO_FUNCS_RESOLVED . "\n" .
+			'===9===' . "\n" .
+			self::DEPRECATED_MACRO . "\n=";
 
 		$this->assertEquals($message_expect, $macros[0]);
 
@@ -3437,6 +3498,8 @@ const SUBJECT_INTERNAL = "Internal";
 							'===7===' . "\n" .
 							self::MACRO_FUNCS . "\n" .
 							'===8===' . "\n" .
+							self::DEPRECATED_MACRO . "\n" .
+							'===9===' . "\n" .
 							self::BUILTIN_MACROS_INCONSISTENT_RESOLVE_AUTOREG
 					],
 					'opmessage_grp' => [
@@ -3451,7 +3514,9 @@ const SUBJECT_INTERNAL = "Internal";
 		self::$action_ids = array_merge(self::$action_ids, [$response['result']['actionids'][0]]);
 
 		$this->startComponent(self::COMPONENT_AGENT);
-		$this->waitForLogLineToBePresent(self::COMPONENT_SERVER, "End substitute_simple_macros_impl() data:'Autoregistration'", true, 120);
+		// "In ..." is not a mistake here and "End ..." should not be used here because result of
+		// zbx_substitute_macros_args() can contain secret data and must not be logged.
+		$this->waitForLogLineToBePresent(self::COMPONENT_SERVER, "In zbx_substitute_macros_args() data:'Autoregistration'", true, 120);
 
 		$response = $this->call('alert.get', [
 			'hostids' => [self::$host_id],
@@ -3463,7 +3528,7 @@ const SUBJECT_INTERNAL = "Internal";
 		$this->assertArrayHasKey('message', $response['result'][0]);
 		$message_got = $response['result'][0]['message'];
 
-		$macros = explode('==8==', $message_got);
+		$macros = explode('==9==', $message_got);
 
 		self::$BUILTIN_MACROS_CONSISTENT_RESOLVE_COMMON_RESOLVED =
 			"ACTION.NAME -> "		. self::ACTION_NAME		. " <-\n" .
@@ -3489,7 +3554,9 @@ const SUBJECT_INTERNAL = "Internal";
 			'===6===' . "\n" .
 			'USER_MACRO_GLOBAL -> GLOBAL_LEVEL_' . ALL_PRINTABLE_ASCII . " <-\n" .
 			'===7===' . "\n" .
-			self::MACRO_FUNCS_RESOLVED . "\n=";
+			self::MACRO_FUNCS_RESOLVED . "\n" .
+			'===8===' . "\n" .
+			self::DEPRECATED_MACRO . "\n=";
 
 		$this->assertEquals($message_expect, $macros[0]);
 

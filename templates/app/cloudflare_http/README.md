@@ -7,7 +7,7 @@ This template is designed for the effortless deployment of Cloudflare monitoring
 
 ## Requirements
 
-Zabbix version: 7.4 and higher.
+Zabbix version: 8.0 and higher.
 
 ## Tested versions
 
@@ -16,7 +16,7 @@ This template has been tested on:
 
 ## Configuration
 
-> Zabbix should be configured according to the instructions in the [Templates out of the box](https://www.zabbix.com/documentation/7.4/manual/config/templates_out_of_the_box) section.
+> Zabbix should be configured according to the instructions in the [Templates out of the box](https://www.zabbix.com/documentation/8.0/manual/config/templates_out_of_the_box) section.
 
 ## Setup
 
@@ -34,8 +34,8 @@ This template has been tested on:
 |----|-----------|-------|
 |{$HTTP.TLS.VERIFY}|<p>TLS certificate verification for the script item: "none" - disabled, "peer" - verify the certificate chain and expiration, "full" - full verification. Any other value enables full verification. To override the setting for this template only, define the macro with the context "Cloudflare", e.g. {$HTTP.TLS.VERIFY:"Cloudflare"}.</p>|`full`|
 |{$CLOUDFLARE.API.URL}|<p>The URL of Cloudflare API endpoint.</p>|`https://api.cloudflare.com/client/v4`|
-|{$CLOUDFLARE.API.TOKEN}|<p>Your Cloudflare API Token.</p>|`<change>`|
-|{$CLOUDFLARE.ZONE_ID}|<p>Your Cloudflare Site Zone ID.</p>|`<change>`|
+|{$CLOUDFLARE.API.TOKEN}|<p>Your Cloudflare API Token.</p>||
+|{$CLOUDFLARE.ZONE_ID}|<p>Your Cloudflare Site Zone ID.</p>||
 |{$CLOUDFLARE.ERRORS.MAX.WARN}|<p>Maximum responses with errors in %.</p>|`30`|
 |{$CLOUDFLARE.CACHED_BANDWIDTH.MIN.WARN}|<p>Minimum of cached bandwidth in %.</p>|`50`|
 

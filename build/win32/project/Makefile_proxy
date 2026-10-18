@@ -45,6 +45,12 @@ ADD_LFLAGS = $(ADD_LFLAGS) /DEBUG /OPT:REF /DELAYLOAD:wevtapi.dll \
 
 ADD_RFLAGS = /d "ZABBIX_PROXY"
 
+# Zabbix 8.0 keeps its reference counts and revisions in C11 atomics (_Atomic, atomic_fetch_add and the
+# like) in the configuration cache, the supervisor and the managed worker pools. MSVC provides them behind
+# these two switches, from Visual Studio 2022 17.5 on. They go to CFLAGS rather than ADD_CFLAGS because
+# the C++ compile of wmi.cpp must not see /std:c11.
+CFLAGS = $(CFLAGS) /std:c11 /experimental:c11atomics
+
 !INCLUDE Makefile_common.inc
 
 OBJS = \
@@ -58,6 +64,8 @@ OBJS = \
 	..\..\..\src\libs\zbxalgo\prediction.o \
 	..\..\..\src\libs\zbxalgo\queue.o \
 	..\..\..\src\libs\zbxalgo\vector.o \
+	..\..\..\src\libs\zbxalgo\channel.o \
+	..\..\..\src\libs\zbxapm_client\apm_client.o \
 	..\..\..\src\libs\zbxasynchttppoller\asynchttppoller.o \
 	..\..\..\src\libs\zbxasyncpoller\asyncpoller.o \
 	..\..\..\src\libs\zbxaudit\audit.o \
@@ -86,8 +94,19 @@ OBJS = \
 	..\..\..\src\libs\zbxcacheconfig\trigger.o \
 	..\..\..\src\libs\zbxcacheconfig\user_macro.o \
 	..\..\..\src\libs\zbxcacheconfig\vps_monitor.o \
+	..\..\..\src\libs\zbxcacheconfig\dbconfig_atomic.o \
+	..\..\..\src\libs\zbxcacheconfig\dbconfig_cep.o \
+	..\..\..\src\libs\zbxcacheconfig\dbconfig_correlation.o \
+	..\..\..\src\libs\zbxcacheconfig\dbconfig_local.o \
 	..\..\..\src\libs\zbxcachehistory\cachehistory.o \
 	..\..\..\src\libs\zbxcachevalue\valuecache.o \
+	..\..\..\src\libs\zbxcalc\anomalystl.o \
+	..\..\..\src\libs\zbxcalc\evalsimple.o \
+	..\..\..\src\libs\zbxcalc\expr_eval.o \
+	..\..\..\src\libs\zbxcalc\expression_names.o \
+	..\..\..\src\libs\zbxcalc\func_eval.o \
+	..\..\..\src\libs\zbxcalc\funcparam.o \
+	..\..\..\src\libs\zbxcep_client\cep_client.o \
 	..\..\..\src\libs\zbxcfg\cfg.o \
 	..\..\..\src\libs\zbxcommon\common_log.o \
 	..\..\..\src\libs\zbxcommon\common_str.o \
@@ -116,6 +135,7 @@ OBJS = \
 	..\..\..\src\libs\zbxdb\dbinsert.o \
 	..\..\..\src\libs\zbxdb\dbmisc.o \
 	..\..\..\src\libs\zbxdb\dbversion.o \
+	..\..\..\src\libs\zbxdb\dbpool.o \
 	..\..\..\src\libs\zbxdbhigh\db.o \
 	..\..\..\src\libs\zbxdbhigh\db_settings.o \
 	..\..\..\src\libs\zbxdbhigh\item.o \
@@ -127,6 +147,7 @@ OBJS = \
 	..\..\..\src\libs\zbxdbhigh\sync.o \
 	..\..\..\src\libs\zbxdbhigh\tag.o \
 	..\..\..\src\libs\zbxdbhigh\trigger.o \
+	..\..\..\src\libs\zbxdbhigh\db_event.o \
 	..\..\..\src\libs\zbxdbschema\dbschema.o \
 	..\..\..\src\libs\zbxdbsyncer\dbsyncer.o \
 	..\..\..\src\libs\zbxdbupgrade\dbupgrade.o \
@@ -166,6 +187,7 @@ OBJS = \
 	..\..\..\src\libs\zbxdbupgrade\dbupgrade_7040.o \
 	..\..\..\src\libs\zbxdbupgrade\dbupgrade_common.o \
 	..\..\..\src\libs\zbxdbupgrade\dbupgrade_macros.o \
+	..\..\..\src\libs\zbxdbupgrade\dbupgrade_7050.o \
 	..\..\..\src\libs\zbxdbwrap\event.o \
 	..\..\..\src\libs\zbxdbwrap\graph_linking.o \
 	..\..\..\src\libs\zbxdbwrap\host.o \
@@ -179,6 +201,8 @@ OBJS = \
 	..\..\..\src\libs\zbxdbwrap\trigger_dep_linking.o \
 	..\..\..\src\libs\zbxdbwrap\trigger_linking.o \
 	..\..\..\src\libs\zbxdbwrap\user.o \
+	..\..\..\src\libs\zbxdbwrap\macro_ctx_common.o \
+	..\..\..\src\libs\zbxdbwrap\tag_cache.o \
 	..\..\..\src\libs\zbxdiag\diag.o \
 	..\..\..\src\libs\zbxdiscoverer\async_http.o \
 	..\..\..\src\libs\zbxdiscoverer\async_tcpsvc.o \
@@ -209,6 +233,7 @@ OBJS = \
 	..\..\..\src\libs\zbxeval\misc.o \
 	..\..\..\src\libs\zbxeval\parse.o \
 	..\..\..\src\libs\zbxeval\query.o \
+	..\..\..\src\libs\zbxeval\variant_misc.o \
 	..\..\..\src\libs\zbxevent\event.o \
 	..\..\..\src\libs\zbxevent\event_db.o \
 	..\..\..\src\libs\zbxexec\execute.o \
@@ -223,15 +248,6 @@ OBJS = \
 	..\..\..\src\libs\zbxexpr\substitute.o \
 	..\..\..\src\libs\zbxexpr\token.o \
 	..\..\..\src\libs\zbxexpr\urlencode.o \
-	..\..\..\src\libs\zbxexpression\anomalystl.o \
-	..\..\..\src\libs\zbxexpression\datafunc.o \
-	..\..\..\src\libs\zbxexpression\evalfunc.o \
-	..\..\..\src\libs\zbxexpression\evalsimple.o \
-	..\..\..\src\libs\zbxexpression\expr_eval.o \
-	..\..\..\src\libs\zbxexpression\expression.o \
-	..\..\..\src\libs\zbxexpression\expression_names.o \
-	..\..\..\src\libs\zbxexpression\funcparam.o \
-	..\..\..\src\libs\zbxexpression\triggerfunc.o \
 	..\..\..\src\libs\zbxfile\file.o \
 	..\..\..\src\libs\zbxgetopt\getopt.o \
 	..\..\..\src\libs\zbxhash\md5.o \
@@ -241,6 +257,9 @@ OBJS = \
 	..\..\..\src\libs\zbxhistory\history.o \
 	..\..\..\src\libs\zbxhistory\history_elastic.o \
 	..\..\..\src\libs\zbxhistory\history_sql.o \
+	..\..\..\src\libs\zbxhistory\history_clickhouse.o \
+	..\..\..\src\libs\zbxhistory\history_curl.o \
+	..\..\..\src\libs\zbxhistory\history_option.o \
 	..\..\..\src\libs\zbxhttp\charset.o \
 	..\..\..\src\libs\zbxhttp\http.o \
 	..\..\..\src\libs\zbxhttp\punycode.o \
@@ -260,6 +279,10 @@ OBJS = \
 	..\..\..\src\libs\zbxlog\log.o \
 	..\..\..\src\libs\zbxmodules\modules.o \
 	..\..\..\src\libs\zbxmutexs\mutexs.o \
+	..\..\..\src\libs\zbxmw\mw_manager.o \
+	..\..\..\src\libs\zbxmw\mw_queue.o \
+	..\..\..\src\libs\zbxmw\mw_task_worker.o \
+	..\..\..\src\libs\zbxmw\mw_worker.o \
 	..\..\..\src\libs\zbxnum\num.o \
 	..\..\..\src\libs\zbxodbc\odbc.o \
 	..\..\..\src\libs\zbxparam\param.o \
@@ -289,6 +312,8 @@ OBJS = \
 	..\..\..\src\libs\zbxpoller\poller.o \
 	..\..\..\src\libs\zbxpoller\poller_thread.o \
 	..\..\..\src\libs\zbxpoller\telnet_run.o \
+	..\..\..\src\libs\zbxpoller\async_telemetry_query.o \
+	..\..\..\src\libs\zbxpoller\checks_telemetry.o \
 	..\..\..\src\libs\zbxpreproc\item_preproc.o \
 	..\..\..\src\libs\zbxpreproc\pp_cache.o \
 	..\..\..\src\libs\zbxpreproc\pp_diag.o \
@@ -317,9 +342,13 @@ OBJS = \
 	..\..\..\src\libs\zbxself\selfmon.o \
 	..\..\..\src\libs\zbxserialize\serialize.o \
 	..\..\..\src\libs\zbxshmem\memalloc.o \
+	..\..\..\src\libs\zbxsnmp\snmp.o \
 	..\..\..\src\libs\zbxsnmptrapper\snmptrapper.o \
 	..\..\..\src\libs\zbxstats\stats.o \
 	..\..\..\src\libs\zbxstr\str.o \
+	..\..\..\src\libs\zbxsupervisor\supervisor.o \
+	..\..\..\src\libs\zbxsupervisor_client\supervisor_client.o \
+	..\..\..\src\libs\zbxsupervisor_client\worklog.o \
 	..\..\..\src\libs\zbxsysinfo\alias\alias.o \
 	..\..\..\src\libs\zbxsysinfo\common\cpu.o \
 	..\..\..\src\libs\zbxsysinfo\common\cpustat.o \
@@ -342,6 +371,12 @@ OBJS = \
 	..\..\..\src\libs\zbxsysinfo\sysinfo.o \
 	..\..\..\src\libs\zbxtagfilter\tagfilter.o \
 	..\..\..\src\libs\zbxtasks\task.o \
+	..\..\..\src\libs\zbxtelemetry\telemetry_apm_db_config.o \
+	..\..\..\src\libs\zbxtelemetry\telemetry_query.o \
+	..\..\..\src\libs\zbxtelemetry\telemetry_query_clickhouse.o \
+	..\..\..\src\libs\zbxtelemetry\telemetry_query_columns.o \
+	..\..\..\src\libs\zbxtelemetry\telemetry_query_parse.o \
+	..\..\..\src\libs\zbxtelemetry\telemetry_query_sql.o \
 	..\..\..\src\libs\zbxthreads\threads.o \
 	..\..\..\src\libs\zbxtime\time.o \
 	..\..\..\src\libs\zbxtimekeeper\timekeeper.o \
@@ -352,11 +387,12 @@ OBJS = \
 	..\..\..\src\libs\zbxtrapper\trapper_expressions_evaluate.o \
 	..\..\..\src\libs\zbxtrapper\trapper_item_test.o \
 	..\..\..\src\libs\zbxtrapper\trapper_preproc.o \
+	..\..\..\src\libs\zbxtrapper\macro_ctx_scripts.o \
+	..\..\..\src\libs\zbxtrapper\trapper_device_management.o \
 	..\..\..\src\libs\zbxtrends\baseline.o \
 	..\..\..\src\libs\zbxtrends\cache.o \
 	..\..\..\src\libs\zbxtrends\trends.o \
 	..\..\..\src\libs\zbxvariant\variant.o \
-	..\..\..\src\libs\zbxvariant\variant_misc.o \
 	..\..\..\src\libs\zbxvault\cyberark.o \
 	..\..\..\src\libs\zbxvault\hashicorp.o \
 	..\..\..\src\libs\zbxvault\vault.o \
@@ -417,6 +453,13 @@ LIBS = ws2_32.lib psapi.lib pdh.lib Wldap32.lib advapi32.lib uuid.lib Iphlpapi.l
 !INCLUDE Makefile_tls.inc
 !INCLUDE Makefile_sqlite.inc
 !INCLUDE Makefile_libevent.inc
+# libcurl is optional for the agent, which shares Makefile_curl.inc, and required here
+!IF "$(CURLINCDIR)" == "" || "$(CURLLIBDIR)" == ""
+!ERROR The proxy needs libcurl: specify CURLINCDIR and CURLLIBDIR (e. g. CURLINCDIR="\somepath\include" CURLLIBDIR="\somepath\lib").
+!ENDIF
+!IF "$(ZLIBINCDIR)" == "" || "$(ZLIBLIBDIR)" == ""
+!ERROR The proxy needs zlib: specify ZLIBINCDIR and ZLIBLIBDIR (e. g. ZLIBINCDIR="\somepath\include" ZLIBLIBDIR="\somepath\lib").
+!ENDIF
 !INCLUDE Makefile_curl.inc
 !INCLUDE Makefile_snmp.inc
 !INCLUDE Makefile_odbc.inc

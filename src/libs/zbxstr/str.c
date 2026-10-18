@@ -797,18 +797,19 @@ char	*zbx_strdcat(char *dest, const char *src)
  * Comments: returns pointer to allocated memory                              *
  *                                                                            *
  ******************************************************************************/
-char	*zbx_strdcatf(char *dest, const char *f, ...)
+char	*zbx_strdcatf(char *dest, const char *fmt, ...)
 {
-	char	*string, *result;
 	va_list	args;
+	char	*result, *str = NULL;
+	size_t	str_len = 0, str_offset = 0;
 
-	va_start(args, f);
-	string = zbx_dvsprintf(NULL, f, args);
+	va_start(args, fmt);
+	zbx_vsnprintf_alloc(&str, &str_len, &str_offset, fmt, args);
 	va_end(args);
 
-	result = zbx_strdcat(dest, string);
+	result = zbx_strdcat(dest, str);
 
-	zbx_free(string);
+	zbx_free(str);
 
 	return result;
 }
@@ -2234,7 +2235,7 @@ void	zbx_strncpy_alloc(char **str, size_t *alloc_len, size_t *offset, const char
 		if (0 == *alloc_len)
 		{
 			THIS_SHOULD_NEVER_HAPPEN;
-			exit(EXIT_FAILURE);
+			zbx_exit(EXIT_FAILURE);
 		}
 
 		while (*offset + n >= *alloc_len)
@@ -2286,4 +2287,32 @@ void	zbx_replace_string(char **data, size_t l, size_t *r, const char *value)
 	}
 
 	memcpy(&(*data)[l], value, sz_value);
+}
+
+/******************************************************************************
+ *                                                                            *
+ * Purpose: compares substring at the specified location with the specified   *
+ *          text                                                              *
+ *                                                                            *
+ * Parameters: src      - [IN] source string                                  *
+ *             loc      - [IN] substring location                             *
+ *             text     - [IN] text to compare with                           *
+ *             text_len - [IN] text length                                    *
+ *                                                                            *
+ * Return value: -1 - the substring is less than the specified text           *
+ *                0 - the substring is equal to the specified text            *
+ *                1 - the substring is greater than the specified text        *
+ *                                                                            *
+ ******************************************************************************/
+int	zbx_strloc_cmp(const char *src, const zbx_strloc_t *loc, const char *text, size_t text_len)
+{
+	size_t	src_len = loc->r - loc->l + 1;
+
+	if (src_len < text_len)
+		return -1;
+
+	if (src_len > text_len)
+		return 1;
+
+	return memcmp(src + loc->l, text, text_len);
 }

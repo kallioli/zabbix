@@ -8,7 +8,7 @@ It works without any external scripts and uses the script item.
 
 ## Requirements
 
-Zabbix version: 7.4 and higher.
+Zabbix version: 8.0 and higher.
 
 ## Tested versions
 
@@ -17,7 +17,7 @@ This template has been tested on:
 
 ## Configuration
 
-> Zabbix should be configured according to the instructions in the [Templates out of the box](https://www.zabbix.com/documentation/7.4/manual/config/templates_out_of_the_box) section.
+> Zabbix should be configured according to the instructions in the [Templates out of the box](https://www.zabbix.com/documentation/8.0/manual/config/templates_out_of_the_box) section.
 
 ## Setup
 
@@ -32,7 +32,7 @@ This template has been tested on:
 |----|-----------|-------|
 |{$HTTP.TLS.VERIFY}|<p>TLS certificate verification for the script item: "none" - disabled, "peer" - verify the certificate chain and expiration, "full" - full verification. Any other value enables full verification. To override the setting for this template only, define the macro with the context "HPE MSA 2040 Storage", e.g. {$HTTP.TLS.VERIFY:"HPE MSA 2040 Storage"}.</p>|`full`|
 |{$HPE.MSA.API.SCHEME}|<p>Connection scheme for API.</p>|`https`|
-|{$HPE.MSA.API.HOST}|<p>The hostname or IP address of the API host.</p>|`<SET API HOST>`|
+|{$HPE.MSA.API.HOST}|<p>The hostname or IP address of the API host.</p>||
 |{$HPE.MSA.API.PORT}|<p>Connection port for API.</p>|`443`|
 |{$HPE.MSA.DATA.TIMEOUT}|<p>Response timeout for API.</p>|`30s`|
 |{$HPE.MSA.API.USERNAME}|<p>Specify user name for API.</p>|`zabbix`|

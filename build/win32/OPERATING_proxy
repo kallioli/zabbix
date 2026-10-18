@@ -130,7 +130,7 @@ Installing
 
 With the installer, which is the supported path:
 
-    msiexec /i zabbix_proxy-7.4.15-x64.msi SERVER=zabbix.example.com ^
+    msiexec /i zabbix_proxy-8.0.0-x64.msi SERVER=zabbix.example.com ^
         HOSTNAME=proxy-paris
 
   SERVER      the Zabbix server, "host" or "host:port". Default 127.0.0.1.
@@ -177,7 +177,7 @@ closes with
 
     Zabbix Proxy received stop request.
     ...
-    Zabbix Proxy stopped. Zabbix 7.4.15 (revision ...).
+    Zabbix Proxy stopped. Zabbix 8.0.0 (revision ...).
 
 Only then does the service report itself stopped, so the System log carries
 event 7036 "entered the stopped state" and nothing else. If you ever see event
@@ -424,7 +424,7 @@ Uninstalling
 
 Through Settings, or:
 
-    msiexec /x zabbix_proxy-7.4.15-x64.msi
+    msiexec /x zabbix_proxy-8.0.0-x64.msi
 
 The service is stopped and removed. The data directory stays if it still holds
 the buffer or the log; delete it by hand when you are sure you no longer want

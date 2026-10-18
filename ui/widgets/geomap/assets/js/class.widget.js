@@ -15,6 +15,8 @@
 
 class CWidgetGeoMap extends CWidget {
 
+	static GEOMAP_CLUSTERING_MODE_MANUAL = 1;
+
 	static ZBX_STYLE_HINTBOX = 'geomap-hintbox';
 
 	static SEVERITY_NO_PROBLEMS = -1;
@@ -118,7 +120,7 @@ class CWidgetGeoMap extends CWidget {
 	}
 
 	#getDefaultSelectable() {
-		if (this.#config === null) {
+		if (this.#config === null || this.#hosts.length == 0) {
 			return null;
 		}
 
@@ -181,7 +183,11 @@ class CWidgetGeoMap extends CWidget {
 		this.initSeverities(config.severities);
 
 		// Create cluster layer.
-		this._clusters = this._createClusterLayer();
+		this._clusters = this._createClusterLayer({
+			clustering_zoom_level: this.getFields().clustering_mode === CWidgetGeoMap.GEOMAP_CLUSTERING_MODE_MANUAL
+				? this.getFields().clustering_zoom_level
+				: null
+		});
 		this._map.addLayer(this._clusters);
 
 		// Create markers layer.
@@ -396,14 +402,17 @@ class CWidgetGeoMap extends CWidget {
 	/**
 	 * Function to create cluster layer.
 	 *
+	 * @param {number|null} clustering_zoom_level  Numeric value of clustering zoom level or null.
+	 *
 	 * @returns {CWidgetGeoMap._createClusterLayer.clusters|L.MarkerClusterGroup}
 	 */
-	_createClusterLayer() {
+	_createClusterLayer({clustering_zoom_level}) {
 		const clusters = L.markerClusterGroup({
 			showCoverageOnHover: false,
 			zoomToBoundsOnClick: false,
 			removeOutsideVisibleBounds: true,
 			spiderfyOnMaxZoom: false,
+			disableClusteringAtZoom: clustering_zoom_level,
 			iconCreateFunction: (cluster) => {
 				const max_severity = Math.max(...cluster.getAllChildMarkers().map(p => p.feature.properties.severity));
 				const color = this._severity_levels.get(max_severity).color;
@@ -458,7 +467,7 @@ class CWidgetGeoMap extends CWidget {
 	 */
 	updateFilter(filter) {
 		updateUserProfile('web.dashboard.widget.geomap.severity_filter', filter, [this._widgetid], PROFILE_TYPE_STR)
-			.always(() => {
+			.finally(() => {
 				if (this._state === WIDGET_STATE_ACTIVE) {
 					this._startUpdating();
 				}
@@ -489,7 +498,7 @@ class CWidgetGeoMap extends CWidget {
 	 */
 	unsetDefaultView() {
 		updateUserProfile('web.dashboard.widget.geomap.default_view', '', [this._widgetid], PROFILE_TYPE_STR)
-			.always(() => {
+			.finally(() => {
 				delete this._home_coords.default;
 			});
 

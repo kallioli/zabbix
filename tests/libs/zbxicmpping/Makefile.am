@@ -28,7 +28,7 @@ line_process_WRAP_FUNCS = \
 	-Wl,--wrap=zbx_fgets
 
 line_process_LDADD = $(ICMPPING_LIBS)
-line_process_LDFLAGS = @SERVER_LDFLAGS@ $(CMOCKA_LDFLAGS) $(YAML_LDFLAGS) $(TLS_LDFLAGS) $(ZLIB_LDFLAGS)
+line_process_LDFLAGS = @SERVER_LDFLAGS@ $(CMOCKA_LDFLAGS) $(YAML_LDFLAGS) $(TLS_LDFLAGS) $(ZLIB_LDFLAGS) $(ARES_LDFLAGS)
 
 line_process_CFLAGS = \
 	-I@top_srcdir@/tests \
@@ -50,13 +50,14 @@ get_interval_option_WRAP_FUNCS = \
 	-Wl,--wrap=write
 
 get_interval_option_LDADD = $(ICMPPING_LIBS)
-get_interval_option_LDFLAGS = @SERVER_LDFLAGS@ $(CMOCKA_LDFLAGS) $(YAML_LDFLAGS) $(TLS_LDFLAGS)
+get_interval_option_LDFLAGS = @SERVER_LDFLAGS@ $(CMOCKA_LDFLAGS) $(YAML_LDFLAGS) $(TLS_LDFLAGS) $(ARES_LDFLAGS)
 
 get_interval_option_CFLAGS = \
 	-I@top_srcdir@/tests \
 	$(get_interval_option_WRAP_FUNCS) \
 	$(CMOCKA_CFLAGS) \
 	$(YAML_CFLAGS) \
-	$(TLS_CFLAGS)
+	$(TLS_CFLAGS) \
+	$(ARES_CFLAGS)
 
 endif

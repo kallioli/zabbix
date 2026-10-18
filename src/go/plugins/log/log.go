@@ -22,11 +22,11 @@ import (
 
 	"golang.zabbix.com/agent2/internal/agent"
 	"golang.zabbix.com/agent2/pkg/glexpr"
-	"golang.zabbix.com/agent2/pkg/itemutil"
 	"golang.zabbix.com/agent2/pkg/zbxlib"
 	"golang.zabbix.com/sdk/conf"
 	"golang.zabbix.com/sdk/errs"
 	"golang.zabbix.com/sdk/plugin"
+	"golang.zabbix.com/sdk/plugin/itemutil"
 )
 
 var impl Plugin
@@ -59,7 +59,7 @@ func init() {
 		panic(errs.Wrap(err, "failed to register metrics"))
 	}
 
-	impl.SetHandleTimeout(true)
+	impl.SetForceEffectiveTimeoutExtension(true)
 }
 
 func (p *Plugin) Configure(global *plugin.GlobalOptions, options interface{}) {

@@ -24,7 +24,6 @@
 
 static zbx_get_export_file_f	get_history_file;
 static zbx_get_export_file_f	get_trends_file;
-static zbx_get_export_file_f	get_problems_file;
 static zbx_config_export_t	*config_export;
 
 /******************************************************************************
@@ -197,7 +196,6 @@ void	zbx_deinit_library_export(void)
 	}
 	get_history_file = NULL;
 	get_trends_file = NULL;
-	get_problems_file = NULL;
 }
 
 static int	open_export_file(zbx_export_file_t *file, char **error)
@@ -226,7 +224,7 @@ static zbx_export_file_t	*export_init(const char *process_type, const char *proc
 	if (NULL == config_export)
 	{
 		zabbix_log(LOG_LEVEL_CRIT, "export library is not initialized");
-		exit(EXIT_FAILURE);
+		zbx_exit(EXIT_FAILURE);
 	}
 
 	export_dir = zbx_strdup(NULL, config_export->dir);
@@ -247,7 +245,7 @@ static zbx_export_file_t	*export_init(const char *process_type, const char *proc
 	if (FAIL == open_export_file(file, &error))
 	{
 		zabbix_log(LOG_LEVEL_CRIT, "%s", error);
-		exit(EXIT_FAILURE);
+		zbx_exit(EXIT_FAILURE);
 	}
 
 	file->missing = 0;
@@ -271,11 +269,8 @@ zbx_export_file_t	*zbx_trends_export_init(zbx_get_export_file_f get_export_file_
 	return export_init("trends", process_name, process_num);
 }
 
-zbx_export_file_t	*zbx_problems_export_init(zbx_get_export_file_f get_export_file_cb, const char *process_name,
-		int process_num)
+zbx_export_file_t	*zbx_problems_export_init(const char *process_name, int process_num)
 {
-	get_problems_file = get_export_file_cb;
-
 	return export_init("problems", process_name, process_num);
 }
 
@@ -298,7 +293,7 @@ static void	export_write(const char *buf, size_t count, zbx_export_file_t *file)
 	if (NULL == config_export)
 	{
 		zabbix_log(LOG_LEVEL_CRIT, "export library is not initialized");
-		exit(EXIT_FAILURE);
+		zbx_exit(EXIT_FAILURE);
 	}
 
 	if (0 == file->missing && 0 != access(file->name, F_OK))
@@ -392,9 +387,9 @@ error:
 #undef ZBX_LOGGING_SUSPEND_TIME
 }
 
-void	zbx_problems_export_write(const char *buf, size_t count)
+void	zbx_problems_export_write(zbx_export_file_t *file, const char *buf, size_t count)
 {
-	export_write(buf, count, get_problems_file());
+	export_write(buf, count, file);
 }
 
 void	zbx_history_export_write(const char *buf, size_t count)
@@ -413,9 +408,9 @@ static void	export_flush(zbx_export_file_t *file)
 		zabbix_log(LOG_LEVEL_ERR, "cannot flush export file '%s': %s", file->name, zbx_strerror(errno));
 }
 
-void	zbx_problems_export_flush(void)
+void	zbx_problems_export_flush(zbx_export_file_t *file)
 {
-	export_flush(get_problems_file());
+	export_flush(file);
 }
 
 void	zbx_history_export_flush(void)

@@ -17,20 +17,37 @@
 
 window.maintenance_edit = new class {
 
-	init({maintenanceid, timeperiods, tags, allowed_edit}) {
-		this._maintenanceid = maintenanceid;
+	/**
+	 * @type {HTMLFormElement}
+	 */
+	form_element;
 
-		this._overlay = overlays_stack.getById('maintenance.edit');
-		this._dialogue = this._overlay.$dialogue[0];
-		this._form = this._overlay.$dialogue.$body[0].querySelector('form');
+	/**
+	 * @type {CForm}
+	 */
+	form;
+
+	init({rules, clone_rules, timeperiods, event_names, tags, allowed_edit}) {
+		this.overlay = overlays_stack.getById('maintenance.edit');
+		this.dialogue = this.overlay.$dialogue[0];
+		this.footer = this.overlay.$dialogue.$footer[0];
+		this.form_element = this.overlay.$dialogue.$body[0].querySelector('form');
+		this.form = new CForm(this.form_element, rules);
 		this._allowed_edit = allowed_edit;
+		this.clone_rules = clone_rules;
 
 		const return_url = new URL('zabbix.php', location.href);
+
 		return_url.searchParams.set('action', 'maintenance.list');
 		ZABBIX.PopupManager.setReturnUrl(return_url.href);
 
-		timeperiods.forEach((timeperiod, row_index) => {
-			this._addTimePeriod({row_index, ...timeperiod});
+		timeperiods.forEach((timeperiod, row_index) => this.#addTimePeriod({row_index, ...timeperiod}));
+
+		// Setup Event Names.
+		jQuery(document.getElementById('event_names')).dynamicRows({
+			template: '#event-names-row-tmpl',
+			rows: event_names,
+			allow_empty: true
 		});
 
 		// Setup Tags.
@@ -44,10 +61,10 @@ window.maintenance_edit = new class {
 			// Setup Time periods.
 			document.getElementById('timeperiods').addEventListener('click', (e) => {
 				if (e.target.classList.contains('js-add')) {
-					this._editTimePeriod();
+					this.#editTimePeriod();
 				}
 				else if (e.target.classList.contains('js-edit')) {
-					this._editTimePeriod(e.target.closest('tr'));
+					this.#editTimePeriod(e.target.closest('tr'));
 				}
 				else if (e.target.classList.contains('js-remove')) {
 					e.target.closest('tr').remove();
@@ -58,52 +75,45 @@ window.maintenance_edit = new class {
 
 			const $groupids = $('#groupids_');
 
-			$groupids.on('change', () => this._updateMultiselect($groupids));
-			this._updateMultiselect($groupids);
+			$groupids.on('change', () => this.#updateMultiselect($groupids));
+			this.#updateMultiselect($groupids);
 
 			const $hostids = $('#hostids_');
 
-			$hostids.on('change', () => this._updateMultiselect($hostids));
-			this._updateMultiselect($hostids);
+			$hostids.on('change', () => this.#updateMultiselect($hostids));
+			this.#updateMultiselect($hostids);
+
+			const $triggerids = $('#triggerids_');
+
+			$triggerids.on('change', () => this.#updateMultiselect($triggerids));
+			this.#updateMultiselect($triggerids);
 
 			// Update form field state according to the form data.
-			document.getElementById('maintenance_type').addEventListener('change', () => this._update());
+			document.getElementById('maintenance_type').addEventListener('change', () => this.#update());
+			this.form.findFieldByName('timeperiods').setButtonOnBlur('js-add', 'maintenance-timeperiod-edit');
 		}
 
-		this._update();
+		this.#update();
 
-		this._form.style.display = '';
-		this._overlay.recoverFocus();
+		this.footer.querySelector('.js-submit').addEventListener('click', () => this.#submit());
+		this.footer.querySelector('.js-clone')?.addEventListener('click', () => this.#clone());
+		this.footer.querySelector('.js-delete')?.addEventListener('click', () => this.#delete());
+
+		this.form_element.style.display = '';
+		this.overlay.recoverFocus();
 	}
 
-	_update () {
-		const tags_enabled =
-			this._form.querySelector('[name="maintenance_type"]:checked').value == <?= MAINTENANCE_TYPE_NORMAL ?>;
+	#update() {
+		const is_enabled = this.form_element
+			.querySelector('[name="maintenance_type"]:checked').value == <?= MAINTENANCE_TYPE_NORMAL ?>;
 
-		const tags_container = document.getElementById('tags');
+		$('#triggerids_').multiSelect(!is_enabled || !this._allowed_edit ? 'disable' : 'enable');
 
-		tags_container.querySelectorAll('[name$="[tag]"], [name$="[value]"]').forEach((text_input) => {
-			text_input.disabled = !tags_enabled;
-		});
-
-		tags_container.querySelectorAll('[name="tags_evaltype"], [name$="[operator]"]').forEach((radio_button) => {
-			radio_button.disabled = !tags_enabled || !this._allowed_edit;
-		});
-
-		tags_container.querySelectorAll('.element-table-add, .element-table-remove').forEach((button) => {
-			button.disabled = !tags_enabled || !this._allowed_edit;
-		});
-
-		tags_container.querySelectorAll('[name$="[tag]"]').forEach((tag_text_input) => {
-			tag_text_input.placeholder = tags_enabled ? <?= json_encode(_('tag')) ?> : '';
-		});
-
-		tags_container.querySelectorAll('[name$="[value]"]').forEach((value_text_input) => {
-			value_text_input.placeholder = tags_enabled ? <?= json_encode(_('value')) ?> : '';
-		});
+		this.#updateEventNames(is_enabled);
+		this.#updateTags(is_enabled);
 	}
 
-	_editTimePeriod(row = null) {
+	#editTimePeriod(row = null) {
 		let popup_params;
 
 		if (row !== null) {
@@ -125,7 +135,7 @@ window.maintenance_edit = new class {
 		else {
 			let row_index = 0;
 
-			while (document.querySelector(`#timeperiods [data-row_index="${row_index}"]`) !== null) {
+			while (this.form_element.querySelector(`#timeperiods [data-row_index="${row_index}"]`) !== null) {
 				row_index++;
 			}
 
@@ -139,84 +149,238 @@ window.maintenance_edit = new class {
 
 		overlay.$dialogue[0].addEventListener('dialogue.submit', (e) => {
 			if (row !== null) {
-				this._updateTimePeriod(row, e.detail)
+				this.#updateTimePeriod(row, e.detail)
 			}
 			else {
-				this._addTimePeriod(e.detail);
+				this.#addTimePeriod(e.detail);
 			}
+
+			this.#synchronizeActivesAndTimePeriod(e.detail)
 		});
 	}
 
-	_addTimePeriod(timeperiod) {
+	#addTimePeriod(timeperiod) {
 		const template = new Template(document.getElementById('timeperiod-row-tmpl').innerHTML);
 
-		document
+		this.form_element
 			.querySelector('#timeperiods tbody')
 			.insertAdjacentHTML('beforeend', template.evaluate(timeperiod));
 	}
 
-	_updateTimePeriod(row, timeperiod) {
+	#updateTimePeriod(row, timeperiod) {
 		const template = new Template(document.getElementById('timeperiod-row-tmpl').innerHTML);
 
 		row.insertAdjacentHTML('afterend', template.evaluate(timeperiod));
 		row.remove();
 	}
 
-	clone({title, buttons}) {
-		this._maintenanceid = null;
+	#synchronizeActivesAndTimePeriod(timeperiod) {
+		if (timeperiod.timeperiod_type === <?= TIMEPERIOD_TYPE_ONETIME ?>) {
+			const dateFormatter = new Intl.DateTimeFormat('en', {
+				year: 'numeric',
+				month: '2-digit',
+				day: '2-digit',
+				hour: '2-digit',
+				minute: '2-digit',
+				hourCycle: 'h23',
+				timeZone: <?= json_encode(date_default_timezone_get()) ?>
+			});
 
-		this._overlay.unsetLoading();
-		this._overlay.setProperties({title, buttons});
-		this._overlay.recoverFocus();
-		this._overlay.containFocus();
-	}
+			const formatDate = (date) => {
+				const parts = Object.fromEntries(
+					dateFormatter.formatToParts(date)
+					.filter(({type}) => type !== 'literal')
+					.map(({type, value}) => [type, value])
+				);
 
-	delete() {
-		const post_data = {
-			maintenanceids: [this._maintenanceid],
-			[CSRF_TOKEN_NAME]: <?= json_encode(CCsrfTokenHelper::get('maintenance')) ?>
-		};
+				return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}`;
+			};
 
-		const curl = new Curl('zabbix.php');
-		curl.setArgument('action', 'maintenance.delete');
+			const active_since_input = document.getElementById('active_since');
+			const active_till_input = document.getElementById('active_till');
 
-		this._post(curl.getUrl(), post_data, (response) => {
-			overlayDialogueDestroy(this._overlay.dialogueid);
+			const start_date = new Date(timeperiod.start_date * 1000);
+			const active_since = formatDate(start_date);
+			const active_till = formatDate(new Date(start_date.getTime() + timeperiod.period * 1000));
 
-			this._dialogue.dispatchEvent(new CustomEvent('dialogue.submit', {detail: response}));
-		});
-	}
+			const isLeapYear = (year) => (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
+			const DAYS_IN_MONTH = (year) => [31, isLeapYear(year) ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
 
-	submit() {
-		const fields = getFormFields(this._form);
+			const parseDateTime = (value) => {
+				const match = value.trim().match(/^(\d{1,4})-(\d{1,2})-(\d{1,2}) (\d{1,2}):(\d{1,2})(?::\d{1,2})?$/);
 
-		if (this._maintenanceid !== null) {
-			fields.maintenanceid = this._maintenanceid;
-		}
+				if (match === null) {
+					return null;
+				}
 
-		fields.name = fields.name.trim();
-		fields.description = fields.description.trim();
+				const [year, month, day, hour, minute] = match.slice(1).map(Number);
 
-		if ('tags' in fields) {
-			for (const tag of Object.values(fields.tags)) {
-				tag.tag = tag.tag.trim();
-				tag.value = tag.value.trim();
+				if (year < 1970 || month < 1 || month > 12 || day < 1 || day > DAYS_IN_MONTH(year)[month - 1]
+						|| hour > 23 || minute > 59) {
+					return null;
+				}
+
+				return [
+					String(year).padStart(4, '0'), String(month).padStart(2, '0'), String(day).padStart(2, '0')
+				].join('-') + ' ' + [String(hour).padStart(2, '0'), String(minute).padStart(2, '0')].join(':');
+			};
+
+			const active_since_canonical = parseDateTime(active_since_input.value);
+			if (active_since_canonical === null || active_since_canonical > active_since) {
+				active_since_input.value = active_since;
 			}
+
+			const active_till_canonical = parseDateTime(active_till_input.value);
+			if (active_till_canonical === null || active_till_canonical < active_till) {
+				active_till_input.value = active_till;
+			}
+
+			this.form.validateChanges(['active_since', 'active_till']);
 		}
+	}
 
-		const curl = new Curl('zabbix.php');
-		curl.setArgument('action', this._maintenanceid !== null ? 'maintenance.update' : 'maintenance.create');
+	#updateEventNames(is_enabled) {
+		const event_names_container = document.getElementById('event_names');
 
-		this._post(curl.getUrl(), fields, (response) => {
-			overlayDialogueDestroy(this._overlay.dialogueid);
+		event_names_container.querySelectorAll('[name$="[value]"]').forEach((text_input) => {
+			text_input.disabled = !is_enabled;
+		});
 
-			this._dialogue.dispatchEvent(new CustomEvent('dialogue.submit', {detail: response}));
+		const event_names_operators = event_names_container.querySelectorAll('[name$="[operator]"]');
+
+		[...event_names_operators].forEach((radio_button) => {
+			radio_button.disabled = !is_enabled || !this._allowed_edit
+
+			const field = this.form.findFieldByName(radio_button.name);
+
+			if (field && radio_button.disabled) {
+				field.unsetErrors();
+			}
+		});
+
+		event_names_container.querySelectorAll('.element-table-add, .element-table-remove').forEach((button) =>
+			button.disabled = !is_enabled || !this._allowed_edit
+		);
+
+		event_names_container.querySelectorAll('[name$="[value]"]').forEach((value_text_input) =>
+			value_text_input.placeholder = is_enabled ? <?= json_encode(_('value')) ?> : ''
+		);
+	}
+
+	#updateTags(is_enabled) {
+		const tags_container = document.getElementById('tags');
+
+		tags_container.querySelectorAll('[name$="[tag]"], [name$="[value]"]').forEach((text_input) => {
+			text_input.disabled = !is_enabled;
+
+			const field = this.form.findFieldByName(text_input.name);
+
+			if (field && text_input.disabled) {
+				field.unsetErrors();
+			}
+		});
+
+		const tags_evaltypes = this.form_element.querySelectorAll('[name="tags_evaltype"]');
+		const tags_operators = tags_container.querySelectorAll('[name$="[operator]"]');
+
+		[...tags_evaltypes, ...tags_operators].forEach((radio_button) =>
+			radio_button.disabled = !is_enabled || !this._allowed_edit
+		);
+
+		tags_container.querySelectorAll('.element-table-add, .element-table-remove').forEach((button) =>
+			button.disabled = !is_enabled || !this._allowed_edit
+		);
+
+		tags_container.querySelectorAll('[name$="[tag]"]').forEach((tag_text_input) =>
+			tag_text_input.placeholder = is_enabled ? <?= json_encode(_('tag')) ?> : ''
+		);
+
+		tags_container.querySelectorAll('[name$="[value]"]').forEach((value_text_input) =>
+			value_text_input.placeholder = is_enabled ? <?= json_encode(_('value')) ?> : ''
+		);
+	}
+
+	#clone() {
+		this.form_element.querySelector('[name=maintenanceid]').remove();
+
+		const title = <?= json_encode(_('New maintenance period')) ?>;
+		const buttons = [
+			{
+				title: <?= json_encode(_('Add')) ?>,
+				class: 'js-submit',
+				keepOpen: true,
+				isSubmit: true
+			},
+			{
+				title: <?= json_encode(_('Cancel')) ?>,
+				class: ZBX_STYLE_BTN_ALT,
+				cancel: true,
+				action: ''
+			}
+		];
+
+		this.overlay.unsetLoading();
+		this.overlay.setProperties({title, buttons});
+
+		this.footer.querySelector('.js-submit').addEventListener('click', () => this.#submit());
+
+		this.overlay.recoverFocus();
+		this.overlay.containFocus();
+		this.form.reload(this.clone_rules);
+	}
+
+	#delete() {
+		if (window.confirm(<?= json_encode(_('Delete maintenance period?')) ?>)) {
+			this.#removePopupMessages();
+
+			const post_data = {
+				maintenanceids: [this.form.findFieldByName('maintenanceid').getValue()],
+				[CSRF_TOKEN_NAME]: <?= json_encode(CCsrfTokenHelper::get('maintenance')) ?>
+			};
+
+			const curl = new Curl('zabbix.php');
+
+			curl.setArgument('action', 'maintenance.delete');
+
+			this.#post(curl.getUrl(), post_data, (response) => {
+				overlayDialogueDestroy(this.overlay.dialogueid);
+
+				this.dialogue.dispatchEvent(new CustomEvent('dialogue.submit', {detail: response}));
+			});
+		}
+		else {
+			this.overlay.unsetLoading();
+		}
+	}
+
+	#submit() {
+		this.#removePopupMessages();
+		const fields = this.form.getAllValues();
+
+		this.form.validateSubmit(fields).then((result) => {
+			if (!result) {
+				this.overlay.unsetLoading();
+
+				return;
+			}
+
+			const curl = new Curl('zabbix.php');
+
+			curl.setArgument('action',
+				document.getElementById('maintenanceid') !== null
+					? 'maintenance.update'
+					: 'maintenance.create'
+			);
+
+			this.#post(curl.getUrl(), fields, (response) => {
+				overlayDialogueDestroy(this.overlay.dialogueid);
+
+				this.dialogue.dispatchEvent(new CustomEvent('dialogue.submit', {detail: response}));
+			});
 		});
 	}
 
-	_post(url, data, success_callback) {
-		this._overlay.setLoading();
-
+	#post(url, data, success_callback) {
 		fetch(url, {
 			method: 'POST',
 			headers: {'Content-Type': 'application/json'},
@@ -228,36 +392,44 @@ window.maintenance_edit = new class {
 					throw {error: response.error};
 				}
 
-				return response;
+				if ('form_errors' in response) {
+					this.form.setErrors(response.form_errors, true, true);
+					this.form.renderErrors();
+
+					return;
+				}
+
+				success_callback(response);
 			})
-			.then(success_callback)
-			.catch((exception) => {
-				for (const element of this._form.parentNode.children) {
-					if (element.matches('.msg-good, .msg-bad, .msg-warning')) {
-						element.parentNode.removeChild(element);
-					}
-				}
-
-				let title, messages;
-
-				if (typeof exception === 'object' && 'error' in exception) {
-					title = exception.error.title;
-					messages = exception.error.messages;
-				}
-				else {
-					messages = [<?= json_encode(_('Unexpected server error.')) ?>];
-				}
-
-				const message_box = makeMessageBox('bad', messages, title)[0];
-
-				this._form.parentNode.insertBefore(message_box, this._form);
-			})
-			.finally(() => {
-				this._overlay.unsetLoading();
-			});
+			.catch((exception) => this.#ajaxExceptionHandler(exception))
+			.finally(() => this.overlay.unsetLoading());
 	}
 
-	_updateMultiselect($ms) {
+	#updateMultiselect($ms) {
 		$ms.multiSelect('setDisabledEntries', [...$ms.multiSelect('getData').map((entry) => entry.id)]);
 	}
-}
+
+	#removePopupMessages() {
+		for (const el of this.form_element.parentNode.children) {
+			if (el.matches('.msg-good, .msg-bad, .msg-warning')) {
+				el.parentNode.removeChild(el);
+			}
+		}
+	}
+
+	#ajaxExceptionHandler(exception) {
+		let title, messages;
+
+		if (typeof exception === 'object' && 'error' in exception) {
+			title = exception.error.title;
+			messages = exception.error.messages;
+		}
+		else {
+			messages = [<?= json_encode(_('Unexpected server error.')) ?>];
+		}
+
+		const message_box = makeMessageBox('bad', messages, title)[0];
+
+		this.form_element.parentNode.insertBefore(message_box, this.form_element);
+	}
+};

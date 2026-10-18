@@ -16,6 +16,8 @@
 
 namespace Widgets\Problems\Includes;
 
+use CWebUser;
+
 use Zabbix\Widgets\{
 	CWidgetField,
 	CWidgetForm
@@ -73,7 +75,7 @@ class WidgetForm extends CWidgetForm {
 				: new CWidgetFieldMultiSelectHost('hostids', _('Hosts'))
 			)
 			->addField(
-				new CWidgetFieldTextBox('problem', _('Problem'))
+				(new CWidgetFieldTextBox('problem', _('Problem')))->setMaxLength(2048)
 			)
 			->addField(
 				new CWidgetFieldSeverities('severities', _('Severity'))
@@ -107,6 +109,7 @@ class WidgetForm extends CWidgetForm {
 			->addField(
 				(new CWidgetFieldTextBox('tag_priority', _('Tag display priority')))
 					->setFlags($this->show_tags ? 0x00 : CWidgetField::FLAG_DISABLED)
+					->setMaxLength(2048)
 			)
 			->addField(
 				(new CWidgetFieldRadioButtonList('show_opdata', _('Show operational data'), [
@@ -154,7 +157,10 @@ class WidgetForm extends CWidgetForm {
 					)
 			)
 			->addField(
-				(new CWidgetFieldCheckBox('highlight_row', _('Highlight whole row')))->setDefault(ZBX_HIGHLIGHT_OFF)
+				!in_array(CWebUser::$data['theme'], ['hc-light', 'hc-dark'])
+					? (new CWidgetFieldCheckBox('highlight_row', _('Highlight whole row')))
+						->setDefault(ZBX_HIGHLIGHT_OFF)
+					: null
 			)
 			->addField(
 				(new CWidgetFieldIntegerBox('show_lines', _('Show lines'), ZBX_MIN_WIDGET_LINES,

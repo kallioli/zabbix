@@ -102,8 +102,10 @@ $host_tab->addRow(
 $host_tab->addRow(
 	(new CVisibilityBox('visible[monitored_by]', 'monitored-by-field', _('Original')))->setLabel(_('Monitored by')),
 	(new CDiv([
-		(new CRadioButtonList('monitored_by', ZBX_MONITORED_BY_SERVER))
-			->addValue(_('Server'), ZBX_MONITORED_BY_SERVER)
+		(new CRadioButtonList('monitored_by', (int) $data['monitored_by']))
+			->addValue(_('Server'), ZBX_MONITORED_BY_SERVER,
+				disabled: !CWebUser::checkAccess(CRoleHelper::ACTIONS_SELECT_SERVER_FOR_MONITORING)
+			)
 			->addValue(_('Proxy'), ZBX_MONITORED_BY_PROXY)
 			->addValue(_('Proxy group'), ZBX_MONITORED_BY_PROXY_GROUP)
 			->setModern(),
@@ -203,10 +205,7 @@ $inventory_tab->addRow(
 		->setModern(true)
 );
 
-$tags_tab = new CFormList('tagsFormList');
-
-// append tags table to form list
-$tags_tab->addRow(
+$tags_tab = (new CFormList())->addRow(
 	(new CVisibilityBox('visible[tags]', 'tags-field', _('Original')))->setLabel(_('Tags')),
 	(new CDiv([
 		(new CRadioButtonList('mass_update_tags', ZBX_ACTION_ADD))

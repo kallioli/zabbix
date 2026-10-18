@@ -33,7 +33,7 @@ class CControllerItemMassupdate extends CController {
 
 			// The fields used for all item types.
 			'type' => 'int32',
-			'value_type' => 'in '.implode(',', [ITEM_VALUE_TYPE_UINT64, ITEM_VALUE_TYPE_FLOAT, ITEM_VALUE_TYPE_STR, ITEM_VALUE_TYPE_LOG, ITEM_VALUE_TYPE_TEXT, ITEM_VALUE_TYPE_BINARY]),
+			'value_type' => 'in '.implode(',', [ITEM_VALUE_TYPE_UINT64, ITEM_VALUE_TYPE_FLOAT, ITEM_VALUE_TYPE_STR, ITEM_VALUE_TYPE_LOG, ITEM_VALUE_TYPE_TEXT, ITEM_VALUE_TYPE_BINARY, ITEM_VALUE_TYPE_JSON]),
 			'units' => 'string',
 			'history' => 'string',
 			'trends' => 'string',
@@ -70,7 +70,12 @@ class CControllerItemMassupdate extends CController {
 
 			// SSH item type specific fields.
 			'publickey' => 'string',
-			'privatekey' => 'string'
+			'privatekey' => 'string',
+
+			// Telemetry query item type specific fields.
+			'time_shift' => 'string',
+			'lookback_limit' => 'string',
+			'granularity' => 'string'
 		];
 
 		$ret = $this->validateInput($fields);
@@ -168,7 +173,12 @@ class CControllerItemMassupdate extends CController {
 
 				// SSH item type specific fields.
 				'publickey' => DB::getDefault('items', 'publickey'),
-				'privatekey' => DB::getDefault('items', 'privatekey')
+				'privatekey' => DB::getDefault('items', 'privatekey'),
+
+				// Telemetry query item type specific fields.
+				'time_shift' => DB::getDefault('items', 'time_shift'),
+				'lookback_limit' => DB::getDefault('items', 'lookback_limit'),
+				'granularity' => DB::getDefault('items', 'granularity')
 			];
 
 			$input = array_intersect_key($input, $this->getInput('visible', []));
@@ -451,7 +461,8 @@ class CControllerItemMassupdate extends CController {
 
 		$data['item_types'] = item_type2str();
 		unset($data['item_types'][ITEM_TYPE_HTTPTEST], $data['item_types'][ITEM_TYPE_SCRIPT],
-			$data['item_types'][ITEM_TYPE_BROWSER], $data['item_types'][ITEM_TYPE_NESTED]
+			$data['item_types'][ITEM_TYPE_BROWSER], $data['item_types'][ITEM_TYPE_NESTED],
+			$data['item_types'][ITEM_TYPE_TELEMETRY_QUERY]
 		);
 
 		return new CControllerResponseData($data);

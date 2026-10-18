@@ -1,3 +1,4 @@
+
 # cmocka dependencies
 MOCK_DATA_DEPS = \
 	$(top_srcdir)/tests/libzbxmockdata.a \
@@ -16,6 +17,7 @@ MOCK_TEST_DEPS = \
 	$(top_srcdir)/src/libs/zbxnum/libzbxnum.a \
 	$(top_srcdir)/src/libs/zbxthreads/libzbxthreads.a \
 	$(top_srcdir)/src/libs/zbxcomms/libzbxcomms.a \
+	$(top_builddir)/src/libs/zbxresolver/libzbxresolver.a \
 	$(top_srcdir)/src/libs/zbxcommon/libzbxcommon.a
 
 
@@ -44,6 +46,7 @@ ZBX_COMMON_LIBS = \
 	$(top_builddir)/src/libs/zbxinterface/libzbxinterface.a \
 	$(top_builddir)/src/libs/zbxcomms/libzbxcomms.a \
 	$(top_builddir)/src/libs/zbxcommshigh/libzbxcommshigh.a \
+	$(top_builddir)/src/libs/zbxresolver/libzbxresolver.a \
 	$(top_builddir)/src/libs/zbxregexp/libzbxregexp.a \
 	$(top_builddir)/src/libs/zbxnix/libzbxnix.a \
 	$(top_builddir)/src/libs/zbxcurl/libzbxcurl.a \
@@ -64,21 +67,25 @@ ZBX_COMMON_LIBS += \
 
 
 ZBX_SERVER_PROXY_LIBS = \
-	$(top_builddir)/src/libs/zbxexpression/libzbxexpression.a \
+	$(top_builddir)/src/libs/zbxcalc/libzbxcalc.a \
 	$(top_builddir)/src/libs/zbxdbsyncer/libzbxdbsyncer.a \
 	$(top_builddir)/src/libs/zbxpinger/libzbxpinger.a \
+	$(top_builddir)/src/libs/zbxsupervisor/libzbxsupervisor.a \
 	$(top_builddir)/src/libs/zbxdiscoverer/libzbxdiscoverer.a \
 	$(top_builddir)/src/libs/zbxtrapper/libzbxtrapper.a \
 	$(top_builddir)/src/libs/zbxhttppoller/libzbxhttppoller.a \
 	$(top_builddir)/src/libs/zbxpoller/libzbxpoller.a \
 	$(top_builddir)/src/libs/zbxautoreg/libzbxautoreg.a \
 	$(top_builddir)/src/libs/zbxsnmptrapper/libzbxsnmptrapper.a \
+	$(top_builddir)/src/libs/zbxsnmp/libzbxsnmp.a \
 	$(top_builddir)/src/libs/zbxvmware/libzbxvmware.a \
 	$(top_builddir)/src/libs/zbxscripts/libzbxscripts.a \
 	$(top_builddir)/src/libs/zbxodbc/libzbxodbc.a \
 	$(top_builddir)/src/libs/zbxembed/libzbxembed.a \
 	$(top_builddir)/src/libs/zbxdiscovery/libzbxdiscovery.a \
 	$(top_builddir)/src/libs/zbxexport/libzbxexport.a \
+	$(top_builddir)/src/libs/zbxsupervisor_client/libzbxsupervisor_client.a \
+	$(top_builddir)/src/libs/zbxmw/libzbxmw.a \
 	$(top_builddir)/src/libs/zbxprometheus/libzbxprometheus.a \
 	$(top_builddir)/src/libs/zbxcacheconfig/libzbxcacheconfig.a \
 	$(top_builddir)/src/libs/zbxpgservice/libzbxpgservice.a \
@@ -126,6 +133,8 @@ ZBX_SERVER_LIBS = \
 	$(top_builddir)/src/libs/zbxalerter/libzbxalerter.a \
 	$(top_builddir)/src/libs/zbxmedia/libzbxmedia.a \
 	$(top_builddir)/src/libs/zbxservice/libzbxservice.a \
+	$(top_builddir)/src/libs/zbxtelemetry/libzbxtelemetry.a \
+	$(top_builddir)/src/libs/zbxcep_client/libzbxcep_client.a \
 	$(top_builddir)/src/zabbix_server/audit/libzbxaudit_server.a \
 	$(top_builddir)/src/zabbix_server/rtc/libzbxrtc_server.a \
 	$(top_builddir)/src/zabbix_server/dbconfigworker/libdbconfigworker.a \
@@ -153,6 +162,7 @@ ZBX_SERVER_LIBS = \
 	$(top_builddir)/src/zabbix_server/dbconfig/libzbxdbconfig.a \
 	$(top_builddir)/src/zabbix_server/diag/libzbxdiag_server.a \
 	$(top_builddir)/src/zabbix_server/cachehistory/libzbxcachehistory_server.a \
+	$(top_builddir)/src/zabbix_server/cep/libzbxcep.a \
 	@SERVER_LIBS@
 
 ZBX_PROXY_LIBS = \

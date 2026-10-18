@@ -63,6 +63,7 @@ class testFormUserPermissions extends CWebTest {
 				'name' => 'admin_role',
 				'type' => 2,
 				'rules' => [
+					'api.access' => ZBX_ROLE_RULE_ENABLED,
 					'api' => [
 						'host.create'
 					]
@@ -157,7 +158,7 @@ class testFormUserPermissions extends CWebTest {
 		$form->submit();
 
 		if ($data['expected'] === TEST_BAD) {
-			$this->assertMessage(TEST_BAD, 'Cannot update user', 'Field "roleid" is mandatory.');
+			$this->assertInlineError($form, ['Role' => 'This field cannot be empty.']);
 			$this->page->open('zabbix.php?action=user.list');
 			$this->assertEquals($standard_role, $table->findRow('Username', $data['user_name'])->getColumn('User role')->getText());
 			$this->assertEquals($hash_before, CDBHelper::getHash('SELECT * FROM users'));
@@ -388,7 +389,8 @@ class testFormUserPermissions extends CWebTest {
 
 					// API gets disabled.
 					if ($api_status_field === 'Disabled') {
-						$form->fill(['Enabled' => false]);
+						// Field ID is used, since two 'Enalbed' labels are present in the user role form.
+						$form->fill(['id:api-access' => false]);
 					}
 					else {
 						// Change Deny to Allow list and add request. Now they became green on permission page.
@@ -412,7 +414,7 @@ class testFormUserPermissions extends CWebTest {
 		$this->page->login()->open('zabbix.php?action=user.edit&userid=2')->waitUntilReady();
 		$this->query('xpath://form[@name="user_form"]')->waitUntilPresent()->one()->asForm()->selectTab('Permissions');
 		$this->assertEquals('Permissions can be assigned for user groups only.',
-				$this->query('xpath://ul[@id="permissionsFormList"]/li[4]')->one()->getText()
+				$this->query('xpath://ul[@id="permissionsFormList"]/li[7]')->one()->getText()
 		);
 		$table = $this->query($table_selector)->asTable()->one();
 		$this->assertEquals(['Group', 'Type', 'Permissions'], $table->getHeadersText());
@@ -487,9 +489,10 @@ class testFormUserPermissions extends CWebTest {
 	public function testFormUserPermissions_Module() {
 		$widget_modules = ['Action log', 'Clock', 'Discovery status', 'Favorite graphs', 'Favorite maps',
 			'Gauge', 'Geomap', 'Graph', 'Graph (classic)', 'Graph prototype', 'Honeycomb', 'Host availability',
-			'Host card', 'Host navigator', 'Item card', 'Item history', 'Item navigator', 'Item value', 'Map', 'Map navigation tree',
-			'Pie chart', 'Problem hosts', 'Problems', 'Problems by severity', 'SLA report', 'System information',
-			'Top hosts', 'Top items', 'Top triggers', 'Trigger overview', 'URL', 'Web monitoring'
+			'Host card', 'Host navigator', 'Item card', 'Item history', 'Item navigator', 'Item value', 'Map',
+			'Map navigation tree', 'Pie chart', 'Problem hosts', 'Problems', 'Problems by severity', 'Scatter plot',
+			'SLA report', 'System information', 'Top hosts', 'Top items', 'Top triggers', 'Trigger overview', 'URL',
+			'Web monitoring'
 		];
 
 		$this->page->login()->open('zabbix.php?action=user.edit&userid='.self::$admin_user)->waitUntilReady();

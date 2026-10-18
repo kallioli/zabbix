@@ -15,8 +15,12 @@
 #include "discoverer_async.h"
 
 #include "discoverer_job.h"
+#include "discoverer_int.h"
+#include "discoverer_queue.h"
 #include "async_tcpsvc.h"
 #include "async_telnet.h"
+
+#include "zbxcommon.h"
 
 #ifdef HAVE_LIBCURL
 #	include "async_http.h"
@@ -158,7 +162,7 @@ static int	discovery_snmp(discovery_poller_config_t *poller_config, const zbx_dc
 		char *ip, const unsigned short port, zbx_discoverer_results_t *dresult, char **error)
 {
 	int				ret;
-	zbx_dc_item_t			item;
+	zbx_dc_snmp_item_t		item;
 	AGENT_RESULT			result;
 	discovery_async_result_t	*async_result;
 
@@ -169,9 +173,9 @@ static int	discovery_snmp(discovery_poller_config_t *poller_config, const zbx_dc
 
 	zbx_init_agent_result(&result);
 
-	memset(&item, 0, sizeof(zbx_dc_item_t));
-	zbx_strscpy(item.key_orig, dcheck->key_);
-	item.key = item.key_orig;
+	memset(&item, 0, sizeof(zbx_dc_snmp_item_t));
+	item.key_orig = zbx_strdup(NULL, dcheck->key_);
+	item.key = zbx_strdup(NULL, dcheck->key_);
 
 	item.interface.useip = 1;
 	zbx_strscpy(item.interface.ip_orig, ip);
@@ -184,20 +188,18 @@ static int	discovery_snmp(discovery_poller_config_t *poller_config, const zbx_dc
 	{
 		case SVC_SNMPv1:
 			item.snmp_version = ZBX_IF_SNMP_VERSION_1;
-			item.type = ITEM_TYPE_SNMP;
 			break;
 		case SVC_SNMPv2c:
 			item.snmp_version = ZBX_IF_SNMP_VERSION_2;
-			item.type = ITEM_TYPE_SNMP;
 			break;
 		case SVC_SNMPv3:
 			item.snmp_version = ZBX_IF_SNMP_VERSION_3;
-			item.type = ITEM_TYPE_SNMP;
 	}
 
 	item.snmp_community = zbx_strdup(NULL, dcheck->snmp_community);
 	item.snmp_oid = dcheck->key_;
 	item.timeout = dcheck->timeout;
+	item.snmp_retries = 0;
 
 	if (ZBX_IF_SNMP_VERSION_3 == item.snmp_version)
 	{
@@ -216,7 +218,7 @@ static int	discovery_snmp(discovery_poller_config_t *poller_config, const zbx_dc
 
 	if (SUCCEED != (ret = zbx_async_check_snmp(&item, &result, process_snmp_result, async_result, NULL,
 			poller_config->base, NULL, poller_config->dnsbase, poller_config->config_source_ip,
-			ZABBIX_ASYNC_RESOLVE_REVERSE_DNS_YES, 0)))
+			ZABBIX_ASYNC_RESOLVE_REVERSE_DNS_YES)))
 	{
 		if (ZBX_ISSET_MSG(&result))
 			*error = zbx_strdup(*error, *ZBX_GET_MSG_RESULT(&result));
@@ -234,9 +236,12 @@ static int	discovery_snmp(discovery_poller_config_t *poller_config, const zbx_dc
 	zbx_free(item.snmpv3_privpassphrase);
 	zbx_free(item.snmpv3_contextname);
 	zbx_free_agent_result(&result);
+	zbx_free(item.key_orig);
+	zbx_free(item.key);
 
 	zabbix_log(LOG_LEVEL_DEBUG, "%s() ip:%s port:%d, key:%s ret:%d", __func__,
-			ip, port, item.key_orig, ret);
+			ip, port, dcheck->key_, ret);
+
 	return ret;
 }
 #endif
@@ -285,7 +290,7 @@ static int	discovery_agent(discovery_poller_config_t *poller_config, const zbx_d
 		char *ip, const unsigned short port, zbx_discoverer_results_t *dresult, char **error)
 {
 	int				ret;
-	zbx_dc_item_t			item;
+	zbx_dc_agent_item_t		item;
 	AGENT_RESULT			result;
 	discovery_async_result_t	*async_result;
 
@@ -296,9 +301,9 @@ static int	discovery_agent(discovery_poller_config_t *poller_config, const zbx_d
 
 	zbx_init_agent_result(&result);
 
-	memset(&item, 0, sizeof(zbx_dc_item_t));
-	zbx_strscpy(item.key_orig, dcheck->key_);
-	item.key = item.key_orig;
+	memset(&item, 0, sizeof(zbx_dc_agent_item_t));
+	item.key_orig = zbx_strdup(NULL, dcheck->key_);
+	item.key = zbx_strdup(NULL, dcheck->key_);
 
 	item.interface.useip = 1;
 	zbx_strscpy(item.interface.ip_orig, ip);
@@ -306,7 +311,6 @@ static int	discovery_agent(discovery_poller_config_t *poller_config, const zbx_d
 	item.interface.port = port;
 
 	item.value_type = ITEM_VALUE_TYPE_STR;
-	item.type = ITEM_TYPE_ZABBIX;
 
 	item.host.tls_connect = ZBX_TCP_SEC_UNENCRYPTED;
 	item.timeout = dcheck->timeout;
@@ -326,8 +330,13 @@ static int	discovery_agent(discovery_poller_config_t *poller_config, const zbx_d
 		poller_config->processing++;
 
 	zbx_free_agent_result(&result);
+
+	zbx_free(item.key_orig);
+	zbx_free(item.key);
+
 	zabbix_log(LOG_LEVEL_DEBUG, "%s() ip:%s port:%d, key:%s ret:%d", __func__,
-			ip, port, item.key_orig, ret);
+			ip, port, dcheck->key_, ret);
+
 	return ret;
 }
 

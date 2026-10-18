@@ -17,7 +17,7 @@ Please upgrade your `etcd` instance, or use older `Etcd by HTTP` template versio
 
 ## Requirements
 
-Zabbix version: 7.4 and higher.
+Zabbix version: 8.0 and higher.
 
 ## Tested versions
 
@@ -26,7 +26,7 @@ This template has been tested on:
 
 ## Configuration
 
-> Zabbix should be configured according to the instructions in the [Templates out of the box](https://www.zabbix.com/documentation/7.4/manual/config/templates_out_of_the_box) section.
+> Zabbix should be configured according to the instructions in the [Templates out of the box](https://www.zabbix.com/documentation/8.0/manual/config/templates_out_of_the_box) section.
 
 ## Setup
 
@@ -50,11 +50,11 @@ Additional points to consider:
 
 |Name|Description|Default|
 |----|-----------|-------|
-|{$ETCD.HOST}|<p>The hostname or IP address of the `etcd` API endpoint.</p>|`<SET ETCD HOST>`|
-|{$ETCD.PORT}|<p>The port of the `etcd` API endpoint.</p>|`2379`|
-|{$ETCD.SCHEME}|<p>The request scheme which may be `http` or `https`.</p>|`http`|
-|{$ETCD.USER}|||
-|{$ETCD.PASSWORD}|||
+|{$ETCD.HOST}|<p>Etcd API host.</p>||
+|{$ETCD.PORT}|<p>Etcd API port.</p>|`2379`|
+|{$ETCD.SCHEME}|<p>Etcd HTTP scheme.</p>|`http`|
+|{$ETCD.USER}|<p>Etcd username.</p>||
+|{$ETCD.PASSWORD}|<p>Etcd password.</p>||
 |{$ETCD.LEADER.CHANGES.MAX.WARN}|<p>The maximum number of leader changes.</p>|`5`|
 |{$ETCD.PROPOSAL.FAIL.MAX.WARN}|<p>The maximum number of proposal failures.</p>|`2`|
 |{$ETCD.HTTP.FAIL.MAX.WARN}|<p>The maximum number of HTTP request failures.</p>|`2`|

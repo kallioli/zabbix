@@ -288,7 +288,7 @@ void	zbx_event_get_macro_value(const char *macro, const zbx_db_event *event, cha
 	}
 	else if (EVENT_SOURCE_TRIGGERS == event->source)
 	{
-		if (0 == strcmp(macro, MVAR_EVENT_ACK_HISTORY) || 0 == strcmp(macro, MVAR_EVENT_UPDATE_HISTORY))
+		if (0 == strcmp(macro, MVAR_EVENT_UPDATE_HISTORY))
 		{
 			zbx_event_db_get_history(event, replace_to, recipient_userid, tz);
 		}
@@ -468,6 +468,18 @@ int	zbx_problem_get_actions(const zbx_db_acknowledge *ack, int actions, const ch
 	{
 		zbx_strcpy_alloc(&buf, &buf_alloc, &buf_offset, prefixes[index]);
 		zbx_strcpy_alloc(&buf, &buf_alloc, &buf_offset, "ranked as cause");
+	}
+
+	if (0 != (flags & ZBX_PROBLEM_UPDATE_MAINTENANCE_SUPPRESS))
+	{
+		zbx_strcpy_alloc(&buf, &buf_alloc, &buf_offset, prefixes[index]);
+		zbx_strcpy_alloc(&buf, &buf_alloc, &buf_offset, "suppressed by maintenance");
+	}
+
+	if (0 != (flags & ZBX_PROBLEM_UPDATE_MAINTENANCE_UNSUPPRESS))
+	{
+		zbx_strcpy_alloc(&buf, &buf_alloc, &buf_offset, prefixes[index]);
+		zbx_strcpy_alloc(&buf, &buf_alloc, &buf_offset, "unsuppressed by maintenance");
 	}
 
 	zbx_free(*out);

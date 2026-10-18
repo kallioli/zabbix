@@ -391,7 +391,9 @@ class testItemTimeouts extends CIntegrationTest {
 			'timeout_http_agent' => '9s',
 			'timeout_ssh_agent' => '10s',
 			'timeout_telnet_agent' => '11s',
-			'timeout_script' => '12s'
+			'timeout_script' => '12s',
+			'timeout_browser' => '13s',
+			'timeout_telemetry_query' => '14s'
 		];
 
 		$response = $this->call('settings.update', $initial_timeouts);
@@ -413,7 +415,9 @@ class testItemTimeouts extends CIntegrationTest {
 			'timeout_http_agent' => '1m',
 			'timeout_ssh_agent' => '2m',
 			'timeout_telnet_agent' => '2m',
-			'timeout_script' => '2m'
+			'timeout_script' => '2m',
+			'timeout_browser' => '2m',
+			'timeout_telemetry_query' => '2m'
 		];
 
 		$this->reloadConfigurationCache(self::COMPONENT_SERVER);
@@ -498,7 +502,7 @@ class testItemTimeouts extends CIntegrationTest {
 			]
 		]);
 
-		$this->waitForLogLineToBePresent(self::COMPONENT_SERVER, "In zbx_async_check_snmp", true, 90, 1, true);
+		$this->waitForLogLineToBePresent(self::COMPONENT_SERVER, "In async_check_snmp_context", true, 90, 1, true);
 		$tm1 = time();
 
 		$fail_logmsg = ":10987.*timed out, retrying";
@@ -598,7 +602,8 @@ class testItemTimeouts extends CIntegrationTest {
 			'timeout_ssh_agent' => '10s',
 			'timeout_telnet_agent' => '11s',
 			'timeout_script' => '12s',
-			'timeout_browser' => '13s'
+			'timeout_browser' => '13s',
+			'timeout_telemetry_query' => '14s'
 		];
 
 		$request = [
@@ -637,7 +642,9 @@ class testItemTimeouts extends CIntegrationTest {
 			'timeout_http_agent' => '1m',
 			'timeout_ssh_agent' => '2m',
 			'timeout_telnet_agent' => '2m',
-			'timeout_script' => '2m'
+			'timeout_script' => '2m',
+			'timeout_browser' => '2m',
+			'timeout_telemetry_query' => '2m'
 		];
 
 		$response = $this->call('proxy.update', array_merge(["proxyid" => $proxyid], $updated_timeouts));

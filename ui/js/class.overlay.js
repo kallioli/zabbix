@@ -54,7 +54,7 @@ function Overlay({
 	}
 
 	this.$dialogue = jQuery('<div>', {
-		'class': 'overlay-dialogue modal',
+		'class': `${ZBX_STYLE_OVERLAY_DIALOGUE} modal`,
 		'data-dialogueid': this.dialogueid,
 		'role': 'dialog',
 		'aria-modal': 'true',
@@ -62,13 +62,13 @@ function Overlay({
 	});
 
 	this.$dialogue.$controls = jQuery('<div>', {class: 'overlay-dialogue-controls'});
-	this.$dialogue.$head = jQuery('<div>', {class: 'overlay-dialogue-header'});
+	this.$dialogue.$head = jQuery('<div>', {class: ZBX_STYLE_OVERLAY_DIALOGUE_HEADER});
 	this.$dialogue.$head.$header = jQuery('<h4>', {id: this.headerid});
 	this.$dialogue.$head.$close_button = jQuery('<button>', {class: 'btn-overlay-close',
 		'aria-label': t('Close modal window')});
-	this.$dialogue.$body = jQuery('<div>', {class: 'overlay-dialogue-body'});
+	this.$dialogue.$body = jQuery('<div>', {class: ZBX_STYLE_OVERLAY_DIALOGUE_BODY});
 	this.$dialogue.$debug = jQuery('<pre>', {class: 'debug-output'});
-	this.$dialogue.$footer = jQuery('<div>', {class: 'overlay-dialogue-footer'});
+	this.$dialogue.$footer = jQuery('<div>', {class: ZBX_STYLE_OVERLAY_DIALOGUE_FOOTER});
 	this.$dialogue.$script = jQuery('<script>');
 
 	// Hide the button to prevent incorrect screen reader announcements when opening a dialog.
@@ -452,6 +452,15 @@ Overlay.prototype.unmount = function() {
 
 		wrapper.scrollTo(this._wrapper_scroll_x, this._wrapper_scroll_y);
 	}
+
+	const unmount_event = new CEventHubEvent({
+		descriptor: {
+			context: EVENT_CONTEXT_OVERLAY,
+			event: EVENT_UNMOUNT
+		}
+	});
+
+	ZABBIX.EventHub.publish(unmount_event);
 };
 
 /**
@@ -474,7 +483,7 @@ Overlay.prototype.mount = function() {
 
 	if (this._is_draggable) {
 		this.$dialogue.draggable({
-			handle: '.overlay-dialogue-header',
+			handle: `.${ZBX_STYLE_OVERLAY_DIALOGUE_HEADER}`,
 			cancel: 'a, button',
 			start: this._listeners.drag_start,
 			stop: this._listeners.drag_stop

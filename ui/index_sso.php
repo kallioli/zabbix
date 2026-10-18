@@ -22,13 +22,7 @@ $request = CSessionHelper::get('request');
 CSessionHelper::unset(['request']);
 
 if (hasRequest('request')) {
-	$request = getRequest('request');
-	preg_match('/^\/?(?<filename>[a-z0-9_.]+\.php)(\?.*)?$/i', $request, $test_request);
-
-	if (!array_key_exists('filename', $test_request) || !file_exists('./'.$test_request['filename'])
-			|| $test_request['filename'] === basename(__FILE__)) {
-		$request = '';
-	}
+	$request = (new CFrontendActionValidator())->validate(getRequest('request')) ? getRequest('request') : '';
 
 	if ($request !== '') {
 		$redirect_to->setArgument('request', $request);
@@ -53,15 +47,7 @@ if (!is_array($SSO)) {
 }
 
 $SSO += ['SETTINGS' => []];
-$certs = [
-	'SP_KEY'	=> 'conf/certs/sp.key',
-	'SP_CERT'	=> 'conf/certs/sp.crt',
-	'IDP_CERT'	=> 'conf/certs/idp.crt'
-];
-$certs = array_merge($certs, array_intersect_key($SSO, $certs));
-$certs = array_filter($certs, 'is_readable');
-$certs = array_map('file_get_contents', $certs);
-$certs += array_fill_keys(['SP_KEY', 'SP_CERT', 'IDP_CERT'], '');
+
 /** @var CUser $service */
 $service = API::getApiService('user');
 $userdirectoryid = CAuthenticationHelper::getSamlUserdirectoryid();
@@ -82,6 +68,35 @@ if (array_key_exists('use_proxy_headers', $SSO['SETTINGS']) && (bool) $SSO['SETT
 $baseurl = Utils::getSelfURLNoQuery();
 $relay_state = null;
 $saml_settings = $provisioning->getIdpConfig();
+
+if (CAuthenticationHelper::isSamlCertsStorageDatabase()) {
+	$certs = [
+		'SP_KEY' => $saml_settings['sp_private_key'],
+		'SP_CERT' => $saml_settings['sp_certificate'],
+		'IDP_CERT' => $saml_settings['idp_certificate']
+	];
+}
+else {
+	$certs = [
+		'SP_KEY'	=> 'conf/certs/sp.key',
+		'SP_CERT'	=> 'conf/certs/sp.crt',
+		'IDP_CERT'	=> 'conf/certs/idp.crt'
+	];
+	$certs = array_merge($certs, array_intersect_key($SSO, $certs));
+	$certs = array_filter($certs, 'is_readable');
+	$certs = array_map('file_get_contents', $certs);
+	$certs += array_fill_keys(['SP_KEY', 'SP_CERT', 'IDP_CERT'], '');
+}
+
+foreach ($certs as $key => $cert) {
+	if ($cert === '' || $key === 'SP_KEY') {
+		continue;
+	}
+
+	$cert_value = Utils::getStringBetween($cert, '-----BEGIN CERTIFICATE-----', '-----END CERTIFICATE-----');
+	$certs[$key] = Utils::formatCert($cert_value !== '' ? $cert_value : $cert);
+}
+
 $settings = [
 	'sp' => [
 		'entityId' => $saml_settings['sp_entityid'],
@@ -222,7 +237,7 @@ try {
 
 		CSessionHelper::set('saml_data', $saml_data);
 
-		if (hasRequest('RelayState') && strpos(getRequest('RelayState'), $baseurl) === false) {
+		if (hasRequest('RelayState') && (new CFrontendActionValidator())->validate(getRequest('RelayState'))) {
 			$relay_state = getRequest('RelayState');
 		}
 	}
@@ -320,8 +335,21 @@ try {
 			'auth' => CWebUser::$data['sessionid']
 		];
 
-		$redirect = array_filter([$request, CWebUser::$data['url'], $relay_state, CMenuHelper::getFirstUrl()]);
-		redirect(reset($redirect));
+		CMessageHelper::clear();
+
+		$redirect = CWebUser::getRedirectUrl();
+
+		if ($redirect['error']) {
+			CMessageHelper::addError(_('Invalid redirect URL.'));
+		}
+
+		$redirect = array_filter([$request, $redirect['url'], $relay_state, CMenuHelper::getFirstUrl()]);
+
+		$response = new CControllerResponseRedirect(
+			new CUrl(reset($redirect))
+		);
+
+		$response->redirect();
 	}
 
 	$auth->login(null, [], hasRequest('force_authn'));

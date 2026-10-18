@@ -36,7 +36,7 @@ abstract class CControllerItem extends CController {
 			'name'					=> 'db items.name',
 			'type'					=> 'in '.implode(',', array_keys(item_type2str())),
 			'key'					=> 'db items.key_',
-			'value_type'			=> 'in '.implode(',', [ITEM_VALUE_TYPE_UINT64, ITEM_VALUE_TYPE_FLOAT, ITEM_VALUE_TYPE_STR, ITEM_VALUE_TYPE_LOG, ITEM_VALUE_TYPE_TEXT, ITEM_VALUE_TYPE_BINARY]),
+			'value_type'			=> 'in '.implode(',', [ITEM_VALUE_TYPE_UINT64, ITEM_VALUE_TYPE_FLOAT, ITEM_VALUE_TYPE_STR, ITEM_VALUE_TYPE_LOG, ITEM_VALUE_TYPE_TEXT, ITEM_VALUE_TYPE_BINARY, ITEM_VALUE_TYPE_JSON]),
 			'url'					=> 'db items.url',
 			'query_fields'			=> 'array',
 			'parameters'			=> 'array',
@@ -75,6 +75,16 @@ abstract class CControllerItem extends CController {
 			'params_es'				=> 'db items.params',
 			'params_ap'				=> 'db items.params',
 			'params_f'				=> 'db items.params',
+			'time_shift'			=> 'db items.time_shift',
+			'lookback_limit'		=> 'db items.lookback_limit',
+			'granularity'			=> 'db items.granularity',
+			'signal_type'			=> 'in '.implode(',', [CItemTypeTelemetryQuery::SIGNAL_TYPE_TRACES, CItemTypeTelemetryQuery::SIGNAL_TYPE_METRICS, CItemTypeTelemetryQuery::SIGNAL_TYPE_LOGS]),
+			'metric_point_type'		=> 'in '.implode(',', [CItemTypeTelemetryQuery::METRICS_POINT_SUM, CItemTypeTelemetryQuery::METRICS_POINT_GAUGE, CItemTypeTelemetryQuery::METRICS_POINT_HISTOGRAM, CItemTypeTelemetryQuery::METRICS_POINT_EXPONENTIAL_HISTOGRAM]),
+			'columns'				=> 'array',
+			'aggregated_columns'	=> 'array',
+			'evaltype'				=> 'in '.implode(',', [CONDITION_EVAL_TYPE_AND_OR, CONDITION_EVAL_TYPE_AND, CONDITION_EVAL_TYPE_OR, CONDITION_EVAL_TYPE_EXPRESSION]),
+			'formula'				=> 'string',
+			'conditions'			=> 'array',
 			'units'					=> 'db items.units',
 			'delay'					=> 'db items.delay',
 			'delay_flex'			=> 'array',
@@ -96,76 +106,6 @@ abstract class CControllerItem extends CController {
 			'itemid'				=> 'id',
 			'templateid'			=> 'id'
 		];
-	}
-
-	protected function validateInputExtended(): bool {
-		if (!$this->validateInputPreprocessing($this->getInput('preprocessing', []))) {
-			return false;
-		}
-
-		return true;
-	}
-
-	protected function validateInputPreprocessing(array $steps): bool {
-		$has_delta_step = false;
-		$has_any_error_step = false;
-		$has_discard_value_step = false;
-		$has_prometheus_step = false;
-
-		foreach ($steps as $index => $step) {
-			switch ($step['type']) {
-				case ZBX_PREPROC_DELTA_SPEED:
-				case ZBX_PREPROC_DELTA_VALUE:
-					$has_delta_step && $this->addFormError("/preprocessing/$index/type",
-						_('One "Change" step allowed per item.'), CFormValidator::ERROR_LEVEL_UNIQ
-					);
-					$has_delta_step = true;
-					break;
-
-				case ZBX_PREPROC_THROTTLE_VALUE:
-				case ZBX_PREPROC_THROTTLE_TIMED_VALUE:
-					$has_discard_value_step && $this->addFormError("/preprocessing/$index/type",
-						_('One "Throttling" step allowed per item.'), CFormValidator::ERROR_LEVEL_UNIQ
-					);
-					$has_discard_value_step = true;
-					break;
-
-				case ZBX_PREPROC_PROMETHEUS_PATTERN:
-				case ZBX_PREPROC_PROMETHEUS_TO_JSON:
-					$has_prometheus_step && $this->addFormError("/preprocessing/$index/type",
-						_('One "Prometheus" step allowed per item.'), CFormValidator::ERROR_LEVEL_UNIQ
-					);
-					$has_prometheus_step = true;
-					break;
-
-				case ZBX_PREPROC_VALIDATE_NOT_SUPPORTED:
-					if ($step['params_0_not_supported'] == ZBX_PREPROC_MATCH_ERROR_ANY) {
-						$has_any_error_step && $this->addFormError("/preprocessing/$index/type",
-							_('Preprocessing step with such Name and Parameters combination already exists.'),
-							CFormValidator::ERROR_LEVEL_UNIQ
-						);
-						$has_any_error_step = true;
-					}
-					break;
-
-				case ZBX_PREPROC_VALIDATE_RANGE:
-					$min = $step['params_0'];
-					$max = $step['params_1'];
-
-					if ($min !== '' && $max !== '') {
-						$has_macro = substr($min, 0, 1) === '{' || substr($max, 0, 1) === '{';
-
-						if (!$has_macro && floatval($min) >= floatval($max)) {
-							$this->addFormError("/preprocessing/$index/params_1",
-								_('Cannot be less than or equal to "Min".'), CFormValidator::ERROR_LEVEL_PRIMARY
-							);
-						}
-					}
-					break;
-			}
-		}
-
-		return !$this->getValidationError();
 	}
 
 	/**

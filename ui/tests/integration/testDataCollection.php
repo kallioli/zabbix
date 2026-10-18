@@ -581,6 +581,7 @@ class testDataCollection extends CIntegrationTest {
 			'key_' => 'trap',
 			'type' => ITEM_TYPE_TRAPPER,
 			'value_type' => ITEM_VALUE_TYPE_UINT64,
+			'trapper_hosts' => '{$TRAPPER.ALLOWED_HOSTS}',
 			'preprocessing' => [[
 				'params' => '100',
 				'type' => 1,
@@ -629,7 +630,8 @@ class testDataCollection extends CIntegrationTest {
 			'sortfield' => ['clock', 'ns'],
 			'sortorder' => 'DESC',
 			'limit' => 1,
-			'itemids' => [$itemid]
+			'itemids' => [$itemid],
+			'time_from' => $t
 		], 60, 1);
 		$this->assertArrayHasKey('result', $response);
 		$this->assertArrayHasKey('value', $response['result'][0]);

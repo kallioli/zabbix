@@ -20,7 +20,7 @@ class CField {
 	_error_hint = null;
 	_prev_value = null;
 	_delayed_field_change = null;
-	_changed = false;
+	_changed;
 	_error_msg = null;
 	_error_level = -1;
 	_global_errors = Object.create(null);
@@ -37,6 +37,7 @@ class CField {
 
 		this._error_label = this._field.getAttribute('data-error-label');
 		this._allow_trim = !this._field.hasAttribute('data-notrim');
+		this._changed = this._field.hasAttribute('data-changed');
 	}
 
 	init() {
@@ -82,12 +83,12 @@ class CField {
 		return this._changed;
 	}
 
-	setGlobalError(message) {
-		this._global_errors[this.getName()] = message;
-	}
-
 	getGlobalErrors() {
 		return this._global_errors;
+	}
+
+	getField() {
+		return this._field;
 	}
 
 	getName() {
@@ -188,10 +189,11 @@ class CField {
 	}
 
 	errorHint() {
+		const row_level_error_levels = [CFormValidator.ERROR_LEVEL_OBJECTS_COUNT, CFormValidator.ERROR_LEVEL_UNIQ];
 		const error_hint = document.createElement(this._error_container !== null ? 'li' : 'span');
 
 		error_hint.classList.add('error');
-		error_hint.textContent = this._error_label !== null && this._error_level != CFormValidator.ERROR_LEVEL_UNIQ
+		error_hint.textContent = this._error_label !== null && !row_level_error_levels.includes(this._error_level)
 			? sprintf(t('%1$s: %2$s'), this._error_label, this._error_msg)
 			: this._error_msg;
 
@@ -262,5 +264,27 @@ class CField {
 				errors_list.classList.remove('list-dashed');
 			}
 		}
+	}
+
+	lock() {
+		if (this._field.disabled) {
+			return false;
+		}
+
+		this._field.dataset.formDisabled = '';
+		this._field.disabled = true;
+
+		return true;
+	}
+
+	unlock() {
+		if ('formDisabled' in this._field.dataset) {
+			this._field.disabled = false;
+			delete this._field.dataset.formDisabled;
+
+			return true;
+		}
+
+		return false;
 	}
 }

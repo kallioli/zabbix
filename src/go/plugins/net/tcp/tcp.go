@@ -28,7 +28,9 @@ import (
 	"time"
 
 	"github.com/go-ldap/ldap"
+	"golang.zabbix.com/agent2/pkg/inet"
 	"golang.zabbix.com/agent2/pkg/web"
+	"golang.zabbix.com/sdk/errs"
 	"golang.zabbix.com/sdk/log"
 	"golang.zabbix.com/sdk/plugin"
 )
@@ -76,6 +78,13 @@ func (p *Plugin) exportNetTcpPort(params []string, timeout int) (result int, err
 		err = errors.New(errorTooManyParams)
 		return
 	}
+
+	if len(params) >= 1 && params[0] != "" {
+		if net.ParseIP(params[0]) == nil && !inet.IsRFCExtendedHostName(params[0]) {
+			return 0, errs.New(errorInvalidFirstParam)
+		}
+	}
+
 	if len(params) < 2 || len(params[1]) == 0 {
 		err = errors.New(errorInvalidSecondParam)
 		return
@@ -331,7 +340,7 @@ func (p *Plugin) httpsExpect(ip string, port string, timeout int) int {
 
 	// does NOT return an error on >=400 status codes same as C agent
 	_, err = web.Get(fmt.Sprintf("%s://%s:%s%s", u.Scheme, u.Hostname(), port, u.Path),
-		time.Second*time.Duration(timeout), false)
+		time.Second*time.Duration(timeout), false, false, 0)
 	if err != nil {
 		log.Debugf("https network error: cannot connect to [%s]: %s", u, err.Error())
 		return 0
@@ -521,6 +530,12 @@ func (p *Plugin) Export(key string, params []string, ctx plugin.ContextProvider)
 		default:
 			err = errors.New(errorInvalidFirstParam)
 			return
+		}
+
+		if len(params) >= 2 && params[1] != "" {
+			if net.ParseIP(params[1]) == nil && !inet.IsRFCExtendedHostName(params[1]) {
+				return nil, errs.New(errorInvalidSecondParam)
+			}
 		}
 
 		if len(params) == 3 && len(params[2]) != 0 {

@@ -79,7 +79,6 @@ class CControllerTriggerMassupdate extends CController {
 		$options = [
 			'output' => ['triggerid', 'templateid'],
 			'triggerids' => $this->getInput('ids'),
-			'filter' => ['flags' => ZBX_FLAG_DISCOVERY_NORMAL],
 			'editable' => true,
 			'preservekeys' => true
 		];
@@ -90,7 +89,6 @@ class CControllerTriggerMassupdate extends CController {
 
 		if ($parent_lld) {
 			$options['discoveryids'] = $this->getInput('parent_discoveryid');
-			$options['filter'] = ['flags' => ZBX_FLAG_DISCOVERY_PROTOTYPE];
 		}
 
 		$this->triggers = $parent_lld ? API::TriggerPrototype()->get($options) : API::Trigger()->get($options);

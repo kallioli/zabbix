@@ -18,12 +18,6 @@
 #include "pp_cache.h"
 #include "zbxalgo.h"
 
-#ifdef HAVE_NETSNMP
-#	define SNMP_NO_DEBUGGING		/* disabling debugging messages from Net-SNMP library */
-#	include <net-snmp/net-snmp-config.h>
-#	include <net-snmp/net-snmp-includes.h>
-#endif
-
 typedef struct
 {
 	char	*field_name;
@@ -60,7 +54,7 @@ typedef struct
 }
 zbx_snmp_value_pair_t;
 
-ZBX_PTR_VECTOR_DECL(snmp_value_pair, zbx_snmp_value_pair_t *)
+ZBX_VECTOR_DECL(snmp_value_pair, zbx_snmp_value_pair_t)
 
 typedef struct
 {
@@ -75,14 +69,26 @@ typedef struct
 }
 zbx_snmp_walk_json_output_obj_t;
 
+typedef struct
+{
+	char *oid_buf;
+	size_t oid_buf_alloc;
+
+	char *val_buf;
+	size_t val_buf_alloc;
+
+	char *type_buf;
+	size_t type_buf_alloc;
+
+	zbx_snmp_type_t	type;
+}
+zbx_snmp_parse_context_t;
+
 int	zbx_snmp_value_cache_init(zbx_snmp_value_cache_t *cache, const char *data, char **error);
 void	zbx_snmp_value_cache_clear(zbx_snmp_value_cache_t *cache);
 
 int	item_preproc_snmp_walk_to_value(zbx_pp_cache_t *cache, zbx_variant_t *value, const char *params, char **errmsg);
 int	item_preproc_snmp_walk_to_json(zbx_variant_t *value, const char *params, char **errmsg);
 int	item_preproc_snmp_get_to_value(zbx_variant_t *value, const char *params, char **errmsg);
-
-void	preproc_init_snmp(void);
-void	preproc_shutdown_snmp(void);
 
 #endif

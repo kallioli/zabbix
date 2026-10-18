@@ -28,19 +28,28 @@ class CControllerTriggerEdit extends CController {
 	}
 
 	protected function checkInput(): bool {
-		$allow_any = [];
-		foreach (array_keys(CControllerTriggerUpdate::getValidationRules()['fields']) as $name) {
-			$allow_any[$name] = [];
-		}
-
-		$ret = $this->validateInput(['object', 'fields' => [
+		$rules = ['object', 'fields' => [
 			'context' => ['string', 'required', 'in' => ['host', 'template']],
 			'show_inherited_tags' => ['integer', 'in' => [0, 1]],
 			'form_refresh' => ['integer', 'in' => [0, 1]]
-		] + $allow_any]);
+		]];
+
+		foreach (array_keys(CControllerTriggerUpdate::getValidationRules()['fields']) as $name) {
+			if (!array_key_exists($name, $rules['fields'])) {
+				$rules['fields'][$name] = [];
+			}
+		}
+
+		$ret = $this->validateInput($rules, true);
 
 		if (!$ret) {
-			$this->setResponse(new CControllerResponseFatal());
+			$this->setResponse(
+				(new CControllerResponseData(['main_block' => json_encode([
+					'error' => [
+						'messages' => array_column(get_and_clear_messages(), 'message')
+					]
+				])]))->disableView()
+			);
 		}
 
 		return $ret;
@@ -77,7 +86,7 @@ class CControllerTriggerEdit extends CController {
 				'selectDiscoveryRule' => ['itemid', 'name', 'templateid'],
 				'selectDiscoveryData' => ['parent_triggerid', 'disable_source'],
 				'selectDependencies' => ['triggerid'],
-				'selectTags' => ['tag', 'value'],
+				'selectTags' => ['tag', 'value', 'automatic'],
 				'editable' => true
 			];
 
@@ -148,7 +157,8 @@ class CControllerTriggerEdit extends CController {
 
 				$tags[] = [
 					'tag' => $tag['tag'],
-					'value' => $tag['value']
+					'value' => $tag['value'],
+					'automatic' => $this->trigger ? $tag['automatic'] : ZBX_TAG_MANUAL
 				];
 			}
 
@@ -200,8 +210,20 @@ class CControllerTriggerEdit extends CController {
 			$data['tags'][] = ['tag' => '', 'value' => ''];
 		}
 		else {
+			$automatic_tags = [];
+
+			foreach ($data['tags'] as $key => $tag) {
+				if (array_key_exists('automatic', $tag) && $tag['automatic'] == 1) {
+					$automatic_tags[] = $tag;
+
+					unset($data['tags'][$key]);
+				}
+			}
+
+			CArrayHelper::sort($automatic_tags, ['tag', 'value']);
 			CArrayHelper::sort($data['tags'], ['tag', 'value']);
-			$data['tags'] = array_values($data['tags']);
+
+			$data['tags'] = array_values(array_merge($automatic_tags, $data['tags']));
 		}
 
 		$data['expr_temp'] = $data['expression'];

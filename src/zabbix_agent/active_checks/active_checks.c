@@ -42,6 +42,10 @@
 #	include "zbxnix.h"
 #endif
 
+#ifdef HAVE_ARES_QUERY_CACHE
+#include "zbxresolver.h"
+#endif
+
 typedef struct
 {
 	zbx_uint64_t	itemid;
@@ -428,12 +432,16 @@ static void	add_command(const char *key, zbx_uint64_t id, int timeout)
  *     config_revision_local - [IN/OUT] revision of processed configuration     *
  *     config_timeout        - [IN] global timeout value for checks without     *
  *                                  timeouts                                    *
+ *     config_hostname       - [IN]                                             *
+ *     addrs                 - [IN]                                             *
+ *     config_tls            - [IN]                                             *
+ *     config_source_ip      - [IN]                                             *
+ *     config_buffer_send    - [IN]                                             *
+ *     config_buffer_size    - [IN]                                             *
+ *     debug_level           - [IN]                                             *
  *                                                                              *
- * Comments:                                                                    *
- *    String is represented as "ZBX_EOF" termination list, with '\n'            *
- *    delimiter between elements.                                               *
- *    Each element represented as:                                              *
- *           <key>:<refresh time>:<last log size>:<modification time>           *
+ * Return value: SUCCEED     - list of active checks parsed successfully        *
+ *               FAIL        - error occurred                                   *
  *                                                                              *
  ********************************************************************************/
 static int	parse_list_of_checks(char *str, const char *host, unsigned short port,
@@ -1951,6 +1959,9 @@ ZBX_THREAD_ENTRY(active_checks_thread, args)
 	zbx_cfg_set_process_num(process_num);
 
 #ifndef _WINDOWS
+#ifdef HAVE_ARES_QUERY_CACHE
+	zbx_ares_library_init();
+#endif
 	zbx_set_sigusr_handler(zbx_active_checks_sigusr_handler);
 #endif
 
@@ -2097,10 +2108,7 @@ ZBX_THREAD_ENTRY(active_checks_thread, args)
 
 	zbx_thread_exit(EXIT_SUCCESS);
 #else
-	zbx_setproctitle("%s #%d [terminated]", get_process_type_string(process_type), process_num);
-
-	while (1)
-		zbx_sleep(SEC_PER_MIN);
+	exit(EXIT_SUCCESS);
 #endif
 #	undef RETRY_INTERVAL_MIN
 #	undef RETRY_INTERVAL_MAX

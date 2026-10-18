@@ -27,7 +27,7 @@ void	zbx_async_check_httpagent_clean(zbx_httpagent_context *httpagent_context)
 	zbx_http_context_destroy(&httpagent_context->http_context);
 }
 
-int	zbx_async_check_httpagent(zbx_dc_item_t *item, AGENT_RESULT *result, const char *config_source_ip,
+int	zbx_async_check_httpagent(zbx_dc_httpagent_item_t *item, AGENT_RESULT *result, const char *config_source_ip,
 		const char *config_ssl_ca_location, const char *config_ssl_cert_location,
 		const char *config_ssl_key_location, CURLM *curl_handle)
 {
@@ -39,10 +39,8 @@ int	zbx_async_check_httpagent(zbx_dc_item_t *item, AGENT_RESULT *result, const c
 	httpagent_context_create(httpagent_context);
 
 	httpagent_context->item_context.itemid = item->itemid;
-	httpagent_context->item_context.hostid = item->host.hostid;
 	httpagent_context->item_context.value_type = item->value_type;
 	httpagent_context->item_context.flags = item->flags;
-	httpagent_context->item_context.state = item->state;
 	httpagent_context->item_context.posts = item->posts;
 	item->posts = NULL;
 	httpagent_context->item_context.status_codes = item->status_codes;

@@ -30,8 +30,8 @@ class CControllerItemList extends CControllerItem {
 			'filter_name'				=> 'string',
 			'filter_key'				=> 'string',
 			'filter_valuemapids'		=> 'array_db valuemap.valuemapid',
-			'filter_type'				=> 'in '.implode(',', [-1, ITEM_TYPE_ZABBIX, ITEM_TYPE_ZABBIX_ACTIVE, ITEM_TYPE_SIMPLE, ITEM_TYPE_SNMP, ITEM_TYPE_SNMPTRAP, ITEM_TYPE_INTERNAL, ITEM_TYPE_TRAPPER, ITEM_TYPE_EXTERNAL, ITEM_TYPE_DB_MONITOR, ITEM_TYPE_HTTPAGENT, ITEM_TYPE_IPMI, ITEM_TYPE_SSH, ITEM_TYPE_TELNET, ITEM_TYPE_JMX, ITEM_TYPE_CALCULATED, ITEM_TYPE_DEPENDENT, ITEM_TYPE_SCRIPT, ITEM_TYPE_BROWSER]),
-			'filter_value_type'			=> 'in '.implode(',', [-1, ITEM_VALUE_TYPE_UINT64, ITEM_VALUE_TYPE_FLOAT, ITEM_VALUE_TYPE_STR, ITEM_VALUE_TYPE_LOG, ITEM_VALUE_TYPE_TEXT, ITEM_VALUE_TYPE_BINARY]),
+			'filter_type'				=> 'in '.implode(',', [-1, ITEM_TYPE_ZABBIX, ITEM_TYPE_ZABBIX_ACTIVE, ITEM_TYPE_SIMPLE, ITEM_TYPE_SNMP, ITEM_TYPE_SNMPTRAP, ITEM_TYPE_INTERNAL, ITEM_TYPE_TRAPPER, ITEM_TYPE_EXTERNAL, ITEM_TYPE_DB_MONITOR, ITEM_TYPE_HTTPAGENT, ITEM_TYPE_IPMI, ITEM_TYPE_SSH, ITEM_TYPE_TELNET, ITEM_TYPE_JMX, ITEM_TYPE_CALCULATED, ITEM_TYPE_DEPENDENT, ITEM_TYPE_SCRIPT, ITEM_TYPE_BROWSER, ITEM_TYPE_TELEMETRY_QUERY]),
+			'filter_value_type'			=> 'in '.implode(',', [-1, ITEM_VALUE_TYPE_UINT64, ITEM_VALUE_TYPE_FLOAT, ITEM_VALUE_TYPE_STR, ITEM_VALUE_TYPE_LOG, ITEM_VALUE_TYPE_TEXT, ITEM_VALUE_TYPE_BINARY, ITEM_VALUE_TYPE_JSON]),
 			'filter_snmp_oid'			=> 'string',
 			'filter_history'			=> 'string',
 			'filter_trends'				=> 'string',
@@ -145,9 +145,12 @@ class CControllerItemList extends CControllerItem {
 		}
 
 		if ($items) {
+			CTagHelper::mergeOwnAndInheritedTags($items, true);
+
 			$data['items'] = $items;
 			$data['parent_templates'] = getItemParentTemplates($items, ZBX_FLAG_DISCOVERY_NORMAL);
-			$data['tags'] = makeTags($items, true, 'itemid', ZBX_TAG_COUNT_DEFAULT, $filter['filter_tags']);
+			$data['tags'] =
+				CTagHelper::getTagsHtml($items, ZBX_TAG_OBJECT_ITEM, ['filter_tags' => $filter['filter_tags']]);
 		}
 
 		$response = new CControllerResponseData($data);
@@ -244,7 +247,8 @@ class CControllerItemList extends CControllerItem {
 			ITEM_VALUE_TYPE_STR => _('Character'),
 			ITEM_VALUE_TYPE_LOG => _('Log'),
 			ITEM_VALUE_TYPE_TEXT => _('Text'),
-			ITEM_VALUE_TYPE_BINARY => _('Binary')
+			ITEM_VALUE_TYPE_BINARY => _('Binary'),
+			ITEM_VALUE_TYPE_JSON => _('JSON')
 		];
 
 		// Status
@@ -550,9 +554,11 @@ class CControllerItemList extends CControllerItem {
 			'selectDiscoveryRule' => API_OUTPUT_EXTEND,
 			'selectDiscoveryData' => ['status', 'ts_delete', 'ts_disable', 'disable_source'],
 			'selectTags' => ['tag', 'value'],
+			'selectInheritedTags' => ['tag', 'value'],
 			'sortfield' => $input['sort'],
 			'evaltype' => $input['filter_evaltype'],
-			'tags' => $input['filter_tags'],
+			'tags' => $input['filter_tags'] ?: null,
+			'inheritedTags' => true,
 			'limit' => CSettingsHelper::get(CSettingsHelper::SEARCH_LIMIT) + 1
 		];
 

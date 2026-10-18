@@ -48,7 +48,7 @@ class testFormHostGroupSearchPage extends testFormGroups {
 					'fields' => [
 						'Group name' => self::DISCOVERED_GROUP
 					],
-					'error' => 'Host group "'.self::DISCOVERED_GROUP.'" already exists.'
+					'error' => ['Group name' => 'This object already exists.']
 				]
 			]
 		];
@@ -63,7 +63,7 @@ class testFormHostGroupSearchPage extends testFormGroups {
 						'Group name' => 'Zabbix servers',
 						'Apply permissions and tag filters to all subgroups' => true
 					],
-					'error' => 'Host group "Zabbix servers" already exists.'
+					'error' => ['Group name' => 'This object already exists.']
 				]
 			],
 			[
@@ -147,7 +147,7 @@ class testFormHostGroupSearchPage extends testFormGroups {
 					'expected' => TEST_BAD,
 					'name' => 'Group for Maintenance',
 					'error' => 'Cannot delete host group "Group for Maintenance" because maintenance'.
-						' "Maintenance for host group testing" must contain at least one host or host group.'
+						' "Maintenance for host group testing" must contain at least one host group, host or trigger.'
 				]
 			],
 			[

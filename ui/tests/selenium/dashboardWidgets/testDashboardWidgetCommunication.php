@@ -3040,9 +3040,13 @@ class testDashboardWidgetCommunication extends testWidgetCommunication {
 				case 'problemhosts':
 				case 'problemsbysv':
 				case 'tophosts':
-				case 'web':
 				case 'map':
 					$selected_element = $this->getWidgetElement($selected, $widget);
+					break;
+
+				case 'web':
+					$selected_element = $widget->query('xpath:.//a[text()='.CXPathHelper::escapeQuotes($selected).']/../..')
+							->one();
 					break;
 
 				case 'navtree':
@@ -3999,7 +4003,7 @@ class testDashboardWidgetCommunication extends testWidgetCommunication {
 	 * Close popup or dialog that is opened when clicking on element in broadcaster widget.
 	 */
 	protected function closeOpenedPopup() {
-		$dialog = $this->query('css:div.overlay-dialogue.wordbreak')->one(false);
+		$dialog = $this->query('xpath://div[contains(@class, "hintbox-static")]')->one(false);
 		if ($dialog->isValid()) {
 			$dialog->query('class:btn-overlay-close')->one()->click();
 		}
@@ -4121,11 +4125,12 @@ class testDashboardWidgetCommunication extends testWidgetCommunication {
 					break;
 
 				case 'geomap':
-					$hintbox = 'xpath://div[contains(@class, "hintbox-static")]';
 					foreach ($values as $icon_index => $popup_values) {
-						$listener->query('xpath:.//img[contains(@class,"leaflet-marker-icon")]['.$icon_index.']')->one()->click();
-						$this->assertTableData([$popup_values], $hintbox);
-						$this->query($hintbox)->query('class:btn-overlay-close')->one()->click();
+						$listener->query('xpath:.//img[contains(@class,"leaflet-marker-icon")]['.$icon_index.']')
+							->one()->click();
+						$this->assertTableData([$popup_values], 'xpath://div[contains(@class, "hintbox-static")]');
+						$this->query('xpath://div[contains(@class, "hintbox-static")]')->query('class:btn-overlay-close')
+							->one()->click();
 					}
 					break;
 

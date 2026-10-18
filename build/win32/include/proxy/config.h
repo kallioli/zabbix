@@ -134,6 +134,10 @@
 /* Required by HTTP agent items and web scenarios. */
 #define HAVE_LIBCURL 1
 
+/* Zabbix 8.0 relies on C11 atomics; MSVC has <stdatomic.h> with /std:c11 /experimental:c11atomics, see */
+/* Makefile_proxy. */
+#define HAVE_STDATOMIC_H 1
+
 /*
  * Deliberately NOT defined for this build:
  *

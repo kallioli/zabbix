@@ -30,7 +30,13 @@ class CControllerHostGroupEdit extends CController{
 		$ret = $this->validateInput($fields);
 
 		if (!$ret) {
-			$this->setResponse(new CControllerResponseFatal());
+			$this->setResponse(
+				(new CControllerResponseData(['main_block' => json_encode([
+					'error' => [
+						'messages' => array_column(get_and_clear_messages(), 'message')
+					]
+				])]))->disableView()
+			);
 		}
 
 		return $ret;
@@ -57,10 +63,15 @@ class CControllerHostGroupEdit extends CController{
 	}
 
 	protected function doAction(): void {
+		$js_validation_rules = $this->hasInput('groupid')
+			? CControllerHostGroupUpdate::getValidationRules()
+			: CControllerHostGroupCreate::getValidationRules();
+
 		$data = [
 			'groupid' => null,
 			'name' => '',
-			'subgroups' => 0
+			'subgroups' => 0,
+			'js_validation_rules' => (new CFormValidator($js_validation_rules))->getRules()
 		];
 
 		if ($this->getInput('groupid', 0)) {

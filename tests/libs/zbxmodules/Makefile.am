@@ -5,6 +5,7 @@ noinst_PROGRAMS =
 COMMMON_SOURCES = \
 	../../zbxmocktest.h
 
+
 if SERVER
 
 noinst_PROGRAMS += server_module_load

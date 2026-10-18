@@ -871,6 +871,11 @@ class testDashboardsTemplatedDashboardForm extends CWebTest {
 							'type' => 'radio_button',
 							'possible_values' => ['Analog', 'Digital'],
 							'value' => 'Analog'
+						],
+						[
+							'field' => 'Override time zone',
+							'type' => 'dropdown',
+							'value' => 'Local default: (UTC+03:00) Europe/Riga'
 						]
 					],
 					'hidden' => [
@@ -951,6 +956,13 @@ class testDashboardsTemplatedDashboardForm extends CWebTest {
 								[
 									'field' => 'Colour',
 									'type' => 'color_picker'
+								],
+								[
+									'field' => 'Format',
+									'type' => 'radio_button',
+									'fieldid' => 'tzone_format',
+									'possible_values' => ['Short', 'Full'],
+									'value' => 'Short'
 								]
 							]
 						]
@@ -1058,7 +1070,7 @@ class testDashboardsTemplatedDashboardForm extends CWebTest {
 									'field_locator' => 'id:description',
 									'value' => '{ITEM.NAME}',
 									'attributes' => [
-										'maxlength' => 2048,
+										'maxlength' => 65535,
 										'aria-required' => 'true',
 										'rows' => 7
 									]
@@ -1484,7 +1496,7 @@ class testDashboardsTemplatedDashboardForm extends CWebTest {
 									'field_locator' => 'id:description',
 									'value' => '{ITEM.NAME}',
 									'attributes' => [
-										'maxlength' => 2048,
+										'maxlength' => 65535,
 										'aria-required' => 'true',
 										'rows' => 7
 									]
@@ -2580,7 +2592,10 @@ class testDashboardsTemplatedDashboardForm extends CWebTest {
 			case 'dropdown':
 				$field = $field->asDropdown();
 				$this->assertEquals($default_value, $field->getValue());
-				$this->assertEquals($field_details['possible_values'], $field->getOptions()->asText());
+
+				if (array_key_exists('possible_values', $field_details)) {
+					$this->assertEquals($field_details['possible_values'], $field->getOptions()->asText());
+				}
 				break;
 
 			case 'radio_button':
@@ -2741,8 +2756,8 @@ class testDashboardsTemplatedDashboardForm extends CWebTest {
 				[
 					'dashboard_properties' => [
 						'Name' => '!@#$%^&*()_+=-09[]{};:\'"',
-						'Default page display period' => '10 seconds',
-						'Start slideshow automatically' => true
+						'Default slideshow interval' => '10 seconds',
+						'Start slideshow' => true
 					]
 				]
 			],
@@ -2750,7 +2765,7 @@ class testDashboardsTemplatedDashboardForm extends CWebTest {
 				[
 					'dashboard_properties' => [
 						'Name' => '    Trailing & leading spaces    ',
-						'Start slideshow automatically' => false
+						'Start slideshow' => false
 					],
 					'trim' => 'Name'
 				]
@@ -2759,7 +2774,7 @@ class testDashboardsTemplatedDashboardForm extends CWebTest {
 				[
 					'dashboard_properties' => [
 						'Name' => '⭐️😀⭐️ Smiley Dashboard ⭐️😀⭐️',
-						'Default page display period' => '1 hour'
+						'Default slideshow interval' => '1 hour'
 					]
 				]
 			]
@@ -2824,8 +2839,8 @@ class testDashboardsTemplatedDashboardForm extends CWebTest {
 		$old_hash = CDBHelper::getHash(self::WIDGET_SQL);
 		$fields = [
 			'Name' => 'Cancel dashboard update',
-			'Default page display period' => '10 minutes',
-			'Start slideshow automatically' => false
+			'Default slideshow interval' => '10 minutes',
+			'Start slideshow' => false
 		];
 
 		$this->page->login()->open('zabbix.php?action=template.dashboard.edit&dashboardid='.self::$dashboardid_with_widgets);
@@ -4937,8 +4952,8 @@ class testDashboardsTemplatedDashboardForm extends CWebTest {
 		if ($title === 'Dashboard properties') {
 			$parameters = [
 				'Name' => 'New dashboard',
-				'Default page display period' => '30 seconds',
-				'Start slideshow automatically' => true
+				'Default slideshow interval' => '30 seconds',
+				'Start slideshow' => false
 			];
 			$buttons = ['Apply', 'Cancel'];
 			$display_periods = ['10 seconds', '30 seconds', '1 minute', '2 minutes', '10 minutes', '30 minutes', '1 hour'];
@@ -4963,14 +4978,14 @@ class testDashboardsTemplatedDashboardForm extends CWebTest {
 		}
 
 		if ($title === 'Dashboard properties') {
-			$this->assertEquals($display_periods, $form->getField('Default page display period')->getOptions()->asText());
+			$this->assertEquals($display_periods, $form->getField('Default slideshow interval')->getOptions()->asText());
 		}
 		else {
 			$all_types = ['Action log', 'Clock', 'Discovery status', 'Favorite graphs', 'Favorite maps', 'Gauge', 'Geomap',
 				'Graph', 'Graph (classic)', 'Graph prototype', 'Honeycomb', 'Host availability', 'Host card',
 				'Host navigator', 'Item card', 'Item history', 'Item navigator', 'Item value', 'Map', 'Map navigation tree',
-				'Pie chart', 'Problem hosts', 'Problems', 'Problems by severity', 'SLA report', 'System information',
-				'Top hosts', 'Top items', 'Top triggers', 'Trigger overview', 'URL', 'Web monitoring'
+				'Pie chart', 'Problem hosts', 'Problems', 'Problems by severity', 'Scatter plot', 'SLA report',
+				'System information', 'Top hosts', 'Top items', 'Top triggers', 'Trigger overview', 'URL', 'Web monitoring'
 			];
 			$this->assertEquals($all_types, $form->getField('Type')->getOptions()->asText());
 		}

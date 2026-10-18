@@ -22,7 +22,7 @@ class CControllerItemPrototypeCreate extends CControllerItemPrototype {
 	}
 
 	protected function checkInput(): bool {
-		$ret = $this->validateInput(self::getValidationRules()) && $this->validateInputExtended();
+		$ret = $this->validateInput(self::getValidationRules());
 
 		if (!$ret) {
 			$form_errors = $this->getValidationError();
@@ -107,7 +107,7 @@ class CControllerItemPrototypeCreate extends CControllerItemPrototype {
 				ITEM_TYPE_SIMPLE, ITEM_TYPE_SNMP, ITEM_TYPE_SNMPTRAP, ITEM_TYPE_INTERNAL, ITEM_TYPE_TRAPPER,
 				ITEM_TYPE_EXTERNAL, ITEM_TYPE_DB_MONITOR, ITEM_TYPE_HTTPAGENT, ITEM_TYPE_IPMI, ITEM_TYPE_SSH,
 				ITEM_TYPE_TELNET, ITEM_TYPE_JMX, ITEM_TYPE_CALCULATED, ITEM_TYPE_DEPENDENT,
-				ITEM_TYPE_SCRIPT, ITEM_TYPE_BROWSER
+				ITEM_TYPE_SCRIPT, ITEM_TYPE_BROWSER, ITEM_TYPE_TELEMETRY_QUERY
 			]],
 			'key' => [
 				['db items.key_', 'required', 'not_empty', 'use' => [CItemKeyValidator::class, ['lldmacros' => true]]],
@@ -126,7 +126,7 @@ class CControllerItemPrototypeCreate extends CControllerItemPrototype {
 			],
 			'value_type' => ['db items.value_type', 'required',
 				'in' => [ITEM_VALUE_TYPE_UINT64, ITEM_VALUE_TYPE_FLOAT, ITEM_VALUE_TYPE_STR, ITEM_VALUE_TYPE_LOG,
-					ITEM_VALUE_TYPE_TEXT, ITEM_VALUE_TYPE_BINARY
+					ITEM_VALUE_TYPE_TEXT, ITEM_VALUE_TYPE_BINARY, ITEM_VALUE_TYPE_JSON
 				]
 			],
 			'url' => ['db items.url', 'required', 'not_empty', 'when' => ['type', 'in' => [ITEM_TYPE_HTTPAGENT]]],
@@ -167,21 +167,11 @@ class CControllerItemPrototypeCreate extends CControllerItemPrototype {
 			'posts' => [
 				['db items.posts'],
 				['db items.posts', 'required', 'not_empty',
-					'when' => ['post_type', 'in' => [ZBX_POSTTYPE_XML]],
-					'use' => [CXmlValidator::class, []]
-				],
-				['db items.posts', 'required', 'not_empty',
-					'when' => ['post_type', 'in' => [ZBX_POSTTYPE_JSON]],
-					'use' => [CJsonValidator::class,
-						['macros_n' => CItemTypeHttpAgent::POSTS_JSON_MACROS_N, 'usermacros' => true,
-							'lldmacros' => true
-						]
+					'when' => [
+						['post_type', 'in' => [ZBX_POSTTYPE_JSON, ZBX_POSTTYPE_XML]],
+						['type', 'in' => [ITEM_TYPE_HTTPAGENT]]
 					]
-				],
-				['db items.posts', 'required', 'not_empty', 'when' => [
-					['post_type', 'in' => [ZBX_POSTTYPE_JSON, ZBX_POSTTYPE_XML]],
-					['type', 'in' => [ITEM_TYPE_HTTPAGENT]]
-				]]
+				]
 			],
 			'headers' => ['objects',
 				'fields' => [
@@ -333,7 +323,8 @@ class CControllerItemPrototypeCreate extends CControllerItemPrototype {
 					'when' => ['type',
 						'in' => [ITEM_TYPE_CALCULATED, ITEM_TYPE_DB_MONITOR, ITEM_TYPE_EXTERNAL, ITEM_TYPE_HTTPAGENT,
 							ITEM_TYPE_INTERNAL, ITEM_TYPE_IPMI, ITEM_TYPE_JMX, ITEM_TYPE_SCRIPT, ITEM_TYPE_SIMPLE,
-							ITEM_TYPE_SNMP, ITEM_TYPE_SSH, ITEM_TYPE_TELNET, ITEM_TYPE_ZABBIX, ITEM_TYPE_BROWSER
+							ITEM_TYPE_SNMP, ITEM_TYPE_SSH, ITEM_TYPE_TELNET, ITEM_TYPE_ZABBIX, ITEM_TYPE_BROWSER,
+							ITEM_TYPE_TELEMETRY_QUERY
 						]
 					]
 				],
@@ -378,7 +369,7 @@ class CControllerItemPrototypeCreate extends CControllerItemPrototype {
 					'when' => [
 						['type', 'in' => [ITEM_TYPE_ZABBIX, ITEM_TYPE_ZABBIX_ACTIVE, ITEM_TYPE_EXTERNAL,
 							ITEM_TYPE_DB_MONITOR, ITEM_TYPE_SSH, ITEM_TYPE_TELNET, ITEM_TYPE_HTTPAGENT,
-							ITEM_TYPE_SCRIPT, ITEM_TYPE_BROWSER
+							ITEM_TYPE_SCRIPT, ITEM_TYPE_BROWSER, ITEM_TYPE_TELEMETRY_QUERY
 						]],
 						['custom_timeout', 'in' => [ZBX_ITEM_CUSTOM_TIMEOUT_ENABLED]]
 					]
@@ -401,6 +392,119 @@ class CControllerItemPrototypeCreate extends CControllerItemPrototype {
 					['trends_mode', 'in' => [ITEM_STORAGE_CUSTOM]]
 				]
 			],
+			'time_shift' => ['db items.time_shift', 'required', 'not_empty',
+				'use' => [CTimeUnitValidator::class,
+					['min' => 0, 'max' => SEC_PER_DAY, 'usermacros' => true, 'lldmacros' => true]
+				],
+				'when' => ['type', 'in' => [ITEM_TYPE_TELEMETRY_QUERY]]
+			],
+			'lookback_limit' => ['db items.lookback_limit', 'required', 'not_empty',
+				'use' => [CTimeUnitValidator::class,
+					['min' => 1, 'max' => 3 * SEC_PER_DAY, 'usermacros' => true, 'lldmacros' => true]
+				],
+				'when' => ['type', 'in' => [ITEM_TYPE_TELEMETRY_QUERY]]
+			],
+			'granularity' => ['db items.granularity', 'required', 'not_empty',
+				'use' => [CTimeUnitValidator::class,
+					['min' => 1, 'max' => SEC_PER_DAY, 'usermacros' => true, 'lldmacros' => true]
+				],
+				'when' => ['type', 'in' => [ITEM_TYPE_TELEMETRY_QUERY]]
+			],
+			'signal_type' => ['integer', 'required',
+				'in' => [
+					CItemTypeTelemetryQuery::SIGNAL_TYPE_TRACES,
+					CItemTypeTelemetryQuery::SIGNAL_TYPE_METRICS,
+					CItemTypeTelemetryQuery::SIGNAL_TYPE_LOGS
+				],
+				'when' => ['type', 'in' => [ITEM_TYPE_TELEMETRY_QUERY]]
+			],
+			'metric_point_type' => ['integer', 'required',
+				'in' => [
+					CItemTypeTelemetryQuery::METRICS_POINT_SUM,
+					CItemTypeTelemetryQuery::METRICS_POINT_GAUGE,
+					CItemTypeTelemetryQuery::METRICS_POINT_HISTOGRAM,
+					CItemTypeTelemetryQuery::METRICS_POINT_EXPONENTIAL_HISTOGRAM
+				],
+				'when' => [
+					['type', 'in' => [ITEM_TYPE_TELEMETRY_QUERY]],
+					['signal_type', 'in' => [CItemTypeTelemetryQuery::SIGNAL_TYPE_METRICS]]
+				]
+			],
+			'columns' => ['objects', 'required', 'uniq' => ['column', 'attribute_key'],
+				'messages' => ['uniq' => _('Column and key name combination is not unique.')],
+				'fields' => [
+					'column' => CTelemetryHelper::getColumnValidationRules(CTelemetryHelper::SECTION_COLUMNS),
+					'attribute_key' => ['string', 'required', 'length' => 255, 'not_empty',
+						'when' => ['column', 'in' => CItemTypeTelemetryQuery::COMPLEX_COLUMN_NAME]
+					]
+				],
+				'when' => ['type', 'in' => [ITEM_TYPE_TELEMETRY_QUERY]]
+			],
+			'aggregated_columns' => ['objects', 'required', 'not_empty', 'uniq' => ['alias'],
+				'messages' => [
+					'required' => _('At least one aggregated column must be specified.'),
+					'not_empty' => _('At least one aggregated column must be specified.'),
+					'uniq' => _('Alias is not unique.')
+				],
+				'fields' => [
+					'function' => ['integer', 'required',
+						'in' => [AGGREGATE_MIN, AGGREGATE_MAX, AGGREGATE_AVG, AGGREGATE_COUNT, AGGREGATE_SUM,
+							AGGREGATE_PERCENTILE
+						]
+					],
+					'column' => CTelemetryHelper::getColumnValidationRules(
+						CTelemetryHelper::SECTION_AGGREGATED_COLUMNS
+					),
+					'percentile' => ['float', 'required', 'not_empty', 'min' => 0, 'max' => 100, 'decimal_limit' => 4,
+						'when' => ['function', 'in' => [AGGREGATE_PERCENTILE]]
+					],
+					'alias' => ['string', 'required', 'length' => 255, 'not_empty']
+				],
+				'when' => ['type', 'in' => [ITEM_TYPE_TELEMETRY_QUERY]]
+			],
+			'evaltype' => ['integer', 'required',
+				'in' => [CONDITION_EVAL_TYPE_AND_OR, CONDITION_EVAL_TYPE_AND, CONDITION_EVAL_TYPE_OR,
+					CONDITION_EVAL_TYPE_EXPRESSION
+				],
+				'when' => ['type', 'in' => [ITEM_TYPE_TELEMETRY_QUERY]]
+			],
+			'formula' => ['string', 'required', 'length' => 255, 'not_empty',
+				'use' => [CConditionFormulaParser::class],
+				'when' => [
+					['type', 'in' => [ITEM_TYPE_TELEMETRY_QUERY]],
+					['evaltype', 'in' => [CONDITION_EVAL_TYPE_EXPRESSION]]
+				]
+			],
+			'conditions' => ['objects', 'required', 'uniq' => ['formulaid'],
+				'fields' => [
+					'formulaid' => ['string', 'required', 'not_empty'],
+					'column' => CTelemetryHelper::getColumnValidationRules(CTelemetryHelper::SECTION_CONDITIONS),
+					'attribute_key' => ['string', 'required', 'length' => 255, 'not_empty',
+						'when' => ['column', 'in' => CItemTypeTelemetryQuery::COMPLEX_COLUMN_NAME]
+					],
+					'operator' => [
+						['integer', 'required',
+							'in' => [CONDITION_OPERATOR_EQUAL, CONDITION_OPERATOR_NOT_EQUAL, CONDITION_OPERATOR_EXISTS],
+							'when' => ['column', 'in' => CItemTypeTelemetryQuery::COMPLEX_COLUMN_NAME]
+						],
+						['integer', 'required',
+							'in' => [CONDITION_OPERATOR_EQUAL, CONDITION_OPERATOR_NOT_EQUAL, CONDITION_OPERATOR_LIKE,
+								CONDITION_OPERATOR_NOT_LIKE
+							],
+							'when' => ['column', 'not_in' => CItemTypeTelemetryQuery::COMPLEX_COLUMN_NAME]
+						]
+					],
+					'value' => [
+						['string', 'required', 'length' => 255,
+							'when' => ['operator', 'in' => [CONDITION_OPERATOR_EQUAL, CONDITION_OPERATOR_NOT_EQUAL]]
+						],
+						['string', 'required', 'length' => 255, 'not_empty',
+							'when' => ['operator', 'in' => [CONDITION_OPERATOR_LIKE, CONDITION_OPERATOR_NOT_LIKE]]
+						]
+					]
+				],
+				'when' => ['type', 'in' => [ITEM_TYPE_TELEMETRY_QUERY]]
+			],
 			'logtimefmt' => ['db items.logtimefmt'],
 			'valuemapid' => ['db items.valuemapid'],
 			'allow_traps' => ['db items.allow_traps', 'in' => [HTTPCHECK_ALLOW_TRAPS_OFF, HTTPCHECK_ALLOW_TRAPS_ON],
@@ -409,17 +513,13 @@ class CControllerItemPrototypeCreate extends CControllerItemPrototype {
 			'trapper_hosts' => [
 				['db items.trapper_hosts',
 					'use' => [CIPRangeParser::class, ['v6' => ZBX_HAVE_IPV6, 'dns' => true, 'usermacros' => true,
-						'macros' => ['{HOST.HOST}', '{HOSTNAME}', '{HOST.NAME}', '{HOST.CONN}', '{HOST.IP}',
-							'{IPADDRESS}', '{HOST.DNS}'
-						]
+						'macros' => ['{HOST.HOST}', '{HOST.NAME}', '{HOST.CONN}', '{HOST.IP}', '{HOST.DNS}']
 					]],
 					'when' => ['allow_traps', 'in' => [HTTPCHECK_ALLOW_TRAPS_ON]]
 				],
 				['db items.trapper_hosts',
 					'use' => [CIPRangeParser::class, ['v6' => ZBX_HAVE_IPV6, 'dns' => true, 'usermacros' => true,
-						'macros' => ['{HOST.HOST}', '{HOSTNAME}', '{HOST.NAME}', '{HOST.CONN}', '{HOST.IP}',
-							'{IPADDRESS}', '{HOST.DNS}'
-						]
+						'macros' => ['{HOST.HOST}', '{HOST.NAME}', '{HOST.CONN}', '{HOST.IP}', '{HOST.DNS}']
 					]],
 					'when' => ['type', 'in' => [ITEM_TYPE_TRAPPER]]
 				]

@@ -7,7 +7,7 @@ This guide describes how to integrate Zabbix installation with Brevis.one SMS Ga
 
 ## Requirements
 
-Zabbix version: 7.4 and higher.
+Zabbix version: 8.0 and higher.
 
 ## Parameters
 

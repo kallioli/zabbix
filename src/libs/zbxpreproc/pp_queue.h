@@ -38,7 +38,7 @@ typedef struct
 }
 zbx_pp_queue_t;
 
-int	pp_task_queue_init(zbx_pp_queue_t *queue, char **error);
+int	pp_task_queue_init(zbx_pp_queue_t *queue, int slots_num, char **error);
 void	pp_task_queue_destroy(zbx_pp_queue_t *queue);
 
 void	pp_task_queue_lock(zbx_pp_queue_t *queue);
@@ -52,7 +52,7 @@ void	pp_task_queue_notify(zbx_pp_queue_t *queue);
 void	pp_task_queue_notify_all(zbx_pp_queue_t *queue);
 
 void	pp_task_queue_push_test(zbx_pp_queue_t *queue, zbx_pp_task_t *task);
-void	pp_task_queue_push(zbx_pp_queue_t *queue, zbx_pp_task_t *task);
+void	pp_task_queue_push(zbx_pp_queue_t *queue, zbx_pp_task_t *task, unsigned char preprocessing);
 
 zbx_pp_task_t	*pp_task_queue_pop_new(zbx_pp_queue_t *queue);
 void	pp_task_queue_push_immediate(zbx_pp_queue_t *queue, zbx_pp_task_t *task);

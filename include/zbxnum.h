@@ -26,6 +26,9 @@
 #define zbx_is_uint64(str, value) \
 	zbx_is_uint_n_range(str, ZBX_SIZE_T_MAX, value, 8, 0x0, __UINT64_C(0xFFFFFFFFFFFFFFFF))
 
+#define zbx_is_uint63(str, value) \
+	zbx_is_uint_n_range(str, ZBX_SIZE_T_MAX, value, 8, 0x0, __UINT64_C(0x7FFFFFFFFFFFFFFF))
+
 #define zbx_is_uint64_n(str, n, value) \
 	zbx_is_uint_n_range(str, n, value, 8, 0x0, __UINT64_C(0xFFFFFFFFFFFFFFFF))
 
@@ -67,7 +70,15 @@ int	zbx_wis_uint(const wchar_t *wide_string);
 const char	*zbx_print_double(char *buffer, size_t size, double val);
 int		zbx_number_parse(const char *number, int *len);
 
-#define ZBX_STR2UINT64(uint, string) zbx_is_uint64(string, &uint)
+#define ZBX_STR2UINT64(uint, string)								\
+	do {											\
+		if (FAIL == zbx_is_uint64(string, &uint))					\
+		{										\
+			uint = 0;								\
+			THIS_SHOULD_NEVER_HAPPEN_MSG("%s", NULL == string  ? "(NULL)" : string);\
+		}										\
+	}											\
+	while (0)
 
 int	zbx_str2uint64(const char *str, const char *suffixes, zbx_uint64_t *value);
 

@@ -43,7 +43,6 @@ $html_page = (new CHtmlPage())
 			(new CFormList())->addRow(_('Name'),
 				(new CTextBox('filter_name', $data['filter']['name']))
 					->setWidth(ZBX_TEXTAREA_FILTER_SMALL_WIDTH)
-					->setAttribute('autofocus', 'autofocus')
 			),
 			(new CFormList())->addRow(_('Status'),
 				(new CRadioButtonList('filter_user_status', (int) $data['filter']['user_status']))
@@ -102,7 +101,7 @@ foreach ($data['usergroups'] as $usergroup) {
 
 	$gui_access = user_auth_type2str($usergroup['gui_access']);
 
-	if (granted2update_group($usergroup['usrgrpid'])) {
+	if ($usergroup['can_update_group']) {
 		$next_gui_auth = ($usergroup['gui_access'] + 1 > GROUP_GUI_ACCESS_DISABLED)
 			? GROUP_GUI_ACCESS_SYSTEM
 			: $usergroup['gui_access'] + 1;

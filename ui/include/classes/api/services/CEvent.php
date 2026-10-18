@@ -27,10 +27,11 @@ class CEvent extends CApiService {
 	protected $tableName = 'events';
 	protected $tableAlias = 'e';
 	protected $sortColumns = ['eventid', 'objectid', 'clock'];
+	protected $groupByColumns = ['objectid'];
 
 	public const OUTPUT_FIELDS = ['eventid', 'source', 'object', 'objectid', 'clock', 'value', 'acknowledged', 'ns',
-		'name', 'severity', 'r_eventid', 'c_eventid', 'correlationid', 'userid', 'cause_eventid', 'opdata',
-		'suppressed', 'urls'
+		'name', 'severity', 'r_eventid', 'c_eventid', 'correlationid', 'userid', 'cep_ruleid', 'cause_eventid',
+		'opdata', 'suppressed', 'urls', 'flags'
 	];
 
 	/**
@@ -42,7 +43,8 @@ class CEvent extends CApiService {
 	 */
 	public function get(array $options = []) {
 		$acknowledge_output_fields = ['acknowledgeid', 'userid', 'clock', 'message', 'action', 'old_severity',
-			'new_severity', 'suppress_until', 'taskid', 'username', 'name', 'surname'
+			'new_severity', 'suppress_until', 'taskid', 'username', 'name', 'surname', 'maintenanceid',
+			'details', 'cep_ruleid'
 		];
 		$alert_output_fields = array_diff(CAlert::OUTPUT_FIELDS, ['eventid']);
 
@@ -64,15 +66,15 @@ class CEvent extends CApiService {
 			'problem_time_from' =>		['type' => API_TIMESTAMP, 'flags' => API_ALLOW_NULL, 'default' => null],
 			'problem_time_till' =>		['type' => API_TIMESTAMP, 'flags' => API_ALLOW_NULL, 'default' => null],
 			'acknowledged' =>			['type' => API_BOOLEAN, 'flags' => API_ALLOW_NULL, 'default' => null],
-			'action' =>					['type' => API_INT32, 'flags' => API_ALLOW_NULL, 'in' => ZBX_PROBLEM_UPDATE_CLOSE.':'.(ZBX_PROBLEM_UPDATE_CLOSE | ZBX_PROBLEM_UPDATE_ACKNOWLEDGE | ZBX_PROBLEM_UPDATE_MESSAGE | ZBX_PROBLEM_UPDATE_SEVERITY | ZBX_PROBLEM_UPDATE_UNACKNOWLEDGE | ZBX_PROBLEM_UPDATE_SUPPRESS | ZBX_PROBLEM_UPDATE_UNSUPPRESS | ZBX_PROBLEM_UPDATE_RANK_TO_CAUSE | ZBX_PROBLEM_UPDATE_RANK_TO_SYMPTOM), 'default' => null],
+			'action' =>					['type' => API_INT32, 'flags' => API_ALLOW_NULL, 'in' => ZBX_PROBLEM_UPDATE_CLOSE.':'.(ZBX_PROBLEM_UPDATE_CLOSE | ZBX_PROBLEM_UPDATE_ACKNOWLEDGE | ZBX_PROBLEM_UPDATE_MESSAGE | ZBX_PROBLEM_UPDATE_SEVERITY | ZBX_PROBLEM_UPDATE_UNACKNOWLEDGE | ZBX_PROBLEM_UPDATE_SUPPRESS | ZBX_PROBLEM_UPDATE_UNSUPPRESS | ZBX_PROBLEM_UPDATE_RANK_TO_CAUSE | ZBX_PROBLEM_UPDATE_RANK_TO_SYMPTOM | ZBX_PROBLEM_UPDATE_CEP), 'default' => null],
 			'action_userids' =>			['type' => API_IDS, 'flags' => API_ALLOW_NULL | API_NORMALIZE, 'default' => null],
 			'suppressed' =>				['type' => API_BOOLEAN, 'flags' => API_ALLOW_NULL, 'default' => null],
 			'symptom' =>				['type' => API_BOOLEAN, 'flags' => API_ALLOW_NULL, 'default' => null],
 			'evaltype' =>				['type' => API_INT32, 'in' => implode(',', [TAG_EVAL_TYPE_AND_OR, TAG_EVAL_TYPE_OR]), 'default' => TAG_EVAL_TYPE_AND_OR],
 			'tags' =>					['type' => API_OBJECTS, 'flags' => API_ALLOW_NULL | API_NORMALIZE, 'default' => null, 'fields' => [
 				'tag' =>					['type' => API_STRING_UTF8, 'flags' => API_REQUIRED],
-				'operator' =>				['type' => API_INT32, 'in' => implode(',', [TAG_OPERATOR_LIKE, TAG_OPERATOR_EQUAL, TAG_OPERATOR_NOT_LIKE, TAG_OPERATOR_NOT_EQUAL, TAG_OPERATOR_EXISTS, TAG_OPERATOR_NOT_EXISTS])],
-				'value' =>					['type' => API_STRING_UTF8]
+				'operator' =>				['type' => API_INT32, 'in' => implode(',', [TAG_OPERATOR_LIKE, TAG_OPERATOR_EQUAL, TAG_OPERATOR_NOT_LIKE, TAG_OPERATOR_NOT_EQUAL, TAG_OPERATOR_EXISTS, TAG_OPERATOR_NOT_EXISTS]), 'default' => TAG_OPERATOR_LIKE],
+				'value' =>					['type' => API_STRING_UTF8, 'default' => '']
 			]],
 			'filter' =>					['type' => API_FILTER, 'flags' => API_ALLOW_NULL, 'default' => null, 'fields' => ['eventid', 'source', 'object', 'objectid', 'value', 'acknowledged', 'name', 'severity', 'cause_eventid']],
 			'search' =>					['type' => API_FILTER, 'flags' => API_ALLOW_NULL, 'default' => null, 'fields' => ['name']],
@@ -83,7 +85,7 @@ class CEvent extends CApiService {
 			// output
 			'output' =>					['type' => API_OUTPUT, 'in' => implode(',', self::OUTPUT_FIELDS), 'default' => API_OUTPUT_EXTEND],
 			'countOutput' =>			['type' => API_FLAG, 'default' => false],
-			'groupBy' =>				['type' => API_STRINGS_UTF8, 'flags' => API_NORMALIZE, 'in' => 'objectid', 'uniq' => true, 'default' => []],
+			'groupBy' =>				['type' => API_STRINGS_UTF8, 'flags' => API_NORMALIZE, 'in' => implode(',', $this->groupByColumns), 'uniq' => true, 'default' => []],
 			'selectAcknowledges' =>		['type' => API_OUTPUT, 'flags' => API_ALLOW_NULL | API_ALLOW_COUNT, 'in' => implode(',', $acknowledge_output_fields), 'default' => null],
 			'selectAlerts' =>			['type' => API_OUTPUT, 'flags' => API_ALLOW_NULL, 'in' => implode(',', $alert_output_fields), 'default' => null],
 			'selectHosts' =>			['type' => API_OUTPUT, 'flags' => API_ALLOW_NULL, 'in' => implode(',', CHost::OUTPUT_FIELDS), 'default' => null],
@@ -96,8 +98,8 @@ class CEvent extends CApiService {
 											['if' => ['field' => 'object', 'in' => EVENT_OBJECT_LLDRULE], 'type' => API_OUTPUT, 'flags' => API_ALLOW_NULL, 'in' => implode(',', CDiscoveryRule::getOutputFieldsOnHost())],
 											['if' => ['field' => 'object', 'in' => EVENT_OBJECT_SERVICE], 'type' => API_OUTPUT, 'flags' => API_ALLOW_NULL, 'in' => implode(',', CService::OUTPUT_FIELDS)]
 			]],
-			'selectSuppressionData' =>		['type' => API_OUTPUT, 'flags' => API_ALLOW_NULL, 'in' => implode(',', ['maintenanceid', 'suppress_until', 'userid']), 'default' => null],
-			'selectTags' =>					['type' => API_OUTPUT, 'flags' => API_ALLOW_NULL, 'in' => implode(',', ['tag', 'value']), 'default' => null],
+			'selectSuppressionData' =>		['type' => API_OUTPUT, 'flags' => API_ALLOW_NULL | API_NORMALIZE, 'in' => implode(',', ['maintenanceid', 'suppress_until', 'userid', 'cep_ruleid']), 'default' => null],
+			'selectTags' =>					['type' => API_OUTPUT, 'flags' => API_ALLOW_NULL | API_NORMALIZE, 'in' => implode(',', ['tag', 'value']), 'default' => null],
 			// sort and limit
 			'sortfield' =>					['type' => API_STRINGS_UTF8, 'flags' => API_NORMALIZE, 'in' => implode(',', array_merge($this->sortColumns, ['rowscount'])), 'uniq' => true, 'default' => []],
 			'sortorder' =>					['type' => API_SORTORDER, 'default' => []],
@@ -221,14 +223,10 @@ class CEvent extends CApiService {
 				$sql_parts['where'][] = '1=0';
 			}
 			elseif ($options['object'] == EVENT_OBJECT_TRIGGER) {
-				$sql_parts['from']['f'] = 'functions f';
-				$sql_parts['from']['i'] = 'items i';
-				$sql_parts['from'][] = 'host_hgset hh';
-				$sql_parts['from'][] = 'permission p';
-				$sql_parts['where']['e-f'] = 'e.objectid=f.triggerid';
-				$sql_parts['where']['f-i'] = 'f.itemid=i.itemid';
-				$sql_parts['where'][] = 'i.hostid=hh.hostid';
-				$sql_parts['where'][] = 'hh.hgsetid=p.hgsetid';
+				$sql_parts['join']['f'] = ['table' => 'functions', 'on' => ['objectid' => 'triggerid']];
+				$sql_parts['join']['i'] = ['left_table' => 'f', 'table' => 'items', 'using' => 'itemid'];
+				$sql_parts['join']['hh'] = ['left_table' => 'i', 'table' => 'host_hgset', 'using' => 'hostid'];
+				$sql_parts['join']['p'] = ['left_table' => 'hh', 'table' => 'permission', 'using' => 'hgsetid'];
 				$sql_parts['where'][] = 'p.ugsetid='.self::$userData['ugsetid'];
 
 				if ($options['editable']) {
@@ -254,16 +252,38 @@ class CEvent extends CApiService {
 				}
 			}
 			elseif ($options['object'] == EVENT_OBJECT_ITEM || $options['object'] == EVENT_OBJECT_LLDRULE) {
-				$sql_parts['from']['i'] = 'items i';
-				$sql_parts['from'][] = 'host_hgset hh';
-				$sql_parts['from'][] = 'permission p';
-				$sql_parts['where']['e-i'] = 'e.objectid=i.itemid';
-				$sql_parts['where'][] = 'i.hostid=hh.hostid';
-				$sql_parts['where'][] = 'hh.hgsetid=p.hgsetid';
+				$sql_parts['join']['i'] = ['table' => 'items', 'on' => ['objectid' => 'itemid']];
+				$sql_parts['join']['hh'] = ['left_table' => 'i', 'table' => 'host_hgset', 'using' => 'hostid'];
+				$sql_parts['join']['p'] = ['left_table' => 'hh', 'table' => 'permission', 'using' => 'hgsetid'];
 				$sql_parts['where'][] = 'p.ugsetid='.self::$userData['ugsetid'];
 
 				if ($options['editable']) {
 					$sql_parts['where'][] = 'p.permission='.PERM_READ_WRITE;
+				}
+			}
+			elseif ($options['source'] == EVENT_SOURCE_DISCOVERY) {
+				if ($options['object'] == EVENT_OBJECT_DHOST) {
+					$sql_parts['join']['dh'] = ['table' => 'dhosts', 'on' => ['objectid' => 'dhostid']];
+					$sql_parts['join']['dr'] = ['left_table' => 'dh', 'table' => 'drules', 'using' => 'druleid'];
+					$sql_parts['join']['p'] = ['type' => 'left', 'left_table' => 'dr', 'table' => 'proxy',
+						'using' => 'proxyid'
+					];
+					$sql_parts['where'][] = '('.
+						'dr.proxyid IS NULL'.
+						' OR '.CApiUserGroupHelper::getProxyPermissionsCondition('p').
+					')';
+				}
+				elseif ($options['object'] == EVENT_OBJECT_DSERVICE) {
+					$sql_parts['join']['ds'] = ['table' => 'dservices', 'on' => ['objectid' => 'dserviceid']];
+					$sql_parts['join']['dc'] = ['left_table' => 'ds', 'table' => 'dchecks', 'using' => 'dcheckid'];
+					$sql_parts['join']['dr'] = ['left_table' => 'dc', 'table' => 'drules', 'using' => 'druleid'];
+					$sql_parts['join']['p'] = ['type' => 'left', 'left_table' => 'dr', 'table' => 'proxy',
+						'using' => 'proxyid'
+					];
+					$sql_parts['where'][] = '('.
+						'dr.proxyid IS NULL'.
+						' OR '.CApiUserGroupHelper::getProxyPermissionsCondition('p').
+					')';
 				}
 			}
 		}
@@ -302,53 +322,34 @@ class CEvent extends CApiService {
 			}
 		}
 
-		// objectids
 		if ($options['objectids'] !== null && in_array($options['object'], [EVENT_OBJECT_TRIGGER, EVENT_OBJECT_ITEM,
 				EVENT_OBJECT_LLDRULE, EVENT_OBJECT_SERVICE])) {
 			$sql_parts['where'][] = dbConditionInt('e.objectid', $options['objectids']);
 		}
 
-		// groupids
 		if ($options['groupids'] !== null) {
-			// triggers
 			if ($options['object'] == EVENT_OBJECT_TRIGGER) {
-				$sql_parts['from']['f'] = 'functions f';
-				$sql_parts['from']['i'] = 'items i';
-				$sql_parts['from']['hg'] = 'hosts_groups hg';
-				$sql_parts['where']['e-f'] = 'e.objectid=f.triggerid';
-				$sql_parts['where']['f-i'] = 'f.itemid=i.itemid';
-				$sql_parts['where']['i-hg'] = 'i.hostid=hg.hostid';
-				$sql_parts['where']['hg'] = dbConditionInt('hg.groupid', $options['groupids']);
+				$sql_parts['join']['f'] = ['table' => 'functions', 'on' => ['objectid' => 'triggerid']];
+				$sql_parts['join']['i'] = ['left_table' => 'f', 'table' => 'items', 'using' => 'itemid'];
 			}
-			// lld rules and items
 			elseif ($options['object'] == EVENT_OBJECT_LLDRULE || $options['object'] == EVENT_OBJECT_ITEM) {
-				$sql_parts['from']['i'] = 'items i';
-				$sql_parts['from']['hg'] = 'hosts_groups hg';
-				$sql_parts['where']['e-i'] = 'e.objectid=i.itemid';
-				$sql_parts['where']['i-hg'] = 'i.hostid=hg.hostid';
-				$sql_parts['where']['hg'] = dbConditionInt('hg.groupid', $options['groupids']);
+				$sql_parts['join']['i'] = ['table' => 'items', 'on' => ['objectid' => 'itemid']];
 			}
+			$sql_parts['join']['hg'] = ['left_table' => 'i', 'table' => 'hosts_groups', 'using' => 'hostid'];
+			$sql_parts['where']['hg'] = dbConditionInt('hg.groupid', $options['groupids']);
 		}
 
-		// hostids
 		if ($options['hostids'] !== null) {
-			// triggers
 			if ($options['object'] == EVENT_OBJECT_TRIGGER) {
-				$sql_parts['from']['f'] = 'functions f';
-				$sql_parts['from']['i'] = 'items i';
-				$sql_parts['where']['e-f'] = 'e.objectid=f.triggerid';
-				$sql_parts['where']['f-i'] = 'f.itemid=i.itemid';
-				$sql_parts['where']['i'] = dbConditionInt('i.hostid', $options['hostids']);
+				$sql_parts['join']['f'] = ['table' => 'functions', 'on' => ['objectid' => 'triggerid']];
+				$sql_parts['join']['i'] = ['left_table' => 'f', 'table' => 'items', 'using' => 'itemid'];
 			}
-			// lld rules and items
 			elseif ($options['object'] == EVENT_OBJECT_LLDRULE || $options['object'] == EVENT_OBJECT_ITEM) {
-				$sql_parts['from']['i'] = 'items i';
-				$sql_parts['where']['e-i'] = 'e.objectid=i.itemid';
-				$sql_parts['where']['i'] = dbConditionInt('i.hostid', $options['hostids']);
+				$sql_parts['join']['i'] = ['table' => 'items', 'on' => ['objectid' => 'itemid']];
 			}
+			$sql_parts['where']['i'] = dbConditionInt('i.hostid', $options['hostids']);
 		}
 
-		// severities
 		if ($options['severities'] !== null) {
 			// triggers
 			if ($options['object'] == EVENT_OBJECT_TRIGGER || $options['object'] == EVENT_OBJECT_SERVICE) {
@@ -369,8 +370,7 @@ class CEvent extends CApiService {
 
 				if ($options['trigger_severities']
 						!= range(TRIGGER_SEVERITY_NOT_CLASSIFIED, TRIGGER_SEVERITY_COUNT - 1)) {
-					$sql_parts['from']['t'] = 'triggers t';
-					$sql_parts['where']['e-t'] = 'e.objectid=t.triggerid';
+					$sql_parts['join']['t'] = ['table' => 'triggers', 'on' => ['objectid' => 'triggerid']];
 					$sql_parts['where'][] = dbConditionInt('t.priority', $options['trigger_severities']);
 				}
 			}
@@ -404,12 +404,10 @@ class CEvent extends CApiService {
 		}
 
 		if ($options['suppressed'] === true) {
-			$sql_parts['from']['esup'] = 'event_suppress esup';
-			$sql_parts['where']['e-esup'] = 'e.eventid=esup.eventid';
+			$sql_parts['join']['esup'] = ['table' => 'event_suppress', 'using' => 'eventid'];
 		}
 		elseif ($options['suppressed'] === false) {
-			$sql_parts['left_join']['esup'] = ['alias' => 'esup', 'table' => 'event_suppress', 'using' => 'eventid'];
-			$sql_parts['left_table'] = ['alias' => 'e', 'table' => 'events'];
+			$sql_parts['join']['esup'] = ['type' => 'left', 'table' => 'event_suppress', 'using' => 'eventid'];
 			$sql_parts['where'][] = 'esup.eventid IS NULL';
 		}
 
@@ -417,12 +415,10 @@ class CEvent extends CApiService {
 			&& array_key_exists('cause_eventid', $options['filter']) && $options['filter']['cause_eventid'] !== null;
 
 		if ($options['symptom'] === true || $has_cause_eventid_filter) {
-			$sql_parts['from']['es'] = 'event_symptom es';
-			$sql_parts['where']['e-es'] = 'e.eventid=es.eventid';
+			$sql_parts['join']['es'] = ['table' => 'event_symptom', 'using' => 'eventid'];
 		}
 		elseif ($options['symptom'] === false) {
-			$sql_parts['left_join']['es'] = ['alias' => 'es', 'table' => 'event_symptom', 'using' => 'eventid'];
-			$sql_parts['left_table'] = ['alias' => 'e', 'table' => 'events'];
+			$sql_parts['join']['es'] = ['type' => 'left', 'table' => 'event_symptom', 'using' => 'eventid'];
 		}
 
 		if ($has_cause_eventid_filter) {
@@ -435,7 +431,7 @@ class CEvent extends CApiService {
 
 		// tags
 		if ($options['tags'] !== null) {
-			$sql_parts['where'][] = CApiTagHelper::addWhereCondition($options['tags'], $options['evaltype'], 'e',
+			$sql_parts['where'][] = CApiTagHelper::getTagCondition($options['tags'], $options['evaltype'], ['e'],
 				'event_tag', 'eventid'
 			);
 		}
@@ -509,12 +505,9 @@ class CEvent extends CApiService {
 			return $sql_parts;
 		}
 
-		$sql_parts['from']['f'] = 'functions f';
-		$sql_parts['from']['i'] = 'items i';
-		$sql_parts['from']['hg'] = 'hosts_groups hg';
-		$sql_parts['where']['e-f'] = 'e.objectid=f.triggerid';
-		$sql_parts['where']['f-i'] = 'f.itemid=i.itemid';
-		$sql_parts['where']['i-hg'] = 'i.hostid=hg.hostid';
+		$sql_parts['join']['f'] = ['table' => 'functions', 'on' => ['objectid' => 'triggerid']];
+		$sql_parts['join']['i'] = ['left_table' => 'f', 'table' => 'items', 'using' => 'itemid'];
+		$sql_parts['join']['hg'] = ['left_table' => 'i', 'table' => 'hosts_groups', 'using' => 'hostid'];
 
 		$tag_conditions = [];
 		$full_access_groupids = [];
@@ -557,15 +550,13 @@ class CEvent extends CApiService {
 
 		if ($tag_conditions) {
 			if ($value == TRIGGER_VALUE_TRUE) {
-				$sql_parts['left_join'][] = ['alias' => 'et', 'table' => 'event_tag', 'using' => 'eventid'];
-				$sql_parts['left_table'] = ['alias' => 'e', 'table' => 'events'];
+				$sql_parts['join']['et'] = ['type' => 'left', 'table' => 'event_tag', 'using' => 'eventid'];
 			}
 			else {
-				$sql_parts['from']['er'] = 'event_recovery er';
-				$sql_parts['where']['e-er'] = 'e.eventid=er.r_eventid';
-
-				$sql_parts['left_join'][] = ['alias' => 'et', 'table' => 'event_tag', 'using' => 'eventid'];
-				$sql_parts['left_table'] = ['alias' => 'er', 'table' => 'event_recovery'];
+				$sql_parts['join']['er'] = ['table' => 'event_recovery', 'on' => ['eventid' => 'r_eventid']];
+				$sql_parts['join']['et'] = ['type' => 'left', 'left_table' => 'er', 'table' => 'event_tag',
+					'using' => 'eventid'
+				];
 			}
 
 			if ($full_access_groupids || count($tag_conditions) > 1) {
@@ -597,13 +588,12 @@ class CEvent extends CApiService {
 		// Select fields from event_recovery table using LEFT JOIN.
 		if ($this->outputIsRequested('r_eventid', $options['output'])) {
 			$sql_parts['select']['r_eventid'] = 'er1.r_eventid';
-			$sql_parts['left_join'][] = ['alias' => 'er1', 'table' => 'event_recovery', 'using' => 'eventid'];
-			$sql_parts['left_table'] = ['alias' => $this->tableAlias, 'table' => $this->tableName];
+			$sql_parts['join']['er1'] = ['type' => 'left', 'table' => 'event_recovery', 'using' => 'eventid'];
 		}
 
 		// Select fields from event_recovery table using LEFT JOIN.
 		$left_join_recovery = false;
-		foreach (['c_eventid', 'correlationid', 'userid'] as $field) {
+		foreach (['c_eventid', 'correlationid', 'userid', 'cep_ruleid'] as $field) {
 			if ($this->outputIsRequested($field, $options['output'])) {
 				$sql_parts['select'][$field] = 'er2.'.$field;
 				$left_join_recovery = true;
@@ -611,8 +601,9 @@ class CEvent extends CApiService {
 		}
 
 		if ($left_join_recovery) {
-			$sql_parts['left_join'][] = ['alias' => 'er2', 'table' => 'event_recovery', 'using' => 'r_eventid'];
-			$sql_parts['left_table'] = ['alias' => $this->tableAlias, 'table' => $this->tableName];
+			$sql_parts['join']['er2'] = ['type' => 'left', 'table' => 'event_recovery',
+				'on' => ['eventid' => 'r_eventid']
+			];
 		}
 
 		if ($options['selectRelatedObject'] !== null || $options['selectHosts'] !== null) {
@@ -631,9 +622,7 @@ class CEvent extends CApiService {
 			}
 
 			if ($options['suppressed'] === null) {
-				$sql_parts['left_join']['esup']
-					= ['alias' => 'esup', 'table' => 'event_suppress', 'using' => 'eventid'];
-				$sql_parts['left_table'] = ['alias' => 'e', 'table' => 'events'];
+				$sql_parts['join']['esup'] = ['type' => 'left', 'table' => 'event_suppress', 'using' => 'eventid'];
 			}
 		}
 
@@ -645,8 +634,7 @@ class CEvent extends CApiService {
 				&& $options['filter']['cause_eventid'] !== null;
 
 			if ($options['symptom'] === null && !$has_cause_eventid_filter) {
-				$sql_parts['left_join']['es'] = ['alias' => 'es', 'table' => 'event_symptom', 'using' => 'eventid'];
-				$sql_parts['left_table'] = ['alias' => $this->tableAlias, 'table' => $this->tableName];
+				$sql_parts['join']['es'] = ['type' => 'left', 'table' => 'event_symptom', 'using' => 'eventid'];
 			}
 		}
 
@@ -711,7 +699,7 @@ class CEvent extends CApiService {
 		if ($options['selectAcknowledges'] != API_OUTPUT_COUNT) {
 			$output = $options['selectAcknowledges'] === API_OUTPUT_EXTEND
 				? ['acknowledgeid', 'userid', 'clock', 'message', 'action', 'old_severity', 'new_severity',
-					'suppress_until', 'taskid'
+					'suppress_until', 'taskid', 'maintenanceid', 'details', 'cep_ruleid'
 				]
 				: array_diff($options['selectAcknowledges'], ['username', 'name', 'surname']);
 
@@ -897,68 +885,54 @@ class CEvent extends CApiService {
 			' WHERE '.dbConditionInt('e.eventid', array_keys($result))
 		), 'eventid');
 
+		$events = CMacrosResolverHelper::resolveEventOpdatas($events);
+
 		foreach ($result as $eventid => $event) {
-			$result[$eventid]['opdata'] = array_key_exists($eventid, $events) && $events[$eventid]['opdata'] !== ''
-				? CMacrosResolverHelper::resolveTriggerOpdata($events[$eventid], ['events' => true])
-				: '';
+			$result[$eventid]['opdata'] = $events[$eventid]['opdata'] ?? '';
 		}
 	}
 
-	private static function addRelatedSuppressionData(array $options, array &$result): void {
+	private static function addRelatedSuppressionData(array $options, array &$events): void {
 		if ($options['selectSuppressionData'] === null) {
 			return;
 		}
 
-		foreach ($result as &$row) {
-			$row['suppression_data'] = [];
+		foreach ($events as &$event) {
+			$event['suppression_data'] = [];
 		}
-		unset($row);
-
-		$output = $options['selectSuppressionData'] === API_OUTPUT_EXTEND
-			? ['event_suppressid', 'eventid', 'maintenanceid', 'suppress_until', 'userid']
-			: array_unique(array_merge(['event_suppressid', 'eventid'], $options['selectSuppressionData']));
+		unset($event);
 
 		$sql_options = [
-			'output' => $output,
-			'filter' => ['eventid' => array_keys($result)]
+			'output' => array_merge(['event_suppressid', 'eventid'], $options['selectSuppressionData']),
+			'filter' => ['eventid' => array_keys($events)]
 		];
-		$db_event_suppress = DBselect(DB::makeSql('event_suppress', $sql_options));
 
-		while ($db_suppression_data = DBfetch($db_event_suppress)) {
-			$eventid = $db_suppression_data['eventid'];
+		$resource = DBselect(DB::makeSql('event_suppress', $sql_options));
 
-			unset($db_suppression_data['event_suppressid'], $db_suppression_data['eventid']);
-
-			$result[$eventid]['suppression_data'][] = $db_suppression_data;
+		while ($row = DBfetch($resource)) {
+			$events[$row['eventid']]['suppression_data'][] =
+				array_diff_key($row, array_flip(['event_suppressid', 'eventid']));
 		}
 	}
 
-	private static function addRelatedTags(array $options, array &$result): void {
+	private static function addRelatedTags(array $options, array &$events): void {
 		if ($options['selectTags'] === null) {
 			return;
 		}
 
-		foreach ($result as &$row) {
-			$row['tags'] = [];
+		foreach ($events as &$event) {
+			$event['tags'] = [];
 		}
-		unset($row);
-
-		$output = $options['selectTags'] === API_OUTPUT_EXTEND
-			? ['eventtagid', 'eventid', 'tag', 'value']
-			: array_unique(array_merge(['eventtagid', 'eventid'], $options['selectTags']));
+		unset($event);
 
 		$sql_options = [
-			'output' => $output,
-			'filter' => ['eventid' => array_keys($result)]
+			'output' => array_merge(['eventtagid', 'eventid'], $options['selectTags']),
+			'filter' => ['eventid' => array_keys($events)]
 		];
-		$db_tags = DBselect(DB::makeSql('event_tag', $sql_options));
+		$resource = DBselect(DB::makeSql('event_tag', $sql_options));
 
-		while ($db_tag = DBfetch($db_tags)) {
-			$eventid = $db_tag['eventid'];
-
-			unset($db_tag['eventtagid'], $db_tag['eventid']);
-
-			$result[$eventid]['tags'][] = $db_tag;
+		while ($row = DBfetch($resource)) {
+			$events[$row['eventid']]['tags'][] = array_diff_key($row, array_flip(['eventtagid', 'eventid']));
 		}
 	}
 

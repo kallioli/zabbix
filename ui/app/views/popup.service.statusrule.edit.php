@@ -54,17 +54,22 @@ $form_grid = (new CFormGrid())
 	])
 	->addItem([
 		(new CLabel('N', 'service-status-rule-limit-value'))->setId('service-status-rule-limit-value-label'),
-		new CFormField(
+		new CFormField([
 			new CHorList([
-				(new CTextBox('limit_value', $data['form']['limit_value'], false, 7))
+				(new CNumericBox('limit_value', $data['form']['limit_value'], 7, allow_negative: false))
+					->setDefaultValue(1)
 					->setId('service-status-rule-limit-value')
 					->setWidth(ZBX_TEXTAREA_TINY_WIDTH)
-					->setAriaRequired(),
+					->setAriaRequired()
+					->setErrorContainer('limit_value_error_container'),
 				(new CSpan('%'))
 					->setId('service-status-rule-limit-value-unit')
 					->addStyle('display: none;')
-			])
-		)
+			]),
+			(new CDiv())
+				->addClass(ZBX_STYLE_ERROR_CONTAINER)
+				->setId('limit_value_error_container')
+		])
 	])
 	->addItem([
 		new CLabel(_('Status'), 'service-status-rule-limit-status-focusable'),
@@ -78,12 +83,7 @@ $form_grid = (new CFormGrid())
 	]);
 
 $form
-	->addItem($form_grid)
-	->addItem(
-		(new CScriptTag('
-			service_status_rule_edit_popup.init();
-		'))->setOnDocumentReady()
-	);
+	->addItem($form_grid);
 
 $output = [
 	'header' => $data['is_edit'] ? _('Additional rule') : _('New additional rule'),
@@ -91,13 +91,16 @@ $output = [
 	'buttons' => [
 		[
 			'title' => $data['is_edit'] ? _('Update') : _('Add'),
+			'class' => 'js-submit',
 			'keepOpen' => true,
-			'isSubmit' => true,
-			'action' => 'service_status_rule_edit_popup.submit();'
+			'isSubmit' => true
 		]
 	],
 	'script_inline' => getPagePostJs().
-		$this->readJsFile('popup.service.statusrule.edit.js.php')
+		$this->readJsFile('popup.service.statusrule.edit.js.php').
+		'service_status_rule_edit_popup.init('.json_encode([
+			'rules' => $data['js_validation_rules']
+		]).');'
 ];
 
 if ($data['user']['debug_mode'] == GROUP_DEBUG_MODE_ENABLED) {

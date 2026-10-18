@@ -254,6 +254,13 @@ const hintBox = {
 	animation_frame_id: null,
 	show_hint_timer: null,
 
+	// Variables related to hintbox dragging.
+	drag_style: null,
+	draggable_element: null,
+	offsetX: 0,
+	offsetY: 0,
+	is_dragging: false,
+
 	/**
 	 * Initialize hint box event handlers.
 	 *
@@ -346,7 +353,7 @@ const hintBox = {
 
 	showHintStart: function (e, $target, delay) {
 		const showHintHandler = function() {
-			hintBox.showHint(e, $target[0], $target[0].dataset.hintboxContents, $target.data('hintbox-class'),
+			hintBox.showHint(e, $target[0], $target[0].dataset.hintboxHtml, $target.data('hintbox-class'),
 				false, $target.data('hintbox-style')
 			);
 		}
@@ -388,35 +395,35 @@ const hintBox = {
 		}).appendTo(box);
 
 		xhr.done(function(resp) {
-			let hintbox_contents = '';
+			let hintbox_html = '';
 
 			if ('error' in resp) {
 				const message_box = makeMessageBox('bad', resp.error.messages, resp.error.title, false, true)[0];
 
-				hintbox_contents += message_box.innerHTML;
+				hintbox_html += message_box.innerHTML;
 			}
 			else {
 				if (resp.messages) {
-					hintbox_contents += resp.messages;
+					hintbox_html += resp.messages;
 				}
 
 				if (resp.data) {
-					hintbox_contents += resp.data;
+					hintbox_html += resp.data;
 				}
 
 				if (resp.value) {
-					hintbox_contents += resp.value;
+					hintbox_html += resp.value;
 				}
 			}
 
-			target.dataset.hintboxContents = hintbox_contents;
+			target.dataset.hintboxHtml = hintbox_html;
 
 			$preloader.remove();
 
 			if (target.hintBoxItem !== undefined) {
 				const hintbox_container = box[0].querySelector('.hintbox-container');
 
-				hintbox_container.innerHTML = hintbox_contents;
+				hintbox_container.innerHTML = hintbox_html;
 
 				// Reset hintbox position.
 				box.css({
@@ -432,19 +439,27 @@ const hintBox = {
 	},
 
 	createBox: function(e, target, hintText, className, isStatic, styles, appendTo = '.wrapper',
-						reposition_on_resize = true, footer = null) {
+			reposition_on_resize = true) {
 		const hintboxid = hintBox.getUniqueId();
-		const box = jQuery('<div>', {'data-hintboxid': hintboxid}).addClass('overlay-dialogue hintbox wordbreak');
+		const box = jQuery('<div>', {'data-hintboxid': hintboxid})
+			.addClass(`${ZBX_STYLE_OVERLAY_DIALOGUE} hintbox wordbreak`);
 
-		for (let element = target; element && element !== document.body; element = element.parentElement) {
-			if (getComputedStyle(element).position === 'fixed') {
+		if ('hintboxPositionFixed' in target.dataset) {
+			if (target.dataset.hintboxPositionFixed) {
 				box.addClass('hintbox-position-fixed');
-				break;
+			}
+		}
+		else {
+			for (let element = target; element && element !== document.body; element = element.parentElement) {
+				if (getComputedStyle(element).position === 'fixed') {
+					box.addClass('hintbox-position-fixed');
+					break;
+				}
 			}
 		}
 
 		if (!isStatic) {
-			id = 'hintbox-'+hintboxid;
+			id = 'hintbox-' + hintboxid;
 			$(target).attr('aria-describedby', id);
 			box.attr('id', id);
 			box.attr('role', 'tooltip');
@@ -491,6 +506,10 @@ const hintBox = {
 			const hintbox_header = document.createElement('div');
 			hintbox_header.classList.add('hintbox-header');
 
+			const draggable_header = document.createElement('div');
+			draggable_header.classList.add('hintbox-draggable-handle');
+			draggable_header.addEventListener('mousedown', hintBox.drag_listeners.dragStart);
+
 			const close_link = document.createElement('button');
 			close_link.setAttribute('title', t('S_CLOSE'));
 			close_link.classList.add('btn-overlay-close');
@@ -500,17 +519,14 @@ const hintBox = {
 				hintBox.hideHint(target, true);
 			});
 
+			hintbox_header.prepend(draggable_header);
 			hintbox_header.prepend(close_link);
 
 			box.prepend(hintbox_header);
 		}
 
-		if (target.dataset?.hintboxPreload !== '' && target.dataset?.hintboxContents === '') {
+		if (target.dataset?.hintboxPreload !== '' && target.dataset?.hintboxHtml === '') {
 			hintBox.preloadHint(e, target, box);
-		}
-
-		if (footer !== null) {
-			box.append(footer);
 		}
 
 		jQuery(appendTo).append(box);
@@ -558,7 +574,7 @@ const hintBox = {
 
 		if (!isStatic) {
 			if (typeof hintText === 'undefined') {
-				hintText = target.dataset.hintboxContents;
+				hintText = target.dataset.hintboxHtml;
 			}
 
 			target.isStatic = true;
@@ -638,6 +654,8 @@ const hintBox = {
 		if (target.isStatic) {
 			Focuser.recoverFocus(target.hintBoxItem[0]);
 			Focuser.containFocus(target.hintBoxItem[0]);
+
+			target.dispatchEvent(new CustomEvent('onShowStaticHint'));
 		}
 
 		target.dispatchEvent(new CustomEvent('onShowHint.hintBox'));
@@ -797,6 +815,10 @@ const hintBox = {
 	},
 
 	deleteHint: function(target, do_focus_target = true) {
+		if (target.isStatic) {
+			target.dispatchEvent(new CustomEvent('onDeleteStaticHint'));
+		}
+
 		if (typeof target.hintboxid !== 'undefined') {
 			jQuery(target).removeAttr('data-expanded');
 			removeFromOverlaysStack(target.hintboxid, do_focus_target);
@@ -858,6 +880,61 @@ const hintBox = {
 	onResize: function(e, target) {
 		if (target && target.hintBoxItem) {
 			hintBox.positionElement(e, target, target.hintBoxItem);
+		}
+	},
+
+	drag_listeners: {
+		dragStart: function(e) {
+			hintBox.drag_style = document.createElement('style');
+			document.head.appendChild(hintBox.drag_style);
+			hintBox.drag_style.sheet.insertRule(
+				'* { user-select: none; pointer-events: none; cursor: grabbing !important; }'
+			);
+
+			hintBox.draggable_element = e.target.offsetParent;
+
+			hintBox.offsetX = e.clientX - hintBox.draggable_element.offsetLeft;
+			hintBox.offsetY = e.clientY - hintBox.draggable_element.offsetTop;
+
+			document.addEventListener('mousemove', hintBox.drag_listeners.dragMove);
+			document.addEventListener('mouseup', hintBox.drag_listeners.dragStop);
+		},
+		dragMove: function(e) {
+			if (hintBox.is_dragging) {
+				return;
+			}
+
+			hintBox.is_dragging = true;
+
+			requestAnimationFrame(() => {
+				if (hintBox.draggable_element === null) {
+					return;
+				}
+
+				const parent = hintBox.draggable_element.classList.contains('hintbox-position-fixed')
+					? document.body
+					: hintBox.draggable_element.offsetParent;
+				const hintbox_rect = hintBox.draggable_element.getBoundingClientRect();
+
+				const max_left = parent.scrollWidth - hintbox_rect.width;
+				const max_top = parent.scrollHeight - hintbox_rect.height;
+
+				const left = Math.min(Math.max(0, e.clientX - hintBox.offsetX), max_left);
+				const top = Math.min(Math.max(0, e.clientY - hintBox.offsetY), max_top);
+
+				hintBox.draggable_element.style.left = `${left}px`;
+				hintBox.draggable_element.style.top = `${top}px`;
+
+				hintBox.is_dragging = false;
+			});
+		},
+		dragStop: function () {
+			hintBox.drag_style.remove();
+			hintBox.is_dragging = false;
+			hintBox.draggable_element = null;
+
+			document.removeEventListener('mousemove', hintBox.drag_listeners.dragMove);
+			document.removeEventListener('mouseup', hintBox.drag_listeners.dragStop);
 		}
 	}
 };
@@ -1310,6 +1387,12 @@ document.addEventListener('DOMContentLoaded', () => {
 	// Event hub initialization.
 
 	ZABBIX.EventHub = new CEventHub();
+
+	// Banner initialization.
+
+	if (typeof CBanner !== 'undefined') {
+		ZABBIX.Banner = new CBanner();
+	}
 
 	// Software version check initialization.
 

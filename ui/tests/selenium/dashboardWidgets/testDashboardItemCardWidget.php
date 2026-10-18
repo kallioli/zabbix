@@ -324,9 +324,9 @@ class testDashboardItemCardWidget extends testWidgets {
 
 		// Emulate item discovery in DB.
 		DBexecute('INSERT INTO items (itemid, type, hostid, name, description, key_, interfaceid, flags, query_fields,'.
-				' params, posts, headers, status) VALUES ('.zbx_dbstr($discovered_item['itemid']).', 2, '.
+				' params, posts, headers, query, status) VALUES ('.zbx_dbstr($discovered_item['itemid']).', 2, '.
 				zbx_dbstr(self::$host_ids['hostids'][self::HOST_NAME]).', '.zbx_dbstr($discovered_item['item_name']).
-				', \'\', '.zbx_dbstr($discovered_item['key_']).', NULL, 4, \'\', \'\', \'\', \'\', '.
+				', \'\', '.zbx_dbstr($discovered_item['key_']).', NULL, 4, \'\', \'\', \'\', \'\', \'{}\', '.
 				zbx_dbstr($discovered_item['status']).')'
 		);
 		DBexecute('INSERT INTO item_discovery (itemdiscoveryid, itemid, parent_itemid, ts_delete, disable_source,'.
@@ -1033,7 +1033,7 @@ class testDashboardItemCardWidget extends testWidgets {
 				if ($item === 'Dashboard') {
 					// Сheck value and hint message when "Dashboard" is selected.
 					$form->checkValue([$label => 'Dashboard']);
-					$this->assertTrue($field->query('xpath:.//span[@data-hintbox-contents="Dashboard is used as data source."]')
+					$this->assertTrue($field->query('xpath:.//span[@data-hintbox-html="Dashboard is used as data source."]')
 							->one()->isVisible()
 					);
 				}
@@ -1517,7 +1517,7 @@ class testDashboardItemCardWidget extends testWidgets {
 				self::$dashboard_ids['Dashboard for Item Card widget update']
 		)->waitUntilReady();
 
-		$dashboard = CDashboardElement::find()->one();
+		$dashboard = CDashboardElement::find()->waitUntilReady()->one();
 		$dashboard->edit()->getWidget('Item card')->edit()->submit();
 		$dashboard->getWidget('Item card');
 		$dashboard->save();
@@ -1683,9 +1683,7 @@ class testDashboardItemCardWidget extends testWidgets {
 							],
 							'Create trigger' => 'menu-popup-item',
 							'Create dependent item' => 'menu-popup-item',
-							'Create dependent discovery rule' => 'host_discovery.php?form=create&hostid={hostid}&type=18'.
-									'&master_itemid={itemid}&backurl=zabbix.php%3Faction%3Dlatest.view%26context%3Dhost'.
-									'&context=host'
+							'Create dependent discovery rule' => 'menu-popup-item'
 						],
 						'ACTIONS' => [
 							'Execute now' => 'menu-popup-item'
@@ -1742,9 +1740,7 @@ class testDashboardItemCardWidget extends testWidgets {
 							],
 							'Create trigger' => 'menu-popup-item',
 							'Create dependent item' => 'menu-popup-item',
-							'Create dependent discovery rule' => 'host_discovery.php?form=create&hostid={hostid}&type=18'.
-									'&master_itemid={itemid}&backurl=zabbix.php%3Faction%3Dlatest.view%26context%3Dhost'.
-									'&context=host'
+							'Create dependent discovery rule' => 'menu-popup-item'
 						],
 						'ACTIONS' => [
 							'Execute now' => 'menu-popup-item'
@@ -1805,7 +1801,7 @@ class testDashboardItemCardWidget extends testWidgets {
 					'Host' => 'Visible host name for Item Card widget',
 					'Interval and storage' => [
 						'column' => '15m',
-						'center-column' => '',
+						'center-column' => 'Not stored',
 						'right-column' => ''
 					],
 					'Type of information' => 'Log',
@@ -1839,7 +1835,7 @@ class testDashboardItemCardWidget extends testWidgets {
 				self::$dashboard_ids['Dashboard for Item Card widget display check']
 		)->waitUntilReady();
 
-		$dashboard = CDashboardElement::find()->one();
+		$dashboard = CDashboardElement::find()->waitUntilReady()->one();
 		$widget = $dashboard->getWidget($data['Header']);
 
 		if (array_key_exists('Item', $data)) {
@@ -1859,7 +1855,7 @@ class testDashboardItemCardWidget extends testWidgets {
 
 		if (array_key_exists('Error text', $data)) {
 			$item_selector->query('class:zi-i-negative')->one()->click();
-			$hint = $this->query('css:div.overlay-dialogue.wordbreak')->asOverlayDialog()->waitUntilReady()->one();
+			$hint = $this->query('xpath://div[contains(@class, "hintbox-static")]')->asOverlayDialog()->waitUntilReady()->one();
 			$this->assertEquals($data['Error text'], $hint->getText());
 			$hint->close();
 			$this->assertEquals($data['Error text'], $widget->query('class:section-error')->one()->getText());
@@ -1867,7 +1863,7 @@ class testDashboardItemCardWidget extends testWidgets {
 
 		if (array_key_exists('Warning', $data)) {
 			$widget->query('class:item-name')->query('class:zi-i-warning')->one()->click();
-			$hint = $this->query('css:div.overlay-dialogue.wordbreak')->asOverlayDialog()->waitUntilReady()->one();
+			$hint = $this->query('xpath://div[contains(@class, "hintbox-static")]')->asOverlayDialog()->waitUntilReady()->one();
 			$this->assertEquals($data['Warning'], $hint->getText());
 			$hint->close();
 		}
@@ -1972,7 +1968,7 @@ class testDashboardItemCardWidget extends testWidgets {
 
 			// Check table pop-up with trigger data.
 			$widget->query('class:section-triggers')->query('class:link-action')->one()->waitUntilClickable()->click();
-			$hint = $this->query('css:div.overlay-dialogue.wordbreak')->asOverlayDialog()->waitUntilReady()->one();
+			$hint = $this->query('xpath://div[contains(@class, "hintbox-static")]')->asOverlayDialog()->waitUntilReady()->one();
 			$table = $hint->query('class:list-table')->asTable()->one();
 
 			$this->assertEquals(['Severity', 'Name', 'Expression', 'Status'], $table->getHeadersText());
@@ -2134,11 +2130,12 @@ class testDashboardItemCardWidget extends testWidgets {
 	 * @dataProvider getCheckLinksData
 	 */
 	public function testDashboardItemCardWidget_CheckLinks($data) {
+		global $DB;
 		$this->page->login()->open('zabbix.php?action=dashboard.view&dashboardid='.
 				self::$dashboard_ids['Dashboard for Item Card widget display check']
 		)->waitUntilReady();
 
-		$dashboard = CDashboardElement::find()->one();
+		$dashboard = CDashboardElement::find()->waitUntilReady()->one();
 		$widget = $dashboard->getWidget($data['widget_name']);
 
 		switch ($data['link_name']) {
@@ -2278,7 +2275,7 @@ class testDashboardItemCardWidget extends testWidgets {
 				self::$dashboard_ids['Dashboard for canceling Item Card widget']
 		);
 
-		$dashboard = CDashboardElement::find()->one()->edit();
+		$dashboard = CDashboardElement::find()->waitUntilReady()->one()->edit();
 		self::$old_widget_count = $dashboard->getWidgets()->count();
 
 		// Start updating or creating a widget.

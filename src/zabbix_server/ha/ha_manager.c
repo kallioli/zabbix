@@ -220,7 +220,7 @@ static void	ha_update_parent(zbx_ipc_async_socket_t *rtc_socket, zbx_ha_info_t *
 	if (SUCCEED != ret)
 	{
 		zabbix_log(LOG_LEVEL_CRIT, "cannot send HA notification to main process");
-		exit(EXIT_FAILURE);
+		zbx_exit(EXIT_FAILURE);
 	}
 
 	zabbix_log(LOG_LEVEL_DEBUG, "End of %s()", __func__);
@@ -237,7 +237,7 @@ static void	ha_send_heartbeat(zbx_ipc_async_socket_t *rtc_socket)
 			SUCCEED != zbx_ipc_async_socket_flush(rtc_socket, ZBX_HA_SERVICE_TIMEOUT))
 	{
 		zabbix_log(LOG_LEVEL_CRIT, "cannot send HA heartbeat to main process");
-		exit(EXIT_FAILURE);
+		zbx_exit(EXIT_FAILURE);
 	}
 }
 
@@ -743,7 +743,7 @@ static void	ha_db_create_node(zbx_ha_info_t *info, zbx_ha_config_t *ha_config)
 	}
 
 	zbx_new_cuid(nodeid.str);
-	name_esc = zbx_db_dyn_escape_string(info->name);
+	name_esc = zbx_dbconn_dyn_escape_string(info->dbconn, info->name);
 
 	if (SUCCEED == ha_db_execute(info, "insert into ha_node (ha_nodeid,name,status,lastaccess)"
 			" values ('%s','%s',%d," ZBX_DB_TIMESTAMP() ")",
@@ -821,7 +821,7 @@ static int	ha_db_check_unavailable_nodes(zbx_ha_info_t *info, zbx_vector_ha_node
 		zbx_snprintf_alloc(&sql, &sql_alloc, &sql_offset, "update ha_node set status=%d where",
 				ZBX_NODE_STATUS_UNAVAILABLE);
 
-		zbx_db_add_str_condition_alloc(&sql, &sql_alloc, &sql_offset, "ha_nodeid",
+		zbx_dbconn_add_str_condition_alloc(info->dbconn, &sql, &sql_alloc, &sql_offset, "ha_nodeid",
 				(const char **)unavailable_nodes.values, unavailable_nodes.values_num);
 
 		ret = ha_db_execute(info, "%s", sql);
@@ -911,7 +911,7 @@ static void	ha_db_register_node(zbx_ha_info_t *info, zbx_ha_config_t *ha_config)
 	{
 		char	*address_esc;
 
-		address_esc = zbx_db_dyn_escape_string(address);
+		address_esc = zbx_dbconn_dyn_escape_string(info->dbconn, address);
 
 		zbx_audit_entry_update_string(audit_entry, ZBX_AUDIT_HA_ADDRESS, node->address, address);
 
@@ -1876,21 +1876,21 @@ ZBX_THREAD_ENTRY(ha_manager_thread, args)
 	{
 		zabbix_log(LOG_LEVEL_CRIT, "cannot start HA manager service: %s", error);
 		zbx_free(error);
-		exit(EXIT_FAILURE);
+		zbx_exit(EXIT_FAILURE);
 	}
 
 	if (FAIL == rtc_open(&rtc_socket, ZBX_HA_SERVICE_TIMEOUT, &error))
 	{
 		zabbix_log(LOG_LEVEL_CRIT, "cannot start HA manager service: %s", error);
 		zbx_free(error);
-		exit(EXIT_FAILURE);
+		zbx_exit(EXIT_FAILURE);
 	}
 
 	if (FAIL == zbx_ipc_async_socket_send(&rtc_socket, ZBX_IPC_SERVICE_HA_REGISTER, NULL, 0) ||
 			FAIL == zbx_ipc_async_socket_flush(&rtc_socket, ZBX_HA_SERVICE_TIMEOUT))
 	{
 		zabbix_log(LOG_LEVEL_CRIT, "cannot register HA manager to runtime control service");
-		exit(EXIT_FAILURE);
+		zbx_exit(EXIT_FAILURE);
 	}
 
 	zbx_cuid_clear(info.ha_nodeid);
@@ -2069,5 +2069,5 @@ pause:
 
 	zabbix_log(LOG_LEVEL_INFORMATION, "HA manager has been stopped");
 
-	exit(EXIT_SUCCESS);
+	zbx_exit(EXIT_SUCCESS);
 }

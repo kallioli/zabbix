@@ -71,7 +71,12 @@ int	pthread_rwlock_rdlock(pthread_rwlock_t *rwlock);
 int	pthread_rwlock_wrlock(pthread_rwlock_t *rwlock);
 int	pthread_rwlock_unlock(pthread_rwlock_t *rwlock);
 
+int	pthread_cond_timedwait(pthread_cond_t *cond, pthread_mutex_t *mutex, const struct timespec *abstime);
+
 int	pthread_create(pthread_t *thread, const pthread_attr_t *attr, void *(*start)(void *), void *arg);
 int	pthread_join(pthread_t thread, void **retval);
+void	pthread_exit(void *retval);
+
+/* counterpart of the Unix implementation in zbxthreads/threads.c; declared in zbxthreads.h */
 
 #endif /* ZABBIX_WINPTHREAD_H */

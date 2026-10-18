@@ -105,7 +105,10 @@ class CControllerItemPrototypeList extends CControllerItemPrototype {
 				->setArgument('context', $data['context'])
 		);
 		$data['parent_templates'] = getItemParentTemplates($data['items'], ZBX_FLAG_DISCOVERY_PROTOTYPE);
-		$data['tags'] = makeTags($data['items'], true, 'itemid', ZBX_TAG_COUNT_DEFAULT);
+
+		CTagHelper::mergeOwnAndInheritedTags($data['items'], true);
+
+		$data['tags'] = CTagHelper::getTagsHtml($data['items'], ZBX_TAG_OBJECT_ITEM_PROTOTYPE);
 
 		$response = new CControllerResponseData($data);
 		$response->setTitle(_('Configuration of item prototypes'));
@@ -121,8 +124,9 @@ class CControllerItemPrototypeList extends CControllerItemPrototype {
 				'itemid', 'templateid', 'value_type', 'master_itemid', 'flags'
 			],
 			'discoveryids' => [$this->getInput('parent_discoveryid')],
-			'selectTags' => ['tag', 'value'],
 			'selectDiscoveryData' => ['parent_itemid'],
+			'selectTags' => ['tag', 'value'],
+			'selectInheritedTags' => ['tag', 'value'],
 			'editable' => true,
 			'sortfield' => $profile['sort'],
 			'limit' => $limit
@@ -151,7 +155,7 @@ class CControllerItemPrototypeList extends CControllerItemPrototype {
 
 		foreach ($items as &$item) {
 			if (in_array($item['value_type'], [ITEM_VALUE_TYPE_STR, ITEM_VALUE_TYPE_LOG, ITEM_VALUE_TYPE_TEXT,
-					ITEM_VALUE_TYPE_BINARY])) {
+					ITEM_VALUE_TYPE_BINARY, ITEM_VALUE_TYPE_JSON])) {
 				$item['trends'] = '';
 			}
 

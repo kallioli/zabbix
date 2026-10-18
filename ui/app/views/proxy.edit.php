@@ -24,7 +24,9 @@ $form = (new CForm('post'))
 	->setId('proxy-form')
 	->setName('proxy_form')
 	->addStyle('display: none;')
-	->addItem(getMessages());
+	->addItem(getMessages())
+	->addVar('update_psk', '0')
+	->addVar('proxyid', $data['proxyid']);
 
 // Enable form submitting on Enter.
 $form->addItem((new CSubmitButton())->addClass(ZBX_STYLE_FORM_SUBMIT_HIDDEN));
@@ -36,27 +38,50 @@ $local_address = (new CTable())
 	->addRow([
 		(new CTextBox('local_address', $data['form']['local_address'], false,
 			DB::getFieldLength('proxy', 'local_address')
-		))->setWidth(336),
+		))
+			->setWidth(336)
+			->setErrorLabel(_('Address'))
+			->setErrorContainer('local-address-port-error-container'),
 		(new CTextBox('local_port', $data['form']['local_port'], false, DB::getFieldLength('proxy', 'local_port')))
 			->setWidth(ZBX_TEXTAREA_INTERFACE_PORT_WIDTH)
+			->setErrorLabel(_('Port'))
+			->setErrorContainer('local-address-port-error-container')
 			->setAriaRequired()
-	]);
+	])
+	->addRow(
+		(new CCol())
+			->setId('local-address-port-error-container')
+			->addClass(ZBX_STYLE_ERROR_CONTAINER)
+	);
 $interface = (new CTable())
 	->setHeader([_('Address'), _('Port')])
 	->addRow([
-		(new CTextBox('address', $data['form']['address'], false, DB::getFieldLength('proxy', 'address')))
-			->setWidth(336),
+		(new CCol(
+			(new CTextAreaFlexible('address', $data['form']['address']))
+				->setWidth(336)
+				->setMaxlength(DB::getFieldLength('proxy', 'address'))
+				->setErrorLabel(_('Address'))
+				->setErrorContainer('address-port-error-container')
+		))->addClass(ZBX_STYLE_ALIGN_TOP),
 		(new CTextBox('port', $data['form']['port'], false, DB::getFieldLength('proxy', 'port')))
 			->setWidth(ZBX_TEXTAREA_INTERFACE_PORT_WIDTH)
+			->setErrorLabel(_('Port'))
+			->setErrorContainer('address-port-error-container')
 			->setAriaRequired()
-	]);
+	])->addClass(ZBX_STYLE_ALIGN_TOP)
+	->addRow(
+		(new CCol())
+			->setId('address-port-error-container')
+			->addClass(ZBX_STYLE_ERROR_CONTAINER)
+	);
 
 $proxy_tab = (new CFormGrid())
 	->addItem([
 		(new CLabel(_('Proxy name'), 'name'))->setAsteriskMark(),
 		new CFormField(
-			(new CTextBox('name', $data['form']['name'], false, DB::getFieldLength('proxy', 'name')))
+			(new CTextAreaFlexible('name', $data['form']['name']))
 				->setWidth(ZBX_TEXTAREA_STANDARD_WIDTH)
+				->setMaxlength(DB::getFieldLength('proxy', 'name'))
 				->setAriaRequired()
 				->setAttribute('autofocus', 'autofocus')
 		)
@@ -109,17 +134,17 @@ $proxy_tab = (new CFormGrid())
 	->addItem([
 		(new CLabel(_('Proxy address'), 'allowed_addresses'))->addClass('js-proxy-address'),
 		(new CFormField(
-			(new CTextBox('allowed_addresses', $data['form']['allowed_addresses'], false,
-				DB::getFieldLength('proxy', 'allowed_addresses')
-			))->setWidth(ZBX_TEXTAREA_STANDARD_WIDTH)
+			(new CTextAreaFlexible('allowed_addresses', $data['form']['allowed_addresses']))
+				->setWidth(ZBX_TEXTAREA_STANDARD_WIDTH)
+				->setMaxlength(DB::getFieldLength('proxy', 'allowed_addresses'))
 		))->addClass('js-proxy-address')
 	])
 	->addItem([
 		new CLabel(_('Description'), 'description'),
 		new CFormField(
 			(new CTextArea('description', $data['form']['description']))
-				->setMaxlength(DB::getFieldLength('proxy', 'description'))
 				->setWidth(ZBX_TEXTAREA_STANDARD_WIDTH)
+				->setMaxlength(DB::getFieldLength('proxy', 'description'))
 		)
 	]);
 
@@ -163,10 +188,9 @@ $encryption_tab = (new CFormGrid())
 			->addClass('js-tls-psk-identity')
 			->setAsteriskMark(),
 		(new CFormField(
-			(new CTextBox('tls_psk_identity', $data['form']['tls_psk_identity'], false,
-				DB::getFieldLength('proxy', 'tls_psk_identity')
-			))
+			(new CTextAreaFlexible('tls_psk_identity', $data['form']['tls_psk_identity']))
 				->setWidth(ZBX_TEXTAREA_STANDARD_WIDTH)
+				->setMaxlength(DB::getFieldLength('proxy', 'tls_psk_identity'))
 				->setAriaRequired()
 		))->addClass('js-tls-psk-identity')
 	])
@@ -175,10 +199,10 @@ $encryption_tab = (new CFormGrid())
 			->addClass('js-tls-psk')
 			->setAsteriskMark(),
 		(new CFormField(
-			(new CTextBox('tls_psk', $data['form']['tls_psk'], false, DB::getFieldLength('proxy', 'tls_psk')))
+			(new CTextAreaFlexible('tls_psk', $data['form']['tls_psk']))
 				->setWidth(ZBX_TEXTAREA_STANDARD_WIDTH)
+				->setMaxlength(DB::getFieldLength('proxy', 'tls_psk'))
 				->setAriaRequired()
-				->disableAutocomplete()
 		))->addClass('js-tls-psk')
 	]);
 
@@ -200,18 +224,86 @@ $encryption_tab
 	->addItem([
 		(new CLabel(_('Issuer'), 'tls_issuer'))->addClass('js-tls-issuer'),
 		(new CFormField(
-			(new CTextBox('tls_issuer', $data['form']['tls_issuer'], false,
-				DB::getFieldLength('hosts', 'tls_issuer')
-			))->setWidth(ZBX_TEXTAREA_STANDARD_WIDTH)
+			(new CTextAreaFlexible('tls_issuer', $data['form']['tls_issuer']))
+				->setWidth(ZBX_TEXTAREA_STANDARD_WIDTH)
+				->setMaxlength(DB::getFieldLength('hosts', 'tls_issuer'))
 		))->addClass('js-tls-issuer')
 	])
 	->addItem([
 		(new CLabel(_x('Subject', 'encryption certificate'), 'tls_subject'))->addClass('js-tls-subject'),
 		(new CFormField(
-			(new CTextBox('tls_subject', $data['form']['tls_subject'], false,
-				DB::getFieldLength('hosts', 'tls_subject')
-			))->setWidth(ZBX_TEXTAREA_STANDARD_WIDTH)
+			(new CTextAreaFlexible('tls_subject', $data['form']['tls_subject']))
+				->setWidth(ZBX_TEXTAREA_STANDARD_WIDTH)
+				->setMaxlength(DB::getFieldLength('hosts', 'tls_subject'))
 		))->addClass('js-tls-subject')
+	]);
+
+// APM tab.
+$apm_tab = (new CFormGrid())
+	->addItem(
+		new CFormField(
+			(new CTag('h4', true, _('Input')))->addClass('input-section-header')
+		)
+	)
+	->addItem([
+		(new CLabel([
+			_('Data collection enabled'),
+			makeHelpIcon(_('To enable OpenTelemetry data collection set up Proxy configuration file first.'))
+		], 'data_collection_status')),
+		new CFormField(
+			(new CCheckBox('data_collection_status'))
+				->setUncheckedValue(PROXY_APM_DATA_COLLECTION_DISABLED)
+				->setChecked($data['form']['data_collection_status'] === PROXY_APM_DATA_COLLECTION_ENABLED),
+		)
+	])
+	->addItem([
+		(new CLabel([_('Max messages per second')], 'quota_mode'))
+			->setAsteriskMark()
+			->addClass('js-apm-quota-mode'),
+		(new CFormField([
+			(new CRadioButtonList('quota_mode', $data['form']['max_messages_per_second'] === 0
+				? PROXY_APM_QUOTA_MODE_UNLIMITED
+				: PROXY_APM_QUOTA_MODE_CUSTOM
+			))
+				->addValue(_('Unlimited'), PROXY_APM_QUOTA_MODE_UNLIMITED)
+				->addValue(_('Custom'), PROXY_APM_QUOTA_MODE_CUSTOM)
+				->setModern(),
+			(new CDiv())
+				->addClass(ZBX_STYLE_FORM_INPUT_MARGIN)
+				->addClass('js-apm-quota-mode-custom'),
+			(new CNumericBox('max_messages_per_second', $data['form']['max_messages_per_second'], 10, false, false,
+					false))
+				->setWidth(ZBX_TEXTAREA_TINY_WIDTH)
+				->addClass('js-apm-quota-mode-custom')
+		]))
+			->addClass('js-apm-quota-mode')
+			->addStyle('height: 24px;')
+	])
+	->addItem(
+		(new CFormField(
+			(new CTag('h4', true, _('Process')))->addClass('input-section-header')
+		))->addClass('js-apm-attributes'),
+	)
+	->addItem([
+		(new CLabel([_('Add resource attributes')], 'additional_resource_attributes'))
+			->addClass('js-apm-attributes'),
+		(new CFormField(
+			(new CDiv(new CPartial('proxy.apm.attributes', [
+				'source' => 'proxy',
+				'attributes' => $data['form']['additional_resource_attributes'],
+				'field_name' => 'additional_resource_attributes',
+				'tabs_id' => 'proxy-tabs',
+				'attr_tab_id' => 'proxy-apm-tab',
+				'has_inline_validation' => true,
+				'signal_types' => [
+					SIGNAL_TYPE_TRACES => _('Traces'),
+					SIGNAL_TYPE_METRICS => _('Metrics'),
+					SIGNAL_TYPE_LOGS => _('Logs')
+				]
+			])))
+				->addClass(ZBX_STYLE_TABLE_FORMS_SEPARATOR)
+				->addClass('form-field-apm-attributes')
+		))->addClass('js-apm-attributes')
 	]);
 
 // Timeouts tab.
@@ -347,12 +439,24 @@ $timeouts_tab = (new CFormGrid())
 				->setReadonly($custom_timeouts_disabled)
 				->setAriaRequired()
 		)
+	])
+	->addItem([
+		(new CLabel(_('Telemetry query'), 'timeout_telemetry_query'))->setAsteriskMark(),
+		new CFormField(
+			(new CTextBox('timeout_telemetry_query', $data['form']['timeout_telemetry_query'], false,
+				DB::getFieldLength('proxy', 'timeout_telemetry_query')
+			))
+				->setWidth(ZBX_TEXTAREA_SMALL_WIDTH)
+				->setReadonly($custom_timeouts_disabled)
+				->setAriaRequired()
+		)
 	]);
 
 $tabs = (new CTabView(['id' => 'proxy-tabs']))
 	->setSelected(0)
 	->addTab('proxy-tab', _('Proxy'), $proxy_tab)
 	->addTab('proxy-encryption-tab', _('Encryption'), $encryption_tab, TAB_INDICATOR_PROXY_ENCRYPTION)
+	->addTab('proxy-apm-tab', _('APM'), $apm_tab, TAB_INDICATOR_PROXY_APM)
 	->addTab('proxy-timeouts-tab', _('Timeouts'), $timeouts_tab, TAB_INDICATOR_PROXY_TIMEOUTS);
 
 // Output.
@@ -362,7 +466,9 @@ $form
 	->addItem(
 		(new CScriptTag('
 			proxy_edit_popup.init('.json_encode([
-				'proxyid' => $data['proxyid']
+				'rules' => $data['js_validation_rules'],
+				'proxyid' => $data['proxyid'],
+				'warnings' => $data['warnings']
 			]).');
 		'))->setOnDocumentReady()
 	);
@@ -406,7 +512,8 @@ if ($data['proxyid'] !== null) {
 						'cancel' => true,
 						'action' => ''
 					]
-				]
+				],
+				'rules' => $data['js_clone_validation_rules']
 			]).');'
 		],
 		[
@@ -446,5 +553,7 @@ if ($data['user']['debug_mode'] == GROUP_DEBUG_MODE_ENABLED) {
 	CProfiler::getInstance()->stop();
 	$output['debug'] = CProfiler::getInstance()->make()->toString();
 }
+
+$output['data'] = $data;
 
 echo json_encode($output);

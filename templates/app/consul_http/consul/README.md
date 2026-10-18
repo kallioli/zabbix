@@ -13,7 +13,7 @@ Template `HashiCorp Consul Node by HTTP` — collects metrics by HTTP agent from
 
 ## Requirements
 
-Zabbix version: 7.4 and higher.
+Zabbix version: 8.0 and higher.
 
 ## Tested versions
 
@@ -22,7 +22,7 @@ This template has been tested on:
 
 ## Configuration
 
-> Zabbix should be configured according to the instructions in the [Templates out of the box](https://www.zabbix.com/documentation/7.4/manual/config/templates_out_of_the_box) section.
+> Zabbix should be configured according to the instructions in the [Templates out of the box](https://www.zabbix.com/documentation/8.0/manual/config/templates_out_of_the_box) section.
 
 ## Setup
 
@@ -46,7 +46,7 @@ In case of Open Source version service namespace will be set to 'None'.
 |----|-----------|-------|
 |{$HTTP.TLS.VERIFY}|<p>TLS certificate verification for the script item: "none" - disabled, "peer" - verify the certificate chain and expiration, "full" - full verification. Any other value enables full verification. To override the setting for this template only, define the macro with the context "HashiCorp Consul Node", e.g. {$HTTP.TLS.VERIFY:"HashiCorp Consul Node"}.</p>|`full`|
 |{$CONSUL.NODE.API.URL}|<p>Consul instance URL.</p>|`http://localhost:8500`|
-|{$CONSUL.TOKEN}|<p>Consul auth token.</p>|`<PUT YOUR AUTH TOKEN>`|
+|{$CONSUL.TOKEN}|<p>Consul auth token.</p>||
 |{$CONSUL.OPEN.FDS.MAX.WARN}|<p>Maximum percentage of used file descriptors.</p>|`90`|
 |{$CONSUL.LLD.FILTER.LOCAL_SERVICE_NAME.MATCHES}|<p>Filter of discoverable discovered services on local node.</p>|`.*`|
 |{$CONSUL.LLD.FILTER.LOCAL_SERVICE_NAME.NOT_MATCHES}|<p>Filter to exclude discovered services on local node.</p>|`CHANGE IF NEEDED`|

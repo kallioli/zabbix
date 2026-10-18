@@ -134,13 +134,7 @@ class ZSelect extends HTMLElement {
 
 		if (this.hasAttribute('data-options')) {
 			const options = JSON.parse(this.getAttribute('data-options'));
-
-			for (const option of options) {
-				option.options instanceof Array
-					? this.addOptionGroup(option)
-					: this.addOption(option);
-			}
-
+			this.addOptions(options);
 			this.removeAttribute('data-options');
 		}
 
@@ -148,8 +142,29 @@ class ZSelect extends HTMLElement {
 			this.setAttribute('width', this._listWidth());
 		}
 
+		this.preselectHightlighted();
+	}
+
+	preselectHightlighted() {
 		this._preselect(this._highlighted_index >= 0 ? this._highlighted_index : this._first(this._highlighted_index));
 		this._input.value = this.getValueByIndex(this._preselected_index);
+	}
+
+	clearOptions() {
+		this._options_map.clear();
+		this._highlighted_index = -1;
+		this._preselected_index = -1;
+		this._list.innerHTML = '';
+		this._button.innerHTML = '';
+		this._input.value = '';
+	}
+
+	addOptions(options) {
+		for (const option of options) {
+			option.options instanceof Array
+				? this.addOptionGroup(option)
+				: this.addOption(option);
+		}
 	}
 
 	getOptions() {
@@ -305,6 +320,7 @@ class ZSelect extends HTMLElement {
 		this.classList.add('is-expanded');
 
 		const list_max_height = 362;
+		const list_offset = 2;
 		const offset_top = 4;
 		const offset_bottom = 38;
 		const list_height = Math.min(this._list.scrollHeight, list_max_height);
@@ -317,7 +333,7 @@ class ZSelect extends HTMLElement {
 
 		if (space_below - list_height > offset_bottom || space_below > space_above) {
 			this._list.classList.remove('fall-upwards');
-			this._list.style.top = `${button_y + button_height}px`;
+			this._list.style.top = `${button_y + button_height + list_offset}px`;
 			this._list.style.bottom = '';
 
 			if (space_below < list_height) {
@@ -327,7 +343,7 @@ class ZSelect extends HTMLElement {
 		else {
 			this._list.classList.add('fall-upwards');
 			this._list.style.top = '';
-			this._list.style.bottom = `${document_height - button_y}px`;
+			this._list.style.bottom = `${document_height - button_y + list_offset}px`;
 
 			if (space_above < list_height) {
 				this._list.style.maxHeight = `${space_above - offset_top}px`;
@@ -687,6 +703,14 @@ class ZSelect extends HTMLElement {
 			window_resize: () => {
 				this._change(this._preselected_index);
 				this._collapse();
+			},
+
+			window_pointerdown: event => {
+				if (!this._expanded || this.contains(event.target)) {
+					return;
+				}
+
+				this._collapse();
 			}
 		}
 
@@ -704,6 +728,7 @@ class ZSelect extends HTMLElement {
 		this.addEventListener('focus', this._events.focus);
 
 		window.addEventListener('resize', this._events.window_resize);
+		window.addEventListener('pointerdown', this._events.window_pointerdown);
 	}
 
 	unregisterEvents() {
@@ -721,6 +746,7 @@ class ZSelect extends HTMLElement {
 		this.removeEventListener('focus', this._events.focus);
 
 		window.removeEventListener('resize', this._events.window_resize);
+		window.removeEventListener('pointerdown', this._events.window_pointerdown);
 	}
 }
 

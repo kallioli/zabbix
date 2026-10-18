@@ -61,7 +61,7 @@ class CMessageBehavior extends CBehavior {
 	 * @param CFormElement	$form		form that contains the field with the error
 	 * @param array			$fields		array of field selector and expected inline error string pairs
 	 */
-	public function assertInlineError($form, $fields) {
+	public function assertInlineError($form, array $fields) {
 		foreach ($fields as $selector => $error_text) {
 			$field = (strpos($selector, ':') === false) ? $form->getField($selector) : $form->query($selector)->one();
 
@@ -74,9 +74,17 @@ class CMessageBehavior extends CBehavior {
 				);
 			}
 			else {
-				$this->test->assertEquals($error_text, $field->query('xpath:./../span[@class="error"]|./../../span[@class="error"]')
-						->waitUntilPresent()->one()->getText()
-				);
+				$error = $field->query('xpath:./../span[@class="error"]|./../../span[@class="error"]')->waitUntilPresent();
+
+				try {
+					// The field can briefly show another error, so wait for the expected one before comparing.
+					$error->waitUntilTextPresent($error_text, 3);
+				}
+				catch (Exception $exception) {
+					// Code is not missing here.
+				}
+
+				$this->test->assertEquals($error_text, $error->one()->getText());
 			}
 		}
 	}

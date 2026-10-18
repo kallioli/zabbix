@@ -19,9 +19,11 @@
 	const media_tab = new class {
 
 		#userid;
+		#devices;
 
-		init({userid, medias}) {
+		init({userid, medias, devices}) {
 			this.#userid = userid;
+			this.#devices = devices;
 
 			this.#initMedias(medias);
 			this.#initActions();
@@ -84,7 +86,7 @@
 				if (sendto_input === null) {
 					const sendto_inputs = row.querySelectorAll(`[name="medias[${row_index}][sendto][]"`);
 
-					popup_params.sendto_emails = Array.from(sendto_inputs).map((input) => input.value);
+					popup_params.sendto_list = Array.from(sendto_inputs).map((input) => input.value);
 				}
 				else {
 					popup_params.sendto = sendto_input.value;
@@ -130,7 +132,26 @@
 			let sendto_array = null;
 			let sendto_full = '';
 
-			if (Array.isArray(media.sendto)) {
+			if (media.mediatype_type == <?= MEDIA_TYPE_PUSH ?>) {
+				const device_names = [];
+
+				media.sendto.forEach((device_uuid) => {
+					if (device_uuid in this.#devices) {
+						device_names.push(this.#devices[device_uuid].name);
+					}
+					else if (device_uuid !== '*') {
+						device_names.push(<?= json_encode(_('Inaccessible device')) ?>);
+					}
+					else {
+						device_names.push(device_uuid);
+					}
+				});
+
+				sendto_full = device_names.join(', ');
+				sendto_array = media.sendto;
+				delete(media.sendto);
+			}
+			else if (Array.isArray(media.sendto)) {
 				sendto_full = media.sendto.join(', ');
 				sendto_array = media.sendto;
 				delete(media.sendto);
@@ -161,7 +182,7 @@
 			if (media.sendto_short.length > 50) {
 				const hint = row.querySelector('td:nth-child(2) span');
 
-				hint.setAttribute('data-hintbox-contents', escapeHtml(sendto_full));
+				hint.setAttribute('data-hintbox-html', escapeHtml(sendto_full));
 				hint.setAttribute('data-hintbox', '1');
 				hint.setAttribute('data-hintbox-static', '1');
 			}
@@ -169,13 +190,21 @@
 			if (sendto_array !== null) {
 				const sendto_input = row.querySelector(`[name="medias[${media.row_index}][sendto]"`);
 
+				const container = document.createElement('div');
+
+				container.setAttribute('data-field-type', 'array');
+				container.setAttribute('data-field-name', `medias[${media.row_index}][sendto]`);
+
+				sendto_input.parentNode.insertBefore(container, sendto_input);
+
 				for (const [index, sendto] of Object.entries(sendto_array)) {
 					const hInput = document.createElement('input');
 					hInput.setAttribute('type', 'hidden');
 					hInput.setAttribute('id', `medias_${media.row_index}_sendto_${index}`);
 					hInput.setAttribute('name', `medias[${media.row_index}][sendto][]`);
 					hInput.setAttribute('value', sendto);
-					sendto_input.parentNode.insertBefore(hInput, sendto_input);
+					hInput.setAttribute('data-field-type', 'hidden');
+					container.appendChild(hInput);
 				}
 
 				sendto_input.remove();
@@ -215,11 +244,11 @@
 				const span = severities_span[severity];
 
 				if (media_active) {
-					span.dataset.hintboxContents += ' (' + <?= json_encode(_('on')) ?> + ')';
+					span.dataset.hintboxHtml += ' (' + <?= json_encode(_('on')) ?> + ')';
 				}
 				else {
 					span.className = '<?= ZBX_STYLE_STATUS_DISABLED ?>';
-					span.dataset.hintboxContents += ' (' + <?= json_encode(_('off')) ?> + ')';
+					span.dataset.hintboxHtml += ' (' + <?= json_encode(_('off')) ?> + ')';
 				}
 
 				span.dataset.hintbox = '1';

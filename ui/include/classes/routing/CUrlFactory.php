@@ -24,14 +24,6 @@ class CUrlFactory {
 	 * @var array
 	 */
 	protected static $contextConfigs = [
-		'host_discovery.php' => [
-			'remove' => ['itemid'],
-			'add' => ['hostid']
-		],
-		'host_prototypes.php' => [
-			'remove' => ['hostid'],
-			'add' => ['parent_discoveryid']
-		],
 		'httpconf.php' => [
 			'remove' => ['httptestid']
 		],

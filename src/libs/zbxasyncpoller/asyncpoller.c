@@ -17,6 +17,7 @@
 #include "zbxcommon.h"
 #include "zbxcomms.h"
 #include "zbxtime.h"
+#include "zbxresolver.h"
 
 #ifdef HAVE_LIBEVENT
 #include "zbxip.h"
@@ -264,7 +265,7 @@ static void	async_dns_event(int err, struct evutil_addrinfo *ai, void *arg)
 	zabbix_log(LOG_LEVEL_DEBUG, "End of %s()", __func__);
 }
 
-void	zbx_async_dns_update_host_addresses(struct evdns_base *dnsbase, zbx_channel_t *channel)
+void	zbx_async_dns_update_host_addresses(struct evdns_base *dnsbase, zbx_ares_channel_t *channel)
 {
 	static time_t	time_r = 0, time_h = 0;
 	static double	mtime = 0;
@@ -308,10 +309,11 @@ void	zbx_async_dns_update_host_addresses(struct evdns_base *dnsbase, zbx_channel
 	}
 }
 
-void	zbx_async_poller_add_task(struct event_base *ev, zbx_channel_t *channel, struct evdns_base *dnsbase,
+void	zbx_async_poller_add_task(struct event_base *ev, zbx_ares_channel_t *channel, struct evdns_base *dnsbase,
 	const char *addr, void *data, int timeout, zbx_async_task_process_task_cb_t async_task_process_task_func,
 	zbx_async_task_process_result_cb_t async_task_process_result_func)
 {
+#define ZBX_VECTOR_ARRAY_RESERVE	3
 	zbx_async_task_t	*task;
 
 	task = (zbx_async_task_t *)zbx_malloc(NULL, sizeof(zbx_async_task_t));
@@ -329,6 +331,7 @@ void	zbx_async_poller_add_task(struct event_base *ev, zbx_channel_t *channel, st
 	task->reverse_dns = NULL;
 
 	zbx_vector_address_create(&task->addresses);
+	zbx_vector_address_reserve(&task->addresses, ZBX_VECTOR_ARRAY_RESERVE);
 
 	if (NULL != channel)
 	{
@@ -369,6 +372,7 @@ void	zbx_async_poller_add_task(struct event_base *ev, zbx_channel_t *channel, st
 	evutil_hints.ai_socktype = SOCK_STREAM;
 
 	evdns_getaddrinfo(dnsbase, addr, NULL, &evutil_hints, async_dns_event, task);
+#undef ZBX_VECTOR_ARRAY_RESERVE
 }
 
 zbx_async_task_state_t	zbx_async_poller_get_task_state_for_event(short event)

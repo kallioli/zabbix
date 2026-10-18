@@ -44,8 +44,9 @@ if ($host_is_discovered) {
 	if ($data['host']['discoveryRule']) {
 		if ($data['is_discovery_rule_editable']) {
 			$discovery_rule = (new CLink($data['host']['discoveryRule']['name'],
-				(new CUrl('host_prototypes.php'))
-					->setArgument('form', 'update')
+				(new CUrl('zabbix.php'))
+					->setArgument('action', 'popup')
+					->setArgument('popup', 'host.prototype.edit')
 					->setArgument('parent_discoveryid', $data['host']['discoveryRule']['itemid'])
 					->setArgument('hostid', $data['host']['discoveryData']['parent_hostid'])
 					->setArgument('context', 'host')
@@ -87,8 +88,10 @@ $host_tab = (new CFormGrid())
 	->addItem([
 		(new CLabel(_('Host name'), 'host'))->setAsteriskMark(),
 		new CFormField(
-			(new CTextBox('host', $data['host']['host'], $host_is_discovered, DB::getFieldLength('hosts', 'host')))
+			(new CTextAreaFlexible('host', $data['host']['host']))
 				->setWidth(ZBX_TEXTAREA_STANDARD_WIDTH)
+				->setMaxlength(DB::getFieldLength('hosts', 'host'))
+				->setReadonly($host_is_discovered)
 				->setAriaRequired()
 				->setAttribute('autofocus', 'autofocus')
 		)
@@ -96,8 +99,10 @@ $host_tab = (new CFormGrid())
 	->addItem([
 		new CLabel(_('Visible name'), 'visiblename'),
 		new CFormField(
-			(new CTextBox('visiblename', $data['host']['visiblename'], $host_is_discovered, DB::getFieldLength('hosts', 'name')))
+			(new CTextAreaFlexible('visiblename', $data['host']['visiblename']))
 				->setWidth(ZBX_TEXTAREA_STANDARD_WIDTH)
+				->setMaxlength(DB::getFieldLength('hosts', 'name'))
+				->setReadonly($host_is_discovered)
 		)
 	]);
 
@@ -113,7 +118,7 @@ if ($data['host']['parentTemplates']) {
 		->setAttribute('data-field-name', 'templates');
 
 	foreach ($data['host']['parentTemplates'] as $template) {
-		if ($data['user']['can_edit_templates']
+		if (CWebUser::checkAccess(CRoleHelper::UI_CONFIGURATION_TEMPLATES)
 				&& array_key_exists($template['templateid'], $data['editable_templates'])) {
 			$template_url = (new CUrl('zabbix.php'))
 				->setArgument('action', 'popup')
@@ -280,10 +285,11 @@ $host_tab
 		new CLabel(_('Monitored by'), 'label-proxy'),
 		new CFormField(
 			(new CRadioButtonList('monitored_by', (int) $data['host']['monitored_by']))
-				->addValue(_('Server'), ZBX_MONITORED_BY_SERVER)
+				->addValue(_('Server'), ZBX_MONITORED_BY_SERVER,
+					disabled: !CWebUser::checkAccess(CRoleHelper::ACTIONS_SELECT_SERVER_FOR_MONITORING))
 				->addValue(_('Proxy'), ZBX_MONITORED_BY_PROXY)
 				->addValue(_('Proxy group'), ZBX_MONITORED_BY_PROXY_GROUP)
-				->setReadonly($host_is_discovered)
+				->setReadonly($host_is_discovered || !$data['user']['can_edit_monitoring_by'])
 				->setModern()
 		)
 	])
@@ -294,7 +300,7 @@ $host_tab
 				'object_name' => 'proxies',
 				'multiple' => false,
 				'data' => $data['ms_proxy'],
-				'readonly' => $host_is_discovered,
+				'readonly' => $host_is_discovered || !$data['user']['can_edit_monitoring_by'],
 				'popup' => [
 					'parameters' => [
 						'srctbl' => 'proxies',
@@ -314,7 +320,7 @@ $host_tab
 				'object_name' => 'proxy_groups',
 				'multiple' => false,
 				'data' => $data['ms_proxy_group'],
-				'readonly' => $host_is_discovered,
+				'readonly' => $host_is_discovered || !$data['user']['can_edit_monitoring_by'],
 				'popup' => [
 					'parameters' => [
 						'srctbl' => 'proxy_groups',
@@ -345,7 +351,8 @@ if ($data['host']['assigned_proxyid'] != 0) {
 		->setArgument('proxyid', $data['host']['assigned_proxyid'])
 		->getUrl();
 
-	$proxy_name = $data['user']['can_edit_proxies']
+	$proxy_name = CWebUser::checkAccess(CRoleHelper::UI_ADMINISTRATION_PROXIES)
+			&& !$data['host']['assigned_proxy_inaccessible']
 		? new CLink($data['host']['assigned_proxy_name'], $proxy_url)
 		: new CSpan($data['host']['assigned_proxy_name']);
 	$proxy_name->addClass('js-proxy-assigned');
@@ -420,6 +427,7 @@ $ipmi_tab = (new CFormGrid())
 $tags_tab = new CPartial('configuration.tags.tab', [
 	'source' => 'host',
 	'tags' => $data['host']['tags'],
+	'show_inherited_tags' => $data['show_inherited_tags'],
 	'with_automatic' => true,
 	'tabs_id' => 'host-tabs',
 	'tags_tab_id' => 'host-tags-tab',
@@ -437,8 +445,7 @@ $macros_tab = (new CFormList('macrosFormList'))
 	->addRow(null,
 		new CPartial('hostmacros.list.html', [
 			'macros' => $data['host']['macros'],
-			'readonly' => false,
-			'has_inline_validation' => true
+			'readonly' => false
 		]), 'macros_container'
 	);
 
@@ -446,7 +453,7 @@ $macro_row_tmpl = (new CTemplateTag('macro-row-tmpl'))
 	->addItem(
 		(new CRow([
 			(new CCol([
-				(new CTextAreaFlexible('macros[#{rowNum}][macro]', '', ['add_post_js' => false]))
+				(new CTextAreaFlexible('macros[#{rowNum}][macro]', ''))
 					->setErrorContainer('macros_#{rowNum}_error_container')
 					->addClass('macro')
 					->setWidth(ZBX_TEXTAREA_MACRO_WIDTH)
@@ -463,7 +470,7 @@ $macro_row_tmpl = (new CTemplateTag('macro-row-tmpl'))
 					->setErrorLabel(_('Value'))
 			))->addClass(ZBX_STYLE_TEXTAREA_FLEXIBLE_PARENT),
 			(new CCol(
-				(new CTextAreaFlexible('macros[#{rowNum}][description]', '', ['add_post_js' => false]))
+				(new CTextAreaFlexible('macros[#{rowNum}][description]', ''))
 					->setErrorContainer('macros_#{rowNum}_error_container')
 					->setMaxlength(DB::getFieldLength('globalmacro', 'description'))
 					->setWidth(ZBX_TEXTAREA_MACRO_VALUE_WIDTH)
@@ -483,17 +490,16 @@ $macro_row_tmpl = (new CTemplateTag('macro-row-tmpl'))
 				->addClass(ZBX_STYLE_ERROR_CONTAINER)
 				->setColSpan(4)
 		)
-
 	);
 
 $macro_row_inherited_tmpl = (new CTemplateTag('macro-row-tmpl-inherited'))
 	->addItem(
 		(new CRow([
 			(new CCol([
-				(new CTextAreaFlexible('macros[#{rowNum}][macro]', '', ['add_post_js' => false]))
+				(new CTextAreaFlexible('macros[#{rowNum}][macro]', ''))
 					->setErrorContainer('macros_#{rowNum}_error_container')
 					->addClass('macro')
-					->setWidth(ZBX_TEXTAREA_MACRO_WIDTH)
+					->setFullWidth()
 					->setAttribute('placeholder', '{$MACRO}')
 					->disableSpellcheck()
 					->setErrorLabel(_('Macro')),
@@ -529,14 +535,15 @@ $macro_row_inherited_tmpl = (new CTemplateTag('macro-row-tmpl-inherited'))
 	->addItem(
 		(new CRow([
 			(new CCol(
-				(new CTextAreaFlexible('macros[#{rowNum}][description]', '', ['add_post_js' => false]))
+				(new CTextAreaFlexible('macros[#{rowNum}][description]', ''))
 					->setErrorContainer('macros_#{rowNum}_error_container')
 					->setMaxlength(DB::getFieldLength('globalmacro', 'description'))
-					->setWidth(ZBX_TEXTAREA_STANDARD_WIDTH)
+					->setFullWidth()
 					->setAttribute('placeholder', _('description'))
 			))
 				->addClass(ZBX_STYLE_TEXTAREA_FLEXIBLE_PARENT)
-				->setColSpan(7)
+				->setColSpan(2),
+			(new CCol())->setColSpan(5)
 		]))->addClass('form_row')
 	)
 	->addItem(
@@ -576,7 +583,8 @@ foreach ($data['inventory_fields'] as $inventory_no => $inventory_field) {
 
 	if ($inventory_field['type'] & DB::FIELD_TYPE_TEXT) {
 		$input_field = (new CTextArea('host_inventory['.$field_name.']', $data['host']['inventory'][$field_name]))
-			->setWidth(ZBX_TEXTAREA_BIG_WIDTH);
+			->setWidth(ZBX_TEXTAREA_BIG_WIDTH)
+			->setAttribute('maxlength', $inventory_field['length']);
 	}
 	else {
 		$input_field = (new CTextBox('host_inventory['.$field_name.']', $data['host']['inventory'][$field_name]))
@@ -677,36 +685,37 @@ $encryption_tab = (new CFormGrid())
 	->addItem([
 		(new CLabel(_('PSK identity'), 'tls_psk_identity'))->setAsteriskMark(),
 		new CFormField(
-			(new CTextBox('tls_psk_identity', $data['host']['tls_psk_identity'], false,
-				DB::getFieldLength('hosts', 'tls_psk_identity')
-			))
+			(new CTextAreaFlexible('tls_psk_identity', $data['host']['tls_psk_identity']))
 				->setWidth(ZBX_TEXTAREA_BIG_WIDTH)
+				->setMaxlength(DB::getFieldLength('hosts', 'tls_psk_identity'))
 				->setAriaRequired()
 		)
 	])
 	->addItem([
 		(new CLabel(_('PSK'), 'tls_psk'))->setAsteriskMark(),
 		new CFormField(
-			(new CTextBox('tls_psk', $data['host']['tls_psk'], false, DB::getFieldLength('hosts', 'tls_psk')))
+			(new CTextAreaFlexible('tls_psk', $data['host']['tls_psk']))
 				->setWidth(ZBX_TEXTAREA_BIG_WIDTH)
+				->setMaxlength(DB::getFieldLength('hosts', 'tls_psk'))
 				->setAriaRequired()
-				->disableAutocomplete()
 		)
 	])
 	->addItem([
 		new CLabel(_('Issuer'), 'tls_issuer'),
 		new CFormField(
-			(new CTextBox('tls_issuer', $data['host']['tls_issuer'], $host_is_discovered,
-				DB::getFieldLength('hosts', 'tls_issuer')
-			))->setWidth(ZBX_TEXTAREA_BIG_WIDTH)
+			(new CTextAreaFlexible('tls_issuer', $data['host']['tls_issuer']))
+				->setWidth(ZBX_TEXTAREA_BIG_WIDTH)
+				->setMaxlength(DB::getFieldLength('hosts', 'tls_issuer'))
+				->setReadonly($host_is_discovered)
 		)
 	])
 	->addItem([
 		new CLabel(_x('Subject', 'encryption certificate'), 'tls_subject'),
 		new CFormField(
-			(new CTextBox('tls_subject', $data['host']['tls_subject'], $host_is_discovered,
-				DB::getFieldLength('hosts', 'tls_subject')
-			))->setWidth(ZBX_TEXTAREA_BIG_WIDTH)
+			(new CTextAreaFlexible('tls_subject', $data['host']['tls_subject']))
+				->setWidth(ZBX_TEXTAREA_BIG_WIDTH)
+				->setMaxlength(DB::getFieldLength('hosts', 'tls_subject'))
+				->setReadonly($host_is_discovered)
 		)
 	]);
 

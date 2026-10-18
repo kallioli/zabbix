@@ -15,6 +15,7 @@
 #include "zbxembed.h"
 #include "embed_xml.h"
 #include "embed.h"
+#include "duktape.h"
 
 #include "httprequest.h"
 #include "zabbix.h"
@@ -27,7 +28,7 @@
 #include "browser_element.h"
 #include "browser_alert.h"
 
-#define ZBX_ES_MEMORY_LIMIT	(1024 * 1024 * 512)
+#define ZBX_ES_MEMORY_LIMIT	(1024 * 1024 * 1024)	/* 1GiB */
 #define ZBX_ES_STACK_LIMIT	1000
 
 /* maximum number of consequent runtime errors after which it's treated as fatal error */
@@ -631,7 +632,7 @@ int	zbx_es_execute(zbx_es_t *es, const char *script, const char *code, int size,
 
 	if (NULL != es->env->json)
 	{
-		zbx_json_clean(es->env->json);
+		zbx_json_reset(es->env->json);
 		zbx_json_addarray(es->env->json, "logs");
 	}
 

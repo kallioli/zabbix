@@ -35,6 +35,13 @@
 #define ZBX_RTC_PROF_ENABLE			20
 #define ZBX_RTC_PROF_DISABLE			21
 #define ZBX_RTC_HISTORY_CACHE_CLEAR		22
+#define ZBX_RTC_DBPOOL_SET_MAX_IDLE		23
+#define ZBX_RTC_DBPOOL_SET_MAX_OPEN		24
+#define ZBX_RTC_DBPOOL_SET_IDLE_TIMEOUT		25
+#define ZBX_RTC_DBPOOL_STATUS			26
+#define ZBX_RTC_STATUS				27
+#define ZBX_RTC_MW_GET_WORKER_COUNT		28
+#define ZBX_RTC_MW_GET_WORKER_LOAD		29
 
 /* internal rtc messages */
 #define ZBX_RTC_SUBSCRIBE			100
@@ -43,7 +50,8 @@
 #define ZBX_RTC_SUBSCRIBE_SERVICE		103
 #define ZBX_RTC_UNSUBSCRIBE_SERVICE		104
 #define ZBX_RTC_NOTIFY				105
-
+#define ZBX_RTC_VAULT_RELOGIN			106
+#define ZBX_RTC_VAULT_NEW_TOKEN			107
 
 /* runtime control notifications, must be less than 10000 */
 #define ZBX_RTC_CONFIG_SYNC_NOTIFY		9999
@@ -72,5 +80,10 @@
 #define ZBX_PROF_ENABLE			"prof_enable"
 #define ZBX_PROF_DISABLE		"prof_disable"
 #define ZBX_HISTORY_CACHE_CLEAR		"history_cache_clear"
+#define ZBX_DBPOOL_SET_MAX_IDLE		"dbpool_set_max_idle"
+#define ZBX_DBPOOL_SET_MAX_OPEN		"dbpool_set_max_open"
+#define ZBX_DBPOOL_SET_IDLE_TIMEOUT	"dbpool_set_idle_timeout"
+#define ZBX_DBPOOL_STATUS		"dbpool_status"
+#define ZBX_STATUS			"status"
 
 #endif

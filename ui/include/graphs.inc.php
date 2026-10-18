@@ -117,18 +117,6 @@ function getGraphDims($graphid = null) {
 	return $graphDims;
 }
 
-function getGraphByGraphId($graphId) {
-	$dbGraph = DBfetch(DBselect('SELECT g.* FROM graphs g WHERE g.graphid='.zbx_dbstr($graphId)));
-
-	if ($dbGraph) {
-		return $dbGraph;
-	}
-
-	error(_s('No graph item with graph ID "%1$s".', $graphId));
-
-	return false;
-}
-
 /**
  * Get parent templates for each given graph.
  *
@@ -1108,17 +1096,16 @@ function calculateLogarithmicGraphScaleExtremes(float $min, float $max, ?float $
  *
  * @param float  $min             Minimum extreme of the scale.
  * @param float  $max             Maximum extreme of the scale.
- * @param bool   $min_calculated  Is minimum extreme of the scale calculated?
- * @param bool   $max_calculated  Is maximum extreme of the scale calculated?
  * @param float  $interval        Scale interval.
  * @param string $units           Scale units.
  * @param int    $power           Scale power.
  * @param int    $precision_max   Maximum precision to use for the scale.
+ * @param bool   $unsigned        Modify negative scale values to positive.
  *
  * @return array
  */
-function calculateGraphScaleValues(float $min, float $max, bool $min_calculated, bool $max_calculated, float $interval,
-		string $units, int $power, int $precision_max): array {
+function calculateGraphScaleValues(float $min, float $max, float $interval, string $units, int $power,
+		int $precision_max, bool $unsigned): array {
 	$rows = [];
 
 	$clearance = 0.5;
@@ -1176,7 +1163,7 @@ function calculateGraphScaleValues(float $min, float $max, bool $min_calculated,
 	$scale_values[] = [
 		'relative_pos' => 0,
 		'value' => convertUnits([
-			'value' => $min
+			'value' => $unsigned ? abs($min) : $min
 		] + $options)
 	];
 
@@ -1186,7 +1173,7 @@ function calculateGraphScaleValues(float $min, float $max, bool $min_calculated,
 				? ($value / 10 - $min / 10) / ($max / 10 - $min / 10)
 				: ($value - $min) / ($max - $min),
 			'value' => convertUnits([
-				'value' => $value
+				'value' => $unsigned ? abs($value) : $value
 			] + $options)
 		];
 	}
@@ -1194,7 +1181,7 @@ function calculateGraphScaleValues(float $min, float $max, bool $min_calculated,
 	$scale_values[] = [
 		'relative_pos' => 1,
 		'value' => convertUnits([
-			'value' => $max
+			'value' => $unsigned ? abs($max) : $max
 		] + $options)
 	];
 
@@ -1213,17 +1200,17 @@ function calculateGraphScaleValues(float $min, float $max, bool $min_calculated,
  * @param bool       $max_calculated     Is maximum extreme of the scale calculated?
  * @param int        $interval           Scale interval.
  * @param string     $units              Scale units.
- * @param bool       $is_binary          Is the scale binary (use 1024 base for units)?
  * @param int        $precision_max      Maximum precision to use for the scale.
  * @param float|null $lower_power_shift  Scale bottom positive power shift extreme.
  * @param float|null $upper_power_shift  Scale top positive power shift extreme.
+ * @param bool       $unsigned           Modify negative scale values to positive.
  *
  * @return array
  */
 function calculateLogarithmicGraphScaleValues(?float $min_negative_power, ?float $max_negative_power,
 		?float $min_positive_power, ?float $max_positive_power, bool $has_zero, bool $min_calculated,
 		bool $max_calculated, int $interval, string $units, int $precision_max, ?float $lower_power_shift,
-		?float $upper_power_shift): array {
+		?float $upper_power_shift, bool $unsigned): array {
 	$rows = [];
 
 	$start_index = 0;
@@ -1238,9 +1225,15 @@ function calculateLogarithmicGraphScaleValues(?float $min_negative_power, ?float
 		$min_position = -1 * ($max_negative_power - $min_negative_power);
 
 		if ($lower_power_shift > 0) {
+			$value = -10 ** $max_negative_power;
+
+			if ($unsigned) {
+				$value = abs($value);
+			}
+
 			$rows[] = [
 				'log_value' => -1 * ($max_negative_power - $min_negative_power),
-				'value' => -10 ** $max_negative_power
+				'value' => $value
 			];
 
 			$start_index++;
@@ -1268,17 +1261,29 @@ function calculateLogarithmicGraphScaleValues(?float $min_negative_power, ?float
 					break;
 				}
 
+				$value = -10 ** $log_value;
+
+				if ($unsigned) {
+					$value = abs($value);
+				}
+
 				$rows[] = [
 					'log_value' => -1 * ($log_value - $min_negative_power),
-					'value' => -10 ** $log_value
+					'value' => $value
 				];
 			}
 		}
 
 		if ($upper_power_shift > 0 && !$has_zero) {
+			$value = -10 ** $min_negative_power;
+
+			if ($unsigned) {
+				$value = abs($value);
+			}
+
 			$rows[] = [
 				'log_value' => 1,
-				'value' => -10 ** $min_negative_power
+				'value' => $value
 			];
 		}
 	}
@@ -1498,20 +1503,36 @@ function getItemTemplateNormal(bool $readonly, array $graph_item_drawtypes): CTa
 				(new CCol([
 					$readonly ? null : (new CDiv)->addClass(ZBX_STYLE_DRAG_ICON),
 					(new CInput('hidden', 'items[#{number}][gitemid]', '#{gitemid}'))
+						->setAttribute('data-field-type', 'hidden')
+						->setErrorContainer('items-#{number}-error-container')
 						->setId('items_#{number}_gitemid'),
 					(new CInput('hidden', 'items[#{number}][itemid]', '#{itemid}'))
+						->setAttribute('data-field-type', 'hidden')
+						->setErrorContainer('items-#{number}-error-container')
 						->setId('items_#{number}_itemid'),
 					(new CInput('hidden', 'items[#{number}][sortorder]', '#{sortorder}'))
+						->setAttribute('data-field-type', 'hidden')
+						->setErrorContainer('items-#{number}-error-container')
 						->setId('items_#{number}_sortorder'),
 					(new CInput('hidden', 'items[#{number}][flags]', '#{flags}'))
+						->setAttribute('data-field-type', 'hidden')
+						->setErrorContainer('items-#{number}-error-container')
 						->setId('items_#{number}_flags'),
 					(new CInput('hidden', 'items[#{number}][type]', GRAPH_ITEM_SIMPLE))
+						->setAttribute('data-field-type', 'hidden')
+						->setErrorContainer('items-#{number}-error-container')
 						->setId('items_#{number}_type'),
 					(new CInput('hidden', 'items[#{number}][calc_fnc]', '#{calc_fnc}'))
+						->setAttribute('data-field-type', 'hidden')
+						->setErrorContainer('items-#{number}-error-container')
 						->setId('items_#{number}_calc_fnc'),
 					(new CInput('hidden', 'items[#{number}][drawtype]', '#{drawtype}'))
+						->setAttribute('data-field-type', 'hidden')
+						->setErrorContainer('items-#{number}-error-container')
 						->setId('items_#{number}_drawtype'),
 					(new CInput('hidden', 'items[#{number}][yaxisside]', '#{yaxisside}'))
+						->setAttribute('data-field-type', 'hidden')
+						->setErrorContainer('items-#{number}-error-container')
 						->setId('items_#{number}_yaxisside')
 				]))->addClass(ZBX_STYLE_TD_DRAG_ICON),
 				new CCol((new CSpan(':'))->addClass(ZBX_STYLE_LIST_NUMBERED_ITEM)),
@@ -1526,12 +1547,14 @@ function getItemTemplateNormal(bool $readonly, array $graph_item_drawtypes): CTa
 							CALC_FNC_MAX => _('max')
 						]))
 						->setReadonly($readonly)
+						->setErrorContainer('items-#{number}-error-container')
 				),
 				new CCol(
 					(new CSelect('items[#{number}][drawtype]'))
 						->setValue('#{drawtype}')
 						->addOptions(CSelect::createOptionsFromArray($graph_item_drawtypes))
 						->setReadonly($readonly)
+						->setErrorContainer('items-#{number}-error-container')
 				),
 				new CCol(
 					(new CSelect('items[#{number}][yaxisside]'))
@@ -1541,16 +1564,25 @@ function getItemTemplateNormal(bool $readonly, array $graph_item_drawtypes): CTa
 							GRAPH_YAXIS_SIDE_RIGHT => _('Right')
 						]))
 						->setReadonly($readonly)
+						->setErrorContainer('items-#{number}-error-container')
 				),
 				new CCol(
 					(new CColorPicker('items[#{number}][color]'))
 						->setColor('#{color}')
 						->setReadonly($readonly)
+						->setErrorContainer('items-#{number}-error-container')
 				),
 				$readonly ? null : getItemTemplateRemoveColumn()
 			]))
 				->addClass('graph-item')
-				->setId('items_#{number}')
+				->setId('items_#{number}'),
+			(new CRow())
+				->addClass('error-container-row')
+				->addItem(
+					(new CCol())
+						->setId('items-#{number}-error-container')
+						->setColSpan(7 + ($readonly ? 0 : 1))
+				)
 		]);
 }
 
@@ -1561,20 +1593,36 @@ function getItemTemplateStacked(bool $readonly): CTag {
 				(new CCol([
 					$readonly ? null : (new CDiv)->addClass(ZBX_STYLE_DRAG_ICON),
 					(new CInput('hidden', 'items[#{number}][gitemid]', '#{gitemid}'))
+						->setAttribute('data-field-type', 'hidden')
+						->setErrorContainer('items-#{number}-error-container')
 						->setId('items_#{number}_gitemid'),
 					(new CInput('hidden', 'items[#{number}][itemid]', '#{itemid}'))
+						->setAttribute('data-field-type', 'hidden')
+						->setErrorContainer('items-#{number}-error-container')
 						->setId('items_#{number}_itemid'),
 					(new CInput('hidden', 'items[#{number}][sortorder]', '#{sortorder}'))
+						->setAttribute('data-field-type', 'hidden')
+						->setErrorContainer('items-#{number}-error-container')
 						->setId('items_#{number}_sortorder'),
 					(new CInput('hidden', 'items[#{number}][flags]', '#{flags}'))
+						->setAttribute('data-field-type', 'hidden')
+						->setErrorContainer('items-#{number}-error-container')
 						->setId('items_#{number}_flags'),
 					(new CInput('hidden', 'items[#{number}][type]', GRAPH_TYPE_STACKED))
+						->setAttribute('data-field-type', 'hidden')
+						->setErrorContainer('items-#{number}-error-container')
 						->setId('items_#{number}_type'),
 					(new CInput('hidden', 'items[#{number}][calc_fnc]', '#{calc_fnc}'))
+						->setAttribute('data-field-type', 'hidden')
+						->setErrorContainer('items-#{number}-error-container')
 						->setId('items_#{number}_calc_fnc'),
 					(new CInput('hidden', 'items[#{number}][drawtype]', '#{drawtype}'))
+						->setAttribute('data-field-type', 'hidden')
+						->setErrorContainer('items-#{number}-error-container')
 						->setId('items_#{number}_drawtype'),
 					(new CInput('hidden', 'items[#{number}][yaxisside]', '#{yaxisside}'))
+						->setAttribute('data-field-type', 'hidden')
+						->setErrorContainer('items-#{number}-error-container')
 						->setId('items_#{number}_yaxisside')
 				]))->addClass(ZBX_STYLE_TD_DRAG_ICON),
 				new CCol((new CSpan(':'))->addClass(ZBX_STYLE_LIST_NUMBERED_ITEM)),
@@ -1588,6 +1636,7 @@ function getItemTemplateStacked(bool $readonly): CTag {
 							CALC_FNC_MAX => _('max')
 						]))
 						->setReadonly($readonly)
+						->setErrorContainer('items-#{number}-error-container')
 				),
 				new CCol(
 					(new CSelect('items[#{number}][yaxisside]'))
@@ -1597,16 +1646,25 @@ function getItemTemplateStacked(bool $readonly): CTag {
 							GRAPH_YAXIS_SIDE_RIGHT => _('Right')
 						]))
 						->setReadonly($readonly)
+						->setErrorContainer('items-#{number}-error-container')
 				),
 				new CCol(
 					(new CColorPicker('items[#{number}][color]'))
 						->setColor('#{color}')
 						->setReadonly($readonly)
+						->setErrorContainer('items-#{number}-error-container')
 				),
 				$readonly ? null : getItemTemplateRemoveColumn()
 			]))
 				->addClass('graph-item')
-				->setId('items_#{number}')
+				->setId('items_#{number}'),
+			(new CRow())
+				->addClass('error-container-row')
+				->addItem(
+					(new CCol())
+						->setId('items-#{number}-error-container')
+						->setColSpan(6 + ($readonly ? 0 : 1))
+				)
 		]);
 }
 
@@ -1617,20 +1675,36 @@ function getItemTemplatePieAndExploded(bool $readonly): CTag {
 				(new CCol([
 					$readonly ? null : (new CDiv)->addClass(ZBX_STYLE_DRAG_ICON),
 					(new CInput('hidden', 'items[#{number}][gitemid]', '#{gitemid}'))
+						->setAttribute('data-field-type', 'hidden')
+						->setErrorContainer('items-#{number}-error-container')
 						->setId('items_#{number}_gitemid'),
 					(new CInput('hidden', 'items[#{number}][itemid]', '#{itemid}'))
+						->setAttribute('data-field-type', 'hidden')
+						->setErrorContainer('items-#{number}-error-container')
 						->setId('items_#{number}_itemid'),
 					(new CInput('hidden', 'items[#{number}][sortorder]', '#{sortorder}'))
+						->setAttribute('data-field-type', 'hidden')
+						->setErrorContainer('items-#{number}-error-container')
 						->setId('items_#{number}_sortorder'),
 					(new CInput('hidden', 'items[#{number}][flags]', '#{flags}'))
+						->setAttribute('data-field-type', 'hidden')
+						->setErrorContainer('items-#{number}-error-container')
 						->setId('items_#{number}_flags'),
 					(new CInput('hidden', 'items[#{number}][type]', '#{type}'))
+						->setAttribute('data-field-type', 'hidden')
+						->setErrorContainer('items-#{number}-error-container')
 						->setId('items_#{number}_type'),
 					(new CInput('hidden', 'items[#{number}][calc_fnc]', '#{calc_fnc}'))
+						->setAttribute('data-field-type', 'hidden')
+						->setErrorContainer('items-#{number}-error-container')
 						->setId('items_#{number}_calc_fnc'),
 					(new CInput('hidden', 'items[#{number}][drawtype]', DRAWTYPE_LINE))
+						->setAttribute('data-field-type', 'hidden')
+						->setErrorContainer('items-#{number}-error-container')
 						->setId('items_#{number}_drawtype'),
 					(new CInput('hidden', 'items[#{number}][yaxisside]', GRAPH_YAXIS_SIDE_LEFT))
+						->setAttribute('data-field-type', 'hidden')
+						->setErrorContainer('items-#{number}-error-container')
 						->setId('items_#{number}_yaxisside')
 				]))->addClass(ZBX_STYLE_TD_DRAG_ICON),
 				new CCol((new CSpan(':'))->addClass(ZBX_STYLE_LIST_NUMBERED_ITEM)),
@@ -1643,6 +1717,7 @@ function getItemTemplatePieAndExploded(bool $readonly): CTag {
 							GRAPH_ITEM_SUM =>_('Graph sum')
 						]))
 						->setReadonly($readonly)
+						->setErrorContainer('items-#{number}-error-container')
 				),
 				new CCol(
 					(new CSelect('items[#{number}][calc_fnc]'))
@@ -1654,16 +1729,25 @@ function getItemTemplatePieAndExploded(bool $readonly): CTag {
 							CALC_FNC_LST => _('last')
 						]))
 						->setReadonly($readonly)
+						->setErrorContainer('items-#{number}-error-container')
 				),
 				new CCol(
 					(new CColorPicker('items[#{number}][color]'))
 						->setColor('#{color}')
 						->setReadonly($readonly)
+						->setErrorContainer('items-#{number}-error-container')
 				),
 				$readonly ? null : getItemTemplateRemoveColumn()
 			]))
 				->addClass('graph-item')
-				->setId('items_#{number}')
+				->setId('items_#{number}'),
+			(new CRow())
+				->addClass('error-container-row')
+				->addItem(
+					(new CCol())
+						->setId('items-#{number}-error-container')
+						->setColSpan(6 + ($readonly ? 0 : 1))
+				)
 		]);
 }
 

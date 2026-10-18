@@ -45,6 +45,8 @@ require_once __DIR__.'/elements/CInputGroupElement.php';
 require_once __DIR__.'/elements/CHostInterfaceElement.php';
 require_once __DIR__.'/elements/CFilterElement.php';
 require_once __DIR__.'/elements/CFieldsetElement.php';
+require_once __DIR__.'/elements/CTextareaFlexibleElement.php';
+require_once __DIR__.'/elements/CDatatableElement.php';
 
 require_once __DIR__.'/IWaitable.php';
 require_once __DIR__.'/WaitableTrait.php';
@@ -608,14 +610,15 @@ class CElementQuery implements IWaitable {
 			],
 			'CCompositeInputElement'	=> [
 				'/div[contains(@class, "range-control")]',
-				'/div[contains(@class, "calendar-control")]'
+				'/div[contains(@class, "date-selector")]'
 			],
 			'CColorPickerElement'		=> [
 				'/z-color-picker'
 			],
 			'CMultilineElement'			=> ['/div[contains(@class, "multilineinput-control")]'],
 			'CInputGroupElement'		=> ['/div[contains(@class, "macro-input-group")]'],
-			'CFieldsetElement'			=> ['/fieldset']
+			'CFieldsetElement'			=> ['/fieldset'],
+			'CTextareaFlexibleElement'	=> ['/z-textarea-flexible[@name]']
 		];
 
 		if ($class !== null) {
@@ -729,6 +732,9 @@ class CElementQuery implements IWaitable {
 			case 'z-color-picker':
 				return 'CColorPickerElement';
 
+			case 'z-textarea-flexible':
+				return 'CTextareaFlexibleElement';
+
 			case 'table':
 				return 'CMultifieldTableElement';
 
@@ -751,7 +757,7 @@ class CElementQuery implements IWaitable {
 			return 'CCheckboxListElement';
 		}
 
-		if (strpos($class, 'range-control') !== false || strpos($class, 'calendar-control') !== false) {
+		if (strpos($class, 'range-control') !== false || strpos($class, 'date-selector') !== false) {
 			return 'CCompositeInputElement';
 		}
 

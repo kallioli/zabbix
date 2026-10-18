@@ -81,7 +81,7 @@ class testFormTotp extends CWebTest {
 	 */
 	protected function testTotpLayout() {
 		// Container of most elements.
-		$container = $this->page->query('class:signin-container')->waitUntilVisible()->one();
+		$container = $this->query('class:signin-container')->waitUntilVisible()->one();
 
 		// Assert Zabbix logo.
 		$this->assertTrue($container->query('class:zabbix-logo')->one()->isVisible());
@@ -112,10 +112,10 @@ class testFormTotp extends CWebTest {
 		);
 		$this->assertEquals('_blank', $help_link->getAttribute('target')); // opens link in a new tab
 
-		$support_link = $links->query('link:Support')->one();
-		$this->assertTrue($support_link->isClickable());
-		$this->assertEquals('https://www.zabbix.com/support', $support_link->getAttribute('href'));
-		$this->assertEquals('_blank', $support_link->getAttribute('target')); // opens link in a new tab
+		$subscriptions_link = $links->query('link:Subscriptions')->one();
+		$this->assertTrue($subscriptions_link->isClickable());
+		$this->assertEquals('https://www.zabbix.com/subscriptions', $subscriptions_link->getAttribute('href'));
+		$this->assertEquals('_blank', $subscriptions_link->getAttribute('target')); // opens link in a new tab
 
 		$copyright = $this->page->query('xpath://footer[@role="contentinfo"]')->one();
 		$this->assertTrue($copyright->isVisible());
@@ -245,7 +245,7 @@ class testFormTotp extends CWebTest {
 	protected function testTotpBlocking() {
 		// Open the form.
 		$this->userLogin();
-		$form = $this->page->query('class:signin-container')->waitUntilVisible()->asForm()->one();
+		$form = $this->query('class:signin-container')->waitUntilVisible()->asForm()->one();
 
 		// Enter the incorrect TOTP several times to get blocked.
 		for ($i = 1; $i <= self::BLOCK_COUNT; $i++) {

@@ -18,6 +18,7 @@
 #include "zbxsysinc.h"
 #include "module.h"
 #include "version.h"
+#include "zbxtypes_ext.h"
 
 #if defined(__MINGW32__)
 #	define __try
@@ -80,6 +81,12 @@
 #	define ZBX_FALLTHROUGH
 #endif
 
+#if defined(__GNUC__) && __GNUC__ >= 3
+#	define ZBX_NORETURN	__attribute__ ((noreturn))
+#else
+#	define ZBX_NORETURN
+#endif
+
 #define SUCCEED_OR_FAIL(result) (FAIL != (result) ? SUCCEED : FAIL)
 const char	*zbx_sysinfo_ret_string(int ret);
 const char	*zbx_result_string(int result);
@@ -101,6 +108,8 @@ const char	*zbx_result_string(int result);
 #define ZBX_SIZE_T_MAX	(~(size_t)0)
 
 #define ZBX_MALLOC_TRIM (128 * ZBX_KIBIBYTE)
+
+#define ZBX_MAX_PROCNAME_LEN	64
 
 /******************************************************************************
  *                                                                            *
@@ -142,7 +151,8 @@ typedef enum
 	ITEM_TYPE_SNMP,
 	ITEM_TYPE_SCRIPT,
 	ITEM_TYPE_BROWSER,
-	ITEM_TYPE_NESTED_LLD 	/* 23 */
+	ITEM_TYPE_NESTED_LLD,
+	ITEM_TYPE_TELEMETRY_QUERY	/* 24 */
 }
 zbx_item_type_t;
 
@@ -211,11 +221,15 @@ typedef enum
 	ITEM_VALUE_TYPE_LOG,
 	ITEM_VALUE_TYPE_UINT64,
 	ITEM_VALUE_TYPE_TEXT,
-	ITEM_VALUE_TYPE_BIN,	/* Last real value. In some places it is also used in size of array or */
+	ITEM_VALUE_TYPE_BIN,
+	ITEM_VALUE_TYPE_JSON,	/* Last real value. In some places it is also used in size of array or */
 				/* upper bound for iteration. Do not forget to update when adding new types. */
 	ITEM_VALUE_TYPE_NONE	/* Artificial value, not written into DB, used internally in server. */
 }
 zbx_item_value_type_t;
+
+#define ITEM_VALUE_TYPE_COUNT	(ITEM_VALUE_TYPE_JSON + 1)
+
 const char	*zbx_item_value_type_string(zbx_item_value_type_t value_type);
 
 typedef struct
@@ -227,6 +241,16 @@ typedef struct
 	char	*value;
 }
 zbx_log_value_t;
+
+typedef union
+{
+	double		dbl;
+	zbx_uint64_t	ui64;
+	char		*str;
+	char		*err;
+	zbx_log_value_t	*log;
+}
+zbx_history_value_t;
 
 /* value for not supported items */
 #define ZBX_NOTSUPPORTED	"ZBX_NOTSUPPORTED"
@@ -300,7 +324,13 @@ const char	*get_program_type_string(unsigned char program_type);
 #define ZBX_PROCESS_TYPE_PG_MANAGER		45
 #define ZBX_PROCESS_TYPE_BROWSERPOLLER		46
 #define ZBX_PROCESS_TYPE_HA_MANAGER		47
-#define ZBX_PROCESS_TYPE_COUNT			48	/* number of process types */
+#define ZBX_PROCESS_TYPE_SUPERVISOR		48
+#define ZBX_PROCESS_TYPE_CEP_MANAGER		49
+#define ZBX_PROCESS_TYPE_CEP_WORKER		50
+#define ZBX_PROCESS_TYPE_TELEMETRY_QUERY_POLLER	51
+#define ZBX_PROCESS_TYPE_APM_MANAGER		52
+#define ZBX_PROCESS_TYPE_APM_WORKER		53
+#define ZBX_PROCESS_TYPE_COUNT			54	/* number of process types */
 
 /* special processes that are not present worker list */
 #define ZBX_PROCESS_TYPE_MAIN			126
@@ -405,8 +435,8 @@ void	zbx_this_should_never_happen_backtrace(void);
 do														\
 {														\
 	zbx_this_should_never_happen_backtrace();								\
-	zbx_error("ERROR [file and function: <%s,%s>, revision:%s, line:%d] Something unexpected has just "	\
-			"happened.", __FILE__, __func__, ZABBIX_REVISION, __LINE__);				\
+	zbx_error("ERROR [file and function: %s:%d,%s, revision:%s] Something unexpected has just"		\
+			" happened.", __FILE__, __LINE__, __func__, ZABBIX_REVISION);				\
 }														\
 while (0)
 
@@ -542,6 +572,9 @@ zbx_proxy_suppress_t;
 #define ZBX_MAX_RECV_LARGE_DATA_SIZE	(1 * ZBX_GIBIBYTE)
 #endif
 
+/* maximum size of data received during a passive check */
+#define ZBX_MAX_PASSIVE_CHECK_DATA_SIZE	(8 * ZBX_MEBIBYTE)
+
 /* max length of base64 data */
 #define ZBX_MAX_B64_LEN		(16 * ZBX_KIBIBYTE)
 
@@ -580,6 +613,7 @@ size_t	zbx_snprintf(char *str, size_t count, const char *fmt, ...) __zbx_attr_fo
 /* could be moved into libzbxstr.a but it seems to be logically grouped with surrounding functions */
 void	zbx_snprintf_alloc(char **str, size_t *alloc_len, size_t *offset, const char *fmt, ...)
 		__zbx_attr_format_printf(4, 5);
+void	zbx_vsnprintf_alloc(char **str, size_t *alloc_len, size_t *offset, const char *fmt, va_list args);
 
 #if defined(__hpux)
 int	zbx_hpux_vsnprintf_is_c99(void);
@@ -595,9 +629,6 @@ char	*zbx_dsprintf(char *dest, const char *f, ...) __zbx_attr_format_printf(2, 3
 
 /* used by zbxcommon, setproctitle */
 size_t	zbx_strlcpy(char *dst, const char *src, size_t siz);
-
-/* used by dsprintf, which is used by log */
-char	*zbx_dvsprintf(char *dest, const char *f, va_list args);
 
 #define VALUE_ERRMSG_MAX	128
 #define ZBX_LENGTH_UNLIMITED	0x7fffffff
@@ -646,6 +677,8 @@ int	MAIN_ZABBIX_ENTRY(int flags);
 #define ZBX_AUTH_TOKEN_ENABLED		0
 #define ZBX_AUTH_TOKEN_DISABLED		1
 #define ZBX_AUTH_TOKEN_NEVER_EXPIRES	0
+#define ZBX_AUTH_SCHEME_BEARER		0
+#define ZBX_AUTH_SCHEME_DPOP		1
 
 #define ZBX_DO_NOT_SEND_RESPONSE	0
 #define ZBX_SEND_RESPONSE		1
@@ -718,6 +751,9 @@ int	zbx_alarm_timed_out(void);
 #define ZBX_SHA512_BINARY_LENGTH 64
 
 /* includes terminating '\0' */
+#define ZBX_UUID_LEN	37
+
+/* includes terminating '\0' */
 #define CUID_LEN	26
 void	zbx_new_cuid(char *cuid);
 
@@ -768,6 +804,14 @@ static	type2	get_##varname(void) \
 	return varname; \
 }
 
+/* logger interface */
+
+typedef void (*zbx_log_cb_t)(int level, const char *fmt, va_list args);
+typedef int (*zbx_log_level_cb_t)(void);
+
+void	zbx_log_handle(int level, const char *fmt, ...);
+int	zbx_get_log_level(void);
+
 #define LOG_LEVEL_EMPTY		0	/* printing nothing (if not LOG_LEVEL_INFORMATION set) */
 #define LOG_LEVEL_CRIT		1
 #define LOG_LEVEL_ERR		2
@@ -795,21 +839,6 @@ static	type2	get_##varname(void) \
 #	define zabbix_log zbx_log_handle
 #endif
 
-typedef void (*zbx_log_func_t)(int level, const char *fmt, va_list args);
-
-void	zbx_init_library_common(zbx_log_func_t log_func, zbx_get_progname_f get_progname, zbx_backtrace_f backtrace);
-void	zbx_log_handle(int level, const char *fmt, ...) __zbx_attr_format_printf(2, 3);
-int	zbx_get_log_level(void);
-void	zbx_set_log_level(int level);
-const char	*zbx_get_log_component_name(void);
-
-/* The per-component log level is plain C. It was behind a Unix guard only because the agent has no use for it; the */
-/* proxy worker pools do. */
-void		zabbix_increase_log_level(void);
-void		zabbix_decrease_log_level(void);
-void		zabbix_report_log_level_change(void);
-const char	*zabbix_get_log_level_string(void);
-
 typedef struct
 {
 	int		level;
@@ -817,12 +846,24 @@ typedef struct
 }
 zbx_log_component_t;
 
-void	zbx_set_log_component(const char *name, zbx_log_component_t *component);
-void	zbx_change_component_log_level(zbx_log_component_t *component, int direction);
+void	zbx_init_library_common(zbx_log_cb_t log_func, zbx_log_level_cb_t log_level_func,
+		zbx_get_progname_f get_progname, zbx_backtrace_f backtrace);
 
-#ifndef _WINDOWS
+#if !defined(_WINDOWS) && !defined(__MINGW32__)
 /* malloc_trim() is a glibc extension */
 void	zbx_malloc_trim(time_t now, int period, size_t pad);
 #endif
+
+/* The exit hooks are not Unix-only: the Windows build runs its workers as threads and installs */
+/* zbx_exit_from_thread() in each of them, so that a worker that gives up ends only itself.      */
+typedef void (*zbx_exit_cb_t)(int) ZBX_NORETURN;
+
+void	zbx_exit(int ret) ZBX_NORETURN;
+void	zbx_exit_immediate(int ret) ZBX_NORETURN;
+
+void	zbx_set_exit(zbx_exit_cb_t exit_cb, zbx_atomic_uint32_t *exit_num);
+void	zbx_set_exit_immediate(zbx_exit_cb_t exit_cb);
+
+void	zbx_exit_from_thread(int ret) ZBX_NORETURN;
 
 #endif

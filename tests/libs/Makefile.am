@@ -10,6 +10,7 @@ SUBDIRS = \
 	zbxcfg \
 	zbxcachevalue \
 	zbxcacheconfig \
+	zbxcalc \
 	zbxdb \
 	zbxdbhigh \
 	zbxhistory \
@@ -25,7 +26,7 @@ SUBDIRS = \
 	zbxprometheus \
 	zbxcomms \
 	zbxregexp \
-	zbxexpression \
+	zbxdbwrap \
 	zbxtagfilter \
 	zbxtrends \
 	zbxtime \
@@ -34,4 +35,5 @@ SUBDIRS = \
 	zbxodbc \
 	zbxhttp \
 	zbxip \
-	zbxproxybuffer
+	zbxproxybuffer \
+	zbxhttppoller

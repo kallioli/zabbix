@@ -9,7 +9,7 @@ Currently the template supports Nomad servers and clients discovery.
 
 ## Requirements
 
-Zabbix version: 7.4 and higher.
+Zabbix version: 8.0 and higher.
 
 ## Tested versions
 
@@ -18,7 +18,7 @@ This template has been tested on:
 
 ## Configuration
 
-> Zabbix should be configured according to the instructions in the [Templates out of the box](https://www.zabbix.com/documentation/7.4/manual/config/templates_out_of_the_box) section.
+> Zabbix should be configured according to the instructions in the [Templates out of the box](https://www.zabbix.com/documentation/8.0/manual/config/templates_out_of_the_box) section.
 
 ## Setup
 
@@ -45,7 +45,7 @@ This template has been tested on:
 |Name|Description|Default|
 |----|-----------|-------|
 |{$NOMAD.ENDPOINT.API.URL}|<p>API endpoint URL for one of the Nomad cluster members.</p>|`http://localhost:4646`|
-|{$NOMAD.TOKEN}|<p>Nomad authentication token.</p>|`<PUT YOUR AUTH TOKEN>`|
+|{$NOMAD.TOKEN}|<p>Nomad authentication token.</p>||
 |{$NOMAD.DATA.TIMEOUT}|<p>Response timeout for an API.</p>|`15s`|
 |{$NOMAD.HTTP.PROXY}|<p>Sets the HTTP proxy for script and HTTP agent items. If this parameter is empty, then no proxy is used.</p>||
 |{$HTTP.TLS.VERIFY}|<p>TLS certificate verification for script items: "none" - disabled, "peer" - verify the certificate chain and expiration, "full" - full verification. Any other value enables full verification. To override the setting for this template only, define the macro with the context "HashiCorp Nomad", e.g. {$HTTP.TLS.VERIFY:"HashiCorp Nomad"}.</p>|`full`|
@@ -101,7 +101,7 @@ It works without any external scripts.
 
 ## Requirements
 
-Zabbix version: 7.4 and higher.
+Zabbix version: 8.0 and higher.
 
 ## Tested versions
 
@@ -110,7 +110,7 @@ This template has been tested on:
 
 ## Configuration
 
-> Zabbix should be configured according to the instructions in the [Templates out of the box](https://www.zabbix.com/documentation/7.4/manual/config/templates_out_of_the_box) section.
+> Zabbix should be configured according to the instructions in the [Templates out of the box](https://www.zabbix.com/documentation/8.0/manual/config/templates_out_of_the_box) section.
 
 ## Setup
 
@@ -136,7 +136,7 @@ This template has been tested on:
 * [HashiCorp Nomad metrics API reference](https://developer.hashicorp.com/nomad/api-docs/metrics)
 * [HashiCorp Nomad nodes API reference](https://developer.hashicorp.com/nomad/api-docs/nodes)
 * [HashiCorp Nomad allocations API reference](https://developer.hashicorp.com/nomad/api-docs/allocations)
-* [Zabbix user macros with context](https://www.zabbix.com/documentation/7.4/manual/config/macros/user_macros_context)
+* [Zabbix user macros with context](https://www.zabbix.com/documentation/8.0/manual/config/macros/user_macros_context)
 
 ### Macros used
 
@@ -144,7 +144,7 @@ This template has been tested on:
 |----|-----------|-------|
 |{$NOMAD.CLIENT.API.SCHEME}|<p>Nomad client API scheme.</p>|`http`|
 |{$NOMAD.CLIENT.API.PORT}|<p>Nomad client API port.</p>|`4646`|
-|{$NOMAD.TOKEN}|<p>Nomad authentication token.</p>|`<PUT YOUR AUTH TOKEN>`|
+|{$NOMAD.TOKEN}|<p>Nomad authentication token.</p>||
 |{$NOMAD.DATA.TIMEOUT}|<p>Response timeout for an API.</p>|`15s`|
 |{$NOMAD.HTTP.PROXY}|<p>Sets the HTTP proxy for HTTP agent item. If this parameter is empty, then no proxy is used.</p>||
 |{$NOMAD.API.RESPONSE.SUCCESS}|<p>HTTP API successful response code. Availability triggers threshold. Change, if needed.</p>|`200`|
@@ -301,7 +301,7 @@ It works without any external scripts.
 
 ## Requirements
 
-Zabbix version: 7.4 and higher.
+Zabbix version: 8.0 and higher.
 
 ## Tested versions
 
@@ -310,7 +310,7 @@ This template has been tested on:
 
 ## Configuration
 
-> Zabbix should be configured according to the instructions in the [Templates out of the box](https://www.zabbix.com/documentation/7.4/manual/config/templates_out_of_the_box) section.
+> Zabbix should be configured according to the instructions in the [Templates out of the box](https://www.zabbix.com/documentation/8.0/manual/config/templates_out_of_the_box) section.
 
 ## Setup
 
@@ -331,7 +331,7 @@ This template has been tested on:
 * [HashiCorp Nomad metrics API reference](https://developer.hashicorp.com/nomad/api-docs/metrics)
 * [HashiCorp Nomad agent API reference](https://developer.hashicorp.com/nomad/api-docs/agent#query-self)
 * [HashiCorp Nomad cluster failure tolerance reference](https://developer.hashicorp.com/nomad/docs/concepts/consensus#deployment-table)
-* [Zabbix user macros with context](https://www.zabbix.com/documentation/7.4/manual/config/macros/user_macros_context)
+* [Zabbix user macros with context](https://www.zabbix.com/documentation/8.0/manual/config/macros/user_macros_context)
 
 ### Macros used
 
@@ -339,7 +339,7 @@ This template has been tested on:
 |----|-----------|-------|
 |{$NOMAD.SERVER.API.SCHEME}|<p>Nomad SERVER API scheme.</p>|`http`|
 |{$NOMAD.SERVER.API.PORT}|<p>Nomad SERVER API port.</p>|`4646`|
-|{$NOMAD.TOKEN}|<p>Nomad authentication token.</p>|`<PUT YOUR AUTH TOKEN>`|
+|{$NOMAD.TOKEN}|<p>Nomad authentication token.</p>||
 |{$NOMAD.DATA.TIMEOUT}|<p>Response timeout for an API.</p>|`15s`|
 |{$NOMAD.HTTP.PROXY}|<p>Sets the HTTP proxy for HTTP agent item. If this parameter is empty, then no proxy is used.</p>||
 |{$NOMAD.API.RESPONSE.SUCCESS}|<p>HTTP API successful response code. Availability triggers threshold. Change, if needed.</p>|`200`|

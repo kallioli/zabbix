@@ -21,32 +21,44 @@
 #include "zbxstr.h"
 
 void	*__wrap_realloc(void *old , size_t size);
-void	__wrap_zbx_log_handle(int level, const char *fmt, ...);
+void	*__real_realloc(void *old , size_t size);
 
 void		*ret_ptr = (void *)1;
 size_t		got_size;
 const char	*warning[2] = {0};
-int		out_of_mem = 0;
+int		is_testing = 0, out_of_mem = 0;
 
 void	*__wrap_realloc(void *old , size_t size)
 {
 	(void)old;
 
-	if (1 == out_of_mem)
+	if (1 == is_testing)
 	{
-		out_of_mem = 0;
+		zbx_free(old);
 
-		return NULL;
+		is_testing = 0;
+		if (1 == out_of_mem)
+		{
+			out_of_mem = 0;
+
+			return NULL;
+		}
+		else
+		{
+			got_size = size;
+			is_testing = 0;
+
+			return ret_ptr;
+		}
 	}
 
-	got_size = size;
-
-	return ret_ptr;
+	return __real_realloc(old, size);
 }
 
-void	__wrap_zbx_log_handle(int level, const char *fmt, ...)
+static void	zabbix_log_stub(int level, const char *fmt, va_list args)
 {
 	ZBX_UNUSED(level);
+	ZBX_UNUSED(args);
 
 	if (NULL == warning[0])
 	{
@@ -55,12 +67,14 @@ void	__wrap_zbx_log_handle(int level, const char *fmt, ...)
 	else if (NULL == warning[1])
 	{
 		warning[1] = fmt;
+
 	}
 }
 
 void	zbx_mock_test_entry(void **state)
 {
-	void	*old = NULL, *result;
+
+	void	*old = zbx_malloc(NULL, 10), *result;
 	size_t	in_size = zbx_mock_get_parameter_uint64("in.size");
 
 	ZBX_UNUSED(state);
@@ -68,6 +82,9 @@ void	zbx_mock_test_entry(void **state)
 	if (SUCCEED == zbx_mock_parameter_exists("in.out_of_mem"))
 		out_of_mem = 1;
 
+	zbx_init_library_common(zabbix_log_stub, zbx_mock_get_log_level_impl, NULL, NULL);
+
+	is_testing = 1;
 	result = zbx_realloc(old, in_size);
 
 	zbx_mock_assert_uint64_eq("realloc size", zbx_mock_get_parameter_uint64("out.size"), got_size);

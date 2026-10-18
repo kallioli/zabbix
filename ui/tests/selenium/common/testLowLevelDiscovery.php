@@ -49,16 +49,18 @@ class testLowLevelDiscovery extends CWebTest {
 			? static::$templateid.'&context=template'
 			: static::$empty_hostid.'&context=host';
 
-		$this->page->login()->open('host_discovery.php?filter_set=1&filter_hostids%5B0%5D='.$url);
+		$this->page->login()->open('zabbix.php?action=lldrule.list&filter_set=1&filter_hostids%5B0%5D='.$url);
 		$this->query('button:Create discovery rule')->waitUntilClickable()->one()->click();
-		$form = $this->query('id:host-discovery-form')->asForm()->waitUntilVisible()->one();
-		$this->page->assertHeader('Discovery rules');
+		$dialog = COverlayDialogElement::find()->waitUntilReady()->one();
+		$form = $dialog->asForm();
+		$this->assertEquals('New discovery rule', $dialog->getTitle());
 		$this->page->assertTitle('Configuration of discovery rules');
 		$this->assertEquals(['Discovery rule', 'Preprocessing', 'LLD macros', 'Filters', 'Overrides'], $form->getTabs());
 
 		// Check form footer buttons clickability.
-		foreach (['id:add', 'button:Test', 'button:Cancel'] as $button) {
-			$this->assertTrue($form->query($button)->one()->isClickable());
+		$footer = $dialog->getFooter();
+		foreach (['Add', 'Test', 'Cancel'] as $button) {
+			$this->assertTrue($footer->query('button', $button)->one()->isClickable());
 		}
 
 		// Check the whole form required labels.
@@ -81,7 +83,7 @@ class testLowLevelDiscovery extends CWebTest {
 			'Name' => ['maxlength' => 255],
 			'Type' => ['value' => 'Zabbix agent', 'options' => ['Zabbix agent', 'Zabbix agent (active)', 'Simple check',
 				'SNMP agent', 'Zabbix internal', 'Zabbix trapper', 'External check', 'Database monitor', 'HTTP agent',
-				'IPMI agent', 'SSH agent', 'TELNET agent', 'JMX agent', 'Dependent item', 'Script', 'Browser', 'Nested']
+				'IPMI agent', 'SSH agent', 'TELNET agent', 'JMX agent', 'Dependent item', 'Script', 'Browser']
 			],
 			'Key' => ['maxlength' => 2048],
 			'URL' => ['maxlength' => 2048],
@@ -133,7 +135,7 @@ class testLowLevelDiscovery extends CWebTest {
 			'id:lifetime_type' => ['labels' => ['Never', 'Immediately', 'After'], 'value' => 'After'],
 			'id:enabled_lifetime_type' => ['labels' => ['Never', 'Immediately', 'After'], 'value' => 'Immediately'],
 			'Enable trapping' => ['value' => false],
-			'id:trapper_hosts' => ['maxlength' => 255],
+			'id:trapper_hosts' => ['value' => '{$TRAPPER.ALLOWED_HOSTS}', 'maxlength' => 255],
 			'Description' => ['value' => '', 'maxlength' => 65535],
 			'Enabled' => ['value' => true],
 
@@ -159,6 +161,9 @@ class testLowLevelDiscovery extends CWebTest {
 
 		if (static::$context === 'template') {
 			unset($fields['Host interface']);
+
+			// LLD rule type "Nested" is available only on LLD rules in templates and discovered hosts.
+			$fields['Type']['options'] = array_merge($fields['Type']['options'], ['Nested']);
 		}
 
 		$this->checkFieldsParameters($fields);
@@ -252,7 +257,7 @@ class testLowLevelDiscovery extends CWebTest {
 						);
 					}
 
-					foreach (['A', 'B'] as $i => $letter) {
+					foreach ([0 => 'A', 2 => 'B'] as $i => $letter) {
 						$this->assertEquals($letter, $filter_table->getRow($i)->query('tag:span')->one()->getText());
 					}
 					break;
@@ -266,6 +271,8 @@ class testLowLevelDiscovery extends CWebTest {
 					break;
 			}
 		}
+
+		$dialog->close();
 	}
 
 	public static function getTypeDependingData() {
@@ -333,7 +340,7 @@ class testLowLevelDiscovery extends CWebTest {
 					'fields' => ['URL', 'Query fields', 'Request type', 'Request body type', 'Request body', 'Headers',
 							'Required status codes', 'Follow redirects', 'Retrieve mode', 'HTTP proxy', 'HTTP authentication',
 							'SSL verify peer', 'SSL verify host', 'SSL certificate file', 'SSL key file', 'SSL key password',
-							'Host interface', 'Update interval', 'Custom intervals', 'Timeout', 'Enable trapping'
+							'Host interface', 'Update interval', 'Custom intervals', 'Timeout', 'Enable trapping', 'Convert to JSON'
 					]
 				]
 			],
@@ -403,9 +410,10 @@ class testLowLevelDiscovery extends CWebTest {
 			? static::$templateid.'&context=template'
 			: static::$empty_hostid.'&context=host';
 
-		$this->page->login()->open('host_discovery.php?filter_set=1&filter_hostids%5B0%5D='.$url);
+		$this->page->login()->open('zabbix.php?action=lldrule.list&filter_set=1&filter_hostids%5B0%5D='.$url);
 		$this->query('button:Create discovery rule')->waitUntilClickable()->one()->click();
-		$form = $this->query('id:host-discovery-form')->asForm()->waitUntilVisible()->one();
+		$dialog = COverlayDialogElement::find()->waitUntilReady()->one();
+		$form = $dialog->asForm();
 
 		// Check visible fields depending on LLD type.
 		$permanent_fields = ['Name', 'Type', 'Key', 'Delete lost resources', 'Disable lost resources', 'Description', 'Enabled'];
@@ -460,7 +468,7 @@ class testLowLevelDiscovery extends CWebTest {
 			case 'IPMI agent':
 				if (static::$context === 'host') {
 					// Check red interface info message.
-					$this->assertTrue($form->query('xpath:.//span[@class="red" and text()="No interface found"]')
+					$this->assertTrue($form->query('xpath:.//span[@class="error" and text()="No interface found"]')
 							->one()->isVisible()
 					);
 				}
@@ -525,7 +533,7 @@ class testLowLevelDiscovery extends CWebTest {
 				$timeout_array = [
 					'Global' => [
 						'id:inherited_timeout' => ['enabled' => false, 'visible' => true],
-						'id:timeout' => ['enabled' => false, 'visible' => false]
+						'id:timeout' => ['enabled' => true, 'visible' => false]
 					],
 					'Override' => [
 						'id:inherited_timeout' => ['enabled' => false, 'visible' => false],
@@ -585,9 +593,10 @@ class testLowLevelDiscovery extends CWebTest {
 				// User/password and public/private keys fields dependency on "Authentication method".
 				$key_fields = [
 					'id:username' => ['enabled' => true, 'visible' => true],
-					'id:password' => ['enabled' => true, 'visible' => true],
+					'id:password' => ['enabled' => false, 'visible' => false],
 					'id:publickey' => ['enabled' => true, 'visible' => true],
-					'id:privatekey' => ['enabled' => true, 'visible' => true]
+					'id:privatekey' => ['enabled' => true, 'visible' => true],
+					'id:passphrase' => ['enabled' => true, 'visible' => true]
 				];
 				$this->checkFieldsDependency($form, ['Authentication method' => 'Public key'], $key_fields);
 
@@ -595,7 +604,8 @@ class testLowLevelDiscovery extends CWebTest {
 					'id:username' => ['enabled' => true, 'visible' => true],
 					'id:password' => ['enabled' => true, 'visible' => true],
 					'id:publickey' => ['enabled' => false, 'visible' => false],
-					'id:privatekey' => ['enabled' => false, 'visible' => false]
+					'id:privatekey' => ['enabled' => false, 'visible' => false],
+					'id:passphrase' => ['enabled' => false, 'visible' => false]
 				];
 				$this->checkFieldsDependency($form, ['Authentication method' => 'Password'], $password_fields);
 				break;
@@ -624,8 +634,9 @@ class testLowLevelDiscovery extends CWebTest {
 			? static::$templateid.'&context=template'
 			: static::$hostid.'&context=host';
 
-		$this->page->login()->open('host_discovery.php?filter_set=1&filter_hostids%5B0%5D='.$url);
+		$this->page->login()->open('zabbix.php?action=lldrule.list&filter_set=1&filter_hostids%5B0%5D='.$url);
 		$this->query('link', self::SIMPLE_UPDATE_CLONE_LLD)->waitUntilClickable()->one()->click();
+		COverlayDialogElement::find()->waitUntilReady();
 		$this->query('button:Update')->waitUntilClickable()->one()->click();
 		$this->assertMessage(TEST_GOOD, 'Discovery rule updated');
 		$this->page->assertTitle('Configuration of discovery rules');
@@ -652,12 +663,11 @@ class testLowLevelDiscovery extends CWebTest {
 						'id:custom_timeout' => 'Override',
 						'id:timeout' => ''
 					],
-					'error' => 'Page received incorrect data',
-					'error_details' => [
-						'Incorrect value for field "Name": cannot be empty.',
-						'Incorrect value for field "Key": cannot be empty.',
-						'Field "Update interval" is not correct: a time unit is expected',
-						'Field "Timeout" is not correct: a time unit is expected'
+					'inline_errors' => [
+						'Name' => 'This field cannot be empty.',
+						'Key' => 'This field cannot be empty.',
+						'Update interval' => 'This field cannot be empty.',
+						'id:timeout' => 'This field cannot be empty.'
 					]
 				]
 			],
@@ -666,13 +676,13 @@ class testLowLevelDiscovery extends CWebTest {
 				[
 					'expected' => TEST_BAD,
 					'fields' => [
-						'Name' => 'Update interval validation',
+						'Name' => 'Macro in key',
 						'Type' => 'Zabbix agent',
-						'Key' => 'test',
-						'Update interval' => '1M'
+						'Key' => '{$MACRO}'
 					],
-					'error' => 'Page received incorrect data',
-					'error_details' => 'Field "Update interval" is not correct: a time unit is expected'
+					'inline_errors' => [
+						'Key' => 'Incorrect syntax near "{$MACRO}".'
+					]
 				]
 			],
 			// #2.
@@ -680,40 +690,16 @@ class testLowLevelDiscovery extends CWebTest {
 				[
 					'expected' => TEST_BAD,
 					'fields' => [
-						'Name' => 'Macro in key',
-						'Type' => 'Zabbix agent',
-						'Key' => '{$MACRO}'
-					],
-					'error_details' => 'Invalid parameter "/1/key_": incorrect syntax near "{$MACRO}".'
-				]
-			],
-			// #3.
-			[
-				[
-					'expected' => TEST_BAD,
-					'fields' => [
-						'Name' => '🙂 in key',
+						'Name' => '🙂Symbols in key',
 						'Type' => 'Zabbix agent',
 						'Key' => '🙂🙃み け め 𒁥'
 					],
-					'error_details' => 'Invalid parameter "/1/key_": incorrect syntax near "🙂🙃み け め 𒁥".'
+					'inline_errors' => [
+						'Key' => 'Incorrect syntax near "🙂🙃み け め 𒁥".'
+					]
 				]
 			],
-			// #4.
-			[
-				[
-					'expected' => TEST_BAD,
-					'fields' => [
-						'Name' => 'Update interval validation',
-						'Type' => 'Zabbix agent',
-						'Key' => 'test',
-						'Update interval' => '{#LLD}'
-					],
-					'error' => 'Page received incorrect data',
-					'error_details' => 'Field "Update interval" is not correct: a time unit is expected'
-				]
-			],
-			// #5.
+			// #3.
 			[
 				[
 					'expected' => TEST_BAD,
@@ -723,7 +709,42 @@ class testLowLevelDiscovery extends CWebTest {
 						'Key' => 'test',
 						'Update interval' => 0
 					],
-					'error_details' => 'Invalid parameter "/1/delay": cannot be equal to zero without custom intervals.'
+					'inline_errors' => [
+						'Update interval' => 'This field cannot be set to "0" without defining custom intervals.'
+					],
+					'submit' => true
+				]
+			],
+			// #4.
+			[
+				[
+					'expected' => TEST_BAD,
+					'fields' => [
+						'Name' => 'Scheduling interval validation',
+						'Type' => 'Zabbix agent',
+						'Key' => 'test1',
+						'id:delay_flex_0_type' => 'Scheduling',
+						'id:delay_flex_0_schedule' => 1
+					],
+					'inline_errors' => [
+						'id:delay_flex_0_schedule' => 'Interval: Invalid interval.'
+					]
+				]
+			],
+			// #5.
+			[
+				[
+					'expected' => TEST_BAD,
+					'fields' => [
+						'Name' => 'Scheduling interval validation',
+						'Type' => 'Zabbix agent',
+						'Key' => 'test1',
+						'id:delay_flex_0_type' => 'Scheduling',
+						'id:delay_flex_0_schedule' => 'qd1-5h9-18'
+					],
+					'inline_errors' => [
+						'id:delay_flex_0_schedule' => 'Interval: Invalid interval.'
+					]
 				]
 			],
 			// #6.
@@ -731,12 +752,15 @@ class testLowLevelDiscovery extends CWebTest {
 				[
 					'expected' => TEST_BAD,
 					'fields' => [
-						'Name' => 'Update intervals validation',
+						'Name' => 'Scheduling interval validation',
 						'Type' => 'Zabbix agent',
-						'Key' => 'test',
-						'Update interval' => 86401
+						'Key' => 'test1',
+						'id:delay_flex_0_type' => 'Scheduling',
+						'id:delay_flex_0_schedule' => 'wd1-8h9-18'
 					],
-					'error_details' => 'Invalid parameter "/1/delay": value must be one of 0-86400.'
+					'inline_errors' => [
+						'id:delay_flex_0_schedule' => 'Interval: Invalid interval.'
+					]
 				]
 			],
 			// #7.
@@ -748,54 +772,14 @@ class testLowLevelDiscovery extends CWebTest {
 						'Type' => 'Zabbix agent',
 						'Key' => 'test1',
 						'id:delay_flex_0_type' => 'Scheduling',
-						'id:delay_flex_0_schedule' => 1
+						'id:delay_flex_0_schedule' => 'wd1-5h9-25'
 					],
-					'error_details' => 'Invalid interval "1".'
+					'inline_errors' => [
+						'id:delay_flex_0_schedule' => 'Interval: Invalid interval.'
+					]
 				]
 			],
 			// #8.
-			[
-				[
-					'expected' => TEST_BAD,
-					'fields' => [
-						'Name' => 'Scheduling interval validation',
-						'Type' => 'Zabbix agent',
-						'Key' => 'test1',
-						'id:delay_flex_0_type' => 'Scheduling',
-						'id:delay_flex_0_schedule' => 'qd1-5h9-18'
-					],
-					'error_details' => 'Invalid interval "qd1-5h9-18".'
-				]
-			],
-			// #9.
-			[
-				[
-					'expected' => TEST_BAD,
-					'fields' => [
-						'Name' => 'Scheduling interval validation',
-						'Type' => 'Zabbix agent',
-						'Key' => 'test1',
-						'id:delay_flex_0_type' => 'Scheduling',
-						'id:delay_flex_0_schedule' => 'wd1-8h9-18'
-					],
-					'error_details' => 'Invalid interval "wd1-8h9-18".'
-				]
-			],
-			// #10.
-			[
-				[
-					'expected' => TEST_BAD,
-					'fields' => [
-						'Name' => 'Scheduling interval validation',
-						'Type' => 'Zabbix agent',
-						'Key' => 'test1',
-						'id:delay_flex_0_type' => 'Scheduling',
-						'id:delay_flex_0_schedule' => 'wd1-5h9-25'
-					],
-					'error_details' => 'Invalid interval "wd1-5h9-25".'
-				]
-			],
-			// #11.
 			[
 				[
 					'expected' => TEST_BAD,
@@ -810,7 +794,7 @@ class testLowLevelDiscovery extends CWebTest {
 					'error_details' => 'Invalid parameter "/1/delay": update interval "4w" is longer than period "1-7,00:00-24:00".'
 				]
 			],
-			// #12.
+			// #9.
 			[
 				[
 					'expected' => TEST_BAD,
@@ -819,13 +803,15 @@ class testLowLevelDiscovery extends CWebTest {
 						'Type' => 'Zabbix agent',
 						'Key' => 'test1',
 						'id:delay_flex_0_type' => 'Flexible',
-						'id:delay_flex_0_delay' => '60s',
-						'id:delay_flex_0_period' => '1-8,00:00-24:00'
+						'id:delay_flex_0_period' => '1-8,00:00-24:00',
+						'id:delay_flex_0_delay' => '60s'
 					],
-					'error_details' => 'Invalid interval "1-8,00:00-24:00".'
+					'inline_errors' => [
+						'id:delay_flex_0_period' => 'Period: Invalid period.'
+					]
 				]
 			],
-			// #13.
+			// #10.
 			[
 				[
 					'expected' => TEST_BAD,
@@ -834,55 +820,15 @@ class testLowLevelDiscovery extends CWebTest {
 						'Type' => 'Zabbix agent',
 						'Key' => 'test1',
 						'id:delay_flex_0_type' => 'Flexible',
-						'id:delay_flex_0_delay' => '1M',
-						'id:delay_flex_0_period' => '1-8,00:00-24:00'
+						'id:delay_flex_0_period' => '1-7,00:00-24:00',
+						'id:delay_flex_0_delay' => '1M'
 					],
-					'error_details' => 'Invalid interval "1M".'
+					'inline_errors' => [
+						'id:delay_flex_0_delay' => 'Interval: Invalid interval.'
+					]
 				]
 			],
-			// #14.
-			[
-				[
-					'expected' => TEST_BAD,
-					'fields' => [
-						'Name' => 'Timeout validation',
-						'Type' => 'Zabbix agent',
-						'Key' => 'test',
-						'id:custom_timeout' => 'Override',
-						'id:timeout' => 0
-					],
-					'error_details' => 'Invalid parameter "/1/timeout": value must be one of 1-600.'
-				]
-			],
-			// #15.
-			[
-				[
-					'expected' => TEST_BAD,
-					'fields' => [
-						'Name' => 'Timeout validation',
-						'Type' => 'Zabbix agent',
-						'Key' => 'test',
-						'id:custom_timeout' => 'Override',
-						'id:timeout' => 601
-					],
-					'error_details' => 'Invalid parameter "/1/timeout": value must be one of 1-600.'
-				]
-			],
-			// #16.
-			[
-				[
-					'expected' => TEST_BAD,
-					'fields' => [
-						'Name' => 'Timeout validation',
-						'Type' => 'Zabbix agent',
-						'Key' => 'test',
-						'id:custom_timeout' => 'Override',
-						'id:timeout' => 9999999999
-					],
-					'error_details' => 'Invalid parameter "/1/timeout": a number is too large.'
-				]
-			],
-			// #17.
+			// #11.
 			[
 				[
 					'expected' => TEST_BAD,
@@ -893,8 +839,135 @@ class testLowLevelDiscovery extends CWebTest {
 						'id:custom_timeout' => 'Override',
 						'id:timeout' => 'text'
 					],
-					'error' => 'Page received incorrect data',
-					'error_details' => 'Field "Timeout" is not correct: a time unit is expected'
+					'inline_errors' => [
+						'id:timeout' => 'A time unit is expected.'
+					]
+				]
+			],
+			// #12.
+			[
+				[
+					'expected' => TEST_BAD,
+					'fields' => [
+						'Name' => 'Lifetime fields validation',
+						'Type' => 'Zabbix agent',
+						'Key' => 'test1',
+						'id:lifetime_type' => 'After',
+						'id:lifetime' => '',
+						'id:enabled_lifetime_type' => 'After',
+						'id:enabled_lifetime' => ''
+					],
+					'inline_errors' => [
+						'id:lifetime' => 'This field cannot be empty.',
+						'id:enabled_lifetime' => 'This field cannot be empty.'
+					]
+				]
+			],
+			// #13.
+			[
+				[
+					'expected' => TEST_BAD,
+					'fields' => [
+						'Name' => 'Wrong suffix validation',
+						'Type' => 'Zabbix agent',
+						'Key' => 'test2',
+						'Update interval' => '1M',
+						'id:lifetime_type' => 'After',
+						'id:lifetime' => '1M',
+						'id:enabled_lifetime_type' => 'After',
+						'id:enabled_lifetime' => '1M'
+					],
+					'inline_errors' => [
+						'Update interval' => 'A time unit is expected.',
+						'id:lifetime' => 'A time unit is expected.',
+						'id:enabled_lifetime' => 'A time unit is expected.'
+					]
+				]
+			],
+			// #14.
+			[
+				[
+					'expected' => TEST_BAD,
+					'fields' => [
+						'Name' => 'unsupported LLD macro in fields validation',
+						'Type' => 'Zabbix agent',
+						'Key' => 'test',
+						'Update interval' => '{#LLD}',
+						'id:lifetime_type' => 'After',
+						'id:lifetime' => '{#LLD}',
+						'id:enabled_lifetime_type' => 'After',
+						'id:enabled_lifetime' => '{#LLDMACRO}'
+					],
+					'inline_errors' => [
+						'Update interval' => 'A time unit is expected.',
+						'id:lifetime' => 'A time unit is expected.',
+						'id:enabled_lifetime' => 'A time unit is expected.'
+					]
+				]
+			],
+			// #15.
+			[
+				[
+					'expected' => TEST_BAD,
+					'fields' => [
+						'Name' => 'Lifetime fields validation - below minimum',
+						'Type' => 'Zabbix agent',
+						'Key' => 'test',
+						'id:lifetime_type' => 'After',
+						'id:lifetime' => '1m',
+						'id:enabled_lifetime_type' => 'After',
+						'id:enabled_lifetime' => '1m'
+					],
+					'inline_errors' => [
+						'id:lifetime' => 'Value must be between 3600s (1h) and 788400000s (9125d).',
+						'id:enabled_lifetime' => 'Value must be between 3600s (1h) and 788400000s (9125d).'
+					]
+				]
+			],
+			// #16.
+			[
+				[
+					'expected' => TEST_BAD,
+					'fields' => [
+						'Name' => 'Multiple fields - below minimum no suffix',
+						'Type' => 'Zabbix agent',
+						'Key' => 'test',
+						'id:custom_timeout' => 'Override',
+						'id:timeout' => 0,
+						'id:lifetime_type' => 'After',
+						'id:lifetime' => 3599,
+						'id:enabled_lifetime_type' => 'After',
+						'id:enabled_lifetime' => 3599
+					],
+					'inline_errors' => [
+						'id:timeout' => 'Value must be between 1s and 600s (10m).',
+						'id:lifetime' => 'Value must be between 3600s (1h) and 788400000s (9125d).',
+						'id:enabled_lifetime' => 'Value must be between 3600s (1h) and 788400000s (9125d).'
+					]
+				]
+			],
+			// #17.
+			[
+				[
+					'expected' => TEST_BAD,
+					'fields' => [
+						'Name' => 'Multiple fields - above maximum no suffix',
+						'Type' => 'Zabbix agent',
+						'Key' => 'test',
+						'id:custom_timeout' => 'Override',
+						'id:timeout' => 601,
+						'Update interval' => 86401,
+						'id:lifetime_type' => 'After',
+						'id:lifetime' => 788400001,
+						'id:enabled_lifetime_type' => 'After',
+						'id:enabled_lifetime' => 788400001
+					],
+					'inline_errors' => [
+						'Update interval' => 'Value must be between 0 and 86400s (1d).',
+						'id:timeout' => 'Value must be between 1s and 600s (10m).',
+						'id:lifetime' => 'Value must be between 3600s (1h) and 788400000s (9125d).',
+						'id:enabled_lifetime' => 'Value must be between 3600s (1h) and 788400000s (9125d).'
+					]
 				]
 			],
 			// #18.
@@ -902,13 +975,18 @@ class testLowLevelDiscovery extends CWebTest {
 				[
 					'expected' => TEST_BAD,
 					'fields' => [
-						'Name' => 'Lifetime fields validation 1',
+						'Name' => 'Lifetime fields - above maximum with suffix',
 						'Type' => 'Zabbix agent',
-						'Key' => 'test1',
+						'Key' => 'test',
 						'id:lifetime_type' => 'After',
-						'id:lifetime' => ''
+						'id:lifetime' => '9126d',
+						'id:enabled_lifetime_type' => 'After',
+						'id:enabled_lifetime' => '9126d'
 					],
-					'error_details' => 'Invalid parameter "/1/lifetime": cannot be empty.'
+					'inline_errors' => [
+						'id:lifetime' => 'Value must be between 3600s (1h) and 788400000s (9125d).',
+						'id:enabled_lifetime' => 'Value must be between 3600s (1h) and 788400000s (9125d).'
+					]
 				]
 			],
 			// #19.
@@ -916,196 +994,7 @@ class testLowLevelDiscovery extends CWebTest {
 				[
 					'expected' => TEST_BAD,
 					'fields' => [
-						'Name' => 'Lifetime fields validation 2',
-						'Type' => 'Zabbix agent',
-						'Key' => 'test2',
-						'id:lifetime_type' => 'After',
-						'id:lifetime' => '1M'
-					],
-					'error_details' => 'Invalid parameter "/1/lifetime": a time unit is expected.'
-				]
-			],
-			// #20.
-			[
-				[
-					'expected' => TEST_BAD,
-					'fields' => [
-						'Name' => 'Lifetime fields validation',
-						'Type' => 'Zabbix agent',
-						'Key' => 'test',
-						'id:lifetime_type' => 'After',
-						'id:lifetime' => '{#LLD}'
-					],
-					'error_details' => 'Invalid parameter "/1/lifetime": a time unit is expected.'
-				]
-			],
-			// #21.
-			[
-				[
-					'expected' => TEST_BAD,
-					'fields' => [
-						'Name' => 'Lifetime fields validation',
-						'Type' => 'Zabbix agent',
-						'Key' => 'test',
-						'id:lifetime_type' => 'After',
-						'id:lifetime' => 1
-					],
-					'error_details' => 'Invalid parameter "/1/lifetime": value must be one of 0, 3600-788400000.'
-				]
-			],
-			// #22.
-			[
-				[
-					'expected' => TEST_BAD,
-					'fields' => [
-						'Name' => 'Lifetime fields validation',
-						'Type' => 'Zabbix agent',
-						'Key' => 'test',
-						'id:lifetime_type' => 'After',
-						'id:lifetime' => 3599
-					],
-					'error_details' => 'Invalid parameter "/1/lifetime": value must be one of 0, 3600-788400000.'
-				]
-			],
-			// #23.
-			[
-				[
-					'expected' => TEST_BAD,
-					'fields' => [
-						'Name' => 'Lifetime fields validation',
-						'Type' => 'Zabbix agent',
-						'Key' => 'test',
-						'id:lifetime_type' => 'After',
-						'id:lifetime' => 788400001
-					],
-					'error_details' => 'Invalid parameter "/1/lifetime": value must be one of 0, 3600-788400000.'
-				]
-			],
-			// #24.
-			[
-				[
-					'expected' => TEST_BAD,
-					'fields' => [
-						'Name' => 'Lifetime fields validation',
-						'Type' => 'Zabbix agent',
-						'Key' => 'test',
-						'id:lifetime_type' => 'After',
-						'id:lifetime' => 999999999999
-					],
-					'error_details' => 'Invalid parameter "/1/lifetime": a number is too large.'
-				]
-			],
-			// #25.
-			[
-				[
-					'expected' => TEST_BAD,
-					'fields' => [
-						'Name' => 'Lifetime fields validation',
-						'Type' => 'Zabbix agent',
-						'Key' => 'test',
-						'id:lifetime_type' => 'Never',
-						'id:enabled_lifetime_type' => 'After',
-						'id:enabled_lifetime' => ''
-					],
-					'error_details' => 'Invalid parameter "/1/enabled_lifetime": cannot be empty.'
-				]
-			],
-			// #26.
-			[
-				[
-					'expected' => TEST_BAD,
-					'fields' => [
-						'Name' => 'Lifetime fields validation',
-						'Type' => 'Zabbix agent',
-						'Key' => 'test',
-						'id:lifetime_type' => 'Never',
-						'id:enabled_lifetime_type' => 'After',
-						'id:enabled_lifetime' => '1M'
-					],
-					'error_details' => 'Invalid parameter "/1/enabled_lifetime": a time unit is expected.'
-				]
-			],
-			// #27.
-			[
-				[
-					'expected' => TEST_BAD,
-					'fields' => [
-						'Name' => 'Lifetime fields validation',
-						'Type' => 'Zabbix agent',
-						'Key' => 'test',
-						'id:lifetime_type' => 'Never',
-						'id:enabled_lifetime_type' => 'After',
-						'id:enabled_lifetime' => '{#LLDMACRO}'
-					],
-					'error_details' => 'Invalid parameter "/1/enabled_lifetime": a time unit is expected.'
-				]
-			],
-			// #28.
-			[
-				[
-					'expected' => TEST_BAD,
-					'fields' => [
-						'Name' => 'Lifetime fields validation',
-						'Type' => 'Zabbix agent',
-						'Key' => 'test',
-						'id:lifetime_type' => 'Never',
-						'id:enabled_lifetime_type' => 'After',
-						'id:enabled_lifetime' => 1
-					],
-					'error_details' => 'Invalid parameter "/1/enabled_lifetime": value must be one of 0, 3600-788400000.'
-				]
-			],
-			// #29.
-			[
-				[
-					'expected' => TEST_BAD,
-					'fields' => [
-						'Name' => 'Lifetime fields validation',
-						'Type' => 'Zabbix agent',
-						'Key' => 'test',
-						'id:lifetime_type' => 'Never',
-						'id:enabled_lifetime_type' => 'After',
-						'id:enabled_lifetime' => 3599
-					],
-					'error_details' => 'Invalid parameter "/1/enabled_lifetime": value must be one of 0, 3600-788400000.'
-				]
-			],
-			// #30.
-			[
-				[
-					'expected' => TEST_BAD,
-					'fields' => [
-						'Name' => 'Lifetime fields validation',
-						'Type' => 'Zabbix agent',
-						'Key' => 'test',
-						'id:lifetime_type' => 'Never',
-						'id:enabled_lifetime_type' => 'After',
-						'id:enabled_lifetime' => 788400001
-					],
-					'error_details' => 'Invalid parameter "/1/enabled_lifetime": value must be one of 0, 3600-788400000.'
-				]
-			],
-			// #31.
-			[
-				[
-					'expected' => TEST_BAD,
-					'fields' => [
-						'Name' => 'Lifetime fields validation',
-						'Type' => 'Zabbix agent',
-						'Key' => 'test',
-						'id:lifetime_type' => 'Never',
-						'id:enabled_lifetime_type' => 'After',
-						'id:enabled_lifetime' => 999999999999
-					],
-					'error_details' => 'Invalid parameter "/1/enabled_lifetime": a number is too large.'
-				]
-			],
-			// #32.
-			[
-				[
-					'expected' => TEST_BAD,
-					'fields' => [
-						'Name' => 'Lifetime fields validation',
+						'Name' => 'Lifetime fields - disable larger than delete',
 						'Type' => 'Zabbix agent',
 						'Key' => 'test',
 						'id:lifetime_type' => 'After',
@@ -1113,11 +1002,11 @@ class testLowLevelDiscovery extends CWebTest {
 						'id:enabled_lifetime_type' => 'After',
 						'id:enabled_lifetime' => '1d'
 					],
-					'error_details' => 'Incorrect value for field "Disable lost resources":'.
-						' cannot be greater than or equal to the value of field "Delete lost resources".'
+					'error_details' => 'Invalid parameter "/1/enabled_lifetime": cannot be greater than or equal to the'.
+							' value of parameter "/1/lifetime".'
 				]
 			],
-			// #33.
+			// #20.
 			[
 				[
 					'expected' => TEST_BAD,
@@ -1127,11 +1016,12 @@ class testLowLevelDiscovery extends CWebTest {
 						'Key' => 'snmp.test',
 						'SNMP OID' => ''
 					],
-					'error' => 'Page received incorrect data',
-					'error_details' => 'Incorrect value for field "SNMP OID": cannot be empty.'
+					'inline_errors' => [
+						'SNMP OID' => 'This field cannot be empty.'
+					]
 				]
 			],
-			// #34.
+			// #21.
 			[
 				[
 					'expected' => TEST_BAD,
@@ -1141,24 +1031,12 @@ class testLowLevelDiscovery extends CWebTest {
 						'Key' => 'test[1]',
 						'Allowed hosts' => '::ffff:127.0.0.1'
 					],
-					'error_details' => 'Invalid parameter "/1/trapper_hosts": incorrect address starting from ".0.0.1".'
+					'inline_errors' => [
+						'Allowed hosts' => 'Incorrect address starting from ".0.0.1".'
+					]
 				]
 			],
-			// #35.
-			[
-				[
-					'expected' => TEST_BAD,
-					'fields' => [
-						'Name' => 'Database monitor',
-						'Type' => 'Database monitor',
-						'Key' => 'db.check',
-						'SQL query' => ''
-					],
-					'error' => 'Page received incorrect data',
-					'error_details' => 'Incorrect value for field "SQL query": cannot be empty.'
-				]
-			],
-			// #36.
+			// #22.
 			[
 				[
 					'expected' => TEST_BAD,
@@ -1166,12 +1044,15 @@ class testLowLevelDiscovery extends CWebTest {
 						'Name' => 'Database monitor',
 						'Type' => 'Database monitor',
 						'Key' => 'db.odbc.select[<unique short description>,<dsn>,<connection string>]',
-						'SQL query' => 'test'
+						'SQL query' => ''
 					],
-					'error_details' => 'Check the key, please. Default example was passed.'
+					'inline_errors' => [
+						'Key' => 'Check the key, please. Default example was passed.',
+						'SQL query' => 'This field cannot be empty.'
+					]
 				]
 			],
-			// #37.
+			// #23.
 			[
 				[
 					'expected' => TEST_BAD,
@@ -1179,58 +1060,23 @@ class testLowLevelDiscovery extends CWebTest {
 						'Name' => 'HTTP check',
 						'Type' => 'HTTP agent',
 						'Key' => 'http.check',
-						'URL' => ''
-					],
-					'error' => 'Page received incorrect data',
-					'error_details' => 'Incorrect value for field "URL": cannot be empty.'
-				]
-			],
-			// #38.
-			[
-				[
-					'expected' => TEST_BAD,
-					'fields' => [
-						'Name' => 'HTTP check',
-						'Type' => 'HTTP agent',
-						'Key' => 'http.check',
-						'URL' => 'test',
+						'URL' => '',
 						'name:query_fields[0][name]' => '',
-						'name:query_fields[0][value]' => 'test'
-					],
-					'error_details' => 'Invalid parameter "/1/query_fields/1/name": cannot be empty.'
-				]
-			],
-			// #39.
-			[
-				[
-					'expected' => TEST_BAD,
-					'fields' => [
-						'Name' => 'HTTP check',
-						'Type' => 'HTTP agent',
-						'Key' => 'http.check',
-						'URL' => 'test',
+						'name:query_fields[0][value]' => 'test',
 						'name:headers[0][name]' => '',
-						'name:headers[0][value]' => 'test'
-					],
-					'error_details' => 'Invalid parameter "/1/headers/1/name": cannot be empty.'
-				]
-			],
-			// #40.
-			[
-				[
-					'expected' => TEST_BAD,
-					'fields' => [
-						'Name' => 'HTTP LLD simple 2',
-						'Type' => 'HTTP agent',
-						'Key' => 'http_check[2]',
-						'URL' => 'www.test.com/search',
+						'name:headers[0][value]' => 'test',
 						'Request body type' => 'JSON data',
 						'Request body' => ''
 					],
-					'error_details' => 'Invalid parameter "/1/posts": cannot be empty.'
+					'inline_errors' => [
+						'URL' => 'This field cannot be empty.',
+						'name:query_fields[0][name]' => 'This field cannot be empty.',
+						'name:headers[0][name]' => 'This field cannot be empty.',
+						'Request body' => 'This field cannot be empty.'
+					]
 				]
 			],
-			// #41.
+			// #24.
 			[
 				[
 					'expected' => TEST_BAD,
@@ -1243,26 +1089,12 @@ class testLowLevelDiscovery extends CWebTest {
 						'Request body type' => 'XML data',
 						'Request body' => ''
 					],
-					'error_details' => 'Invalid parameter "/1/posts": cannot be empty.'
+					'inline_errors' => [
+						'Request body' => 'This field cannot be empty.'
+					]
 				]
 			],
-			// #42.
-			[
-				[
-					'expected' => TEST_BAD,
-					'fields' => [
-						'Name' => 'HTTP check',
-						'Type' => 'HTTP agent',
-						'Key' => 'http.check',
-						'URL' => 'test',
-						'Request type' => 'PUT',
-						'Request body type' => 'XML data',
-						'Request body' => 'test'
-					],
-					'error_details' => 'Invalid parameter "/1/posts": (4) Start tag expected, '<' not found [Line: 1 | Column: 1].'
-				]
-			],
-			// #43.
+			// #25.
 			[
 				[
 					'expected' => TEST_BAD,
@@ -1274,10 +1106,12 @@ class testLowLevelDiscovery extends CWebTest {
 						'Enable trapping' => true,
 						'Allowed hosts' => '::ffff:127.0.0.1'
 					],
-					'error_details' => 'Invalid parameter "/1/trapper_hosts": incorrect address starting from ".0.0.1".'
+					'inline_errors' => [
+						'Allowed hosts' => 'Incorrect address starting from ".0.0.1".'
+					]
 				]
 			],
-			// #44.
+			// #26.
 			[
 				[
 					'expected' => TEST_BAD,
@@ -1287,28 +1121,12 @@ class testLowLevelDiscovery extends CWebTest {
 						'Key' => 'ipmi_check[]',
 						'IPMI sensor' => ''
 					],
-					'error_details' => 'Invalid parameter "/1/ipmi_sensor": cannot be empty.'
-				]
-			],
-			// #45.
-			[
-				[
-					'expected' => TEST_BAD,
-					'fields' => [
-						'Name' => 'SSH agent LLD',
-						'Type' => 'SSH agent',
-						'Key' => 'ssh_check[]',
-						'User name' => '',
-						'Executed script' => ''
-					],
-					'error' => 'Page received incorrect data',
-					'error_details' => [
-						'Incorrect value for field "User name": cannot be empty.',
-						'Incorrect value for field "Executed script": cannot be empty.'
+					'inline_errors' => [
+						'IPMI sensor' => 'This field cannot be empty.'
 					]
 				]
 			],
-			// #46.
+			// #27.
 			[
 				[
 					'expected' => TEST_BAD,
@@ -1316,13 +1134,17 @@ class testLowLevelDiscovery extends CWebTest {
 						'Name' => 'SSH agent LLD',
 						'Type' => 'SSH agent',
 						'Key' => 'ssh.run[<unique short description>,<ip>,<port>,<encoding>,<ssh options>,<subsystem>]',
-						'User name' => 'test_user',
-						'Executed script' => 'test_script'
+						'User name' => '',
+						'Executed script' => ''
 					],
-					'error_details' => 'Check the key, please. Default example was passed.'
+					'inline_errors' => [
+						'Key' => 'Check the key, please. Default example was passed.',
+						'User name' => 'This field cannot be empty.',
+						'Executed script' => 'This field cannot be empty.'
+					]
 				]
 			],
-			// #47.
+			// #28.
 			[
 				[
 					'expected' => TEST_BAD,
@@ -1333,14 +1155,31 @@ class testLowLevelDiscovery extends CWebTest {
 						'User name' => '',
 						'Executed script' => ''
 					],
-					'error' => 'Page received incorrect data',
-					'error_details' => [
-						'Incorrect value for field "User name": cannot be empty.',
-						'Incorrect value for field "Executed script": cannot be empty.'
+					'inline_errors' => [
+						'User name' => 'This field cannot be empty.',
+						'Executed script' => 'This field cannot be empty.'
 					]
 				]
 			],
-			// #48.
+			// #29.
+			[
+				[
+					'expected' => TEST_BAD,
+					'fields' => [
+						'Name' => 'JMX agent LLD - empty fields',
+						'Type' => 'JMX agent',
+						'Key' => 'jmx_check[]',
+						'JMX endpoint' => '',
+						'User name' => 'user',
+						'Password' => ''
+					],
+					'inline_errors' => [
+						'JMX endpoint' => 'This field cannot be empty.',
+						'Password' => 'This field cannot be empty.'
+					]
+				]
+			],
+			// #30.
 			[
 				[
 					'expected' => TEST_BAD,
@@ -1348,15 +1187,16 @@ class testLowLevelDiscovery extends CWebTest {
 						'Name' => 'JMX agent LLD empty',
 						'Type' => 'JMX agent',
 						'Key' => 'jmx_check[]',
-						'JMX endpoint' => '',
+						'JMX endpoint' => 'endpoint',
 						'User name' => '',
-						'Password' => ''
+						'Password' => 'password'
 					],
-					'error' => 'Page received incorrect data',
-					'error_details' => 'Incorrect value for field "jmx_endpoint": cannot be empty.'
+					'inline_errors' => [
+						'Password' => 'Both username and password should be either present or empty.'
+					]
 				]
 			],
-			// #49.
+			// #31.
 			[
 				[
 					'expected' => TEST_BAD,
@@ -1366,71 +1206,31 @@ class testLowLevelDiscovery extends CWebTest {
 						'Key' => 'dependent_check[]',
 						'Master item' => ''
 					],
-					'error' => 'Page received incorrect data',
-					'error_details' => 'Field "Master item" is mandatory.'
+					'inline_errors' => [
+						'Master item' => 'This field cannot be empty.'
+					]
 				]
 			],
-			// #50.
+			// #32.
 			[
 				[
 					'expected' => TEST_BAD,
 					'fields' => [
-						'Name' => 'JMX agent',
-						'Type' => 'JMX agent',
-						'Key' => 'jmx_check[]',
-						'User name' => 'Test',
-						'Password' => '',
-						'JMX endpoint' => 'test'
-					],
-					'error_details' => 'Invalid parameter "/1": both username and password should be either present or empty.'
-				]
-			],
-			// #51.
-			[
-				[
-					'expected' => TEST_BAD,
-					'fields' => [
-						'Name' => 'JMX agent',
-						'Type' => 'JMX agent',
-						'Key' => 'jmx_check[]',
-						'User name' => '',
-						'Password' => 'Test',
-						'JMX endpoint' => 'test'
-					],
-					'error_details' => 'Invalid parameter "/1": both username and password should be either present or empty.'
-				]
-			],
-			// #52.
-			[
-				[
-					'expected' => TEST_BAD,
-					'fields' => [
-						'Name' => 'Empty script',
+						'Name' => 'Empty script and parameter name',
 						'Type' => 'Script',
 						'Key' => 'script_check[3]',
-						'Script' => ""
-					],
-					'error' => 'Page received incorrect data',
-					'error_details' => 'Incorrect value for field "Script": cannot be empty.'
-				]
-			],
-			// #53.
-			[
-				[
-					'expected' => TEST_BAD,
-					'fields' => [
-						'Name' => 'Empty script',
-						'Type' => 'Script',
-						'Key' => 'script_check[4]',
-						'Script' => 'wait(2000).then(() => goToPage());'
+						'Script' => ''
 					],
 					'Parameters' => [
 						['Name' => '', 'Value' => 'value_1']
 					],
-					'error_details' => 'Invalid parameter "/1/parameters/1/name": cannot be empty.'
+					'inline_errors' => [
+						'id:script' => 'This field cannot be empty.',
+						'name:parameters[0][name]' => 'This field cannot be empty.'
+					]
 				]
 			],
-			// #54.
+			// #33.
 			[
 				[
 					'fields' => [
@@ -1440,7 +1240,7 @@ class testLowLevelDiscovery extends CWebTest {
 					]
 				]
 			],
-			// #55.
+			// #34.
 			[
 				[
 					'fields' => [
@@ -1461,7 +1261,7 @@ class testLowLevelDiscovery extends CWebTest {
 					'trim' => true
 				]
 			],
-			// #56.
+			// #35.
 			[
 				[
 					'fields' => [
@@ -1476,7 +1276,7 @@ class testLowLevelDiscovery extends CWebTest {
 					'trim' => true
 				]
 			],
-			// #57.
+			// #36.
 			[
 				[
 					'fields' => [
@@ -1495,7 +1295,7 @@ class testLowLevelDiscovery extends CWebTest {
 					'trim' => true
 				]
 			],
-			// #58.
+			// #37.
 			[
 				[
 					'fields' => [
@@ -1511,7 +1311,7 @@ class testLowLevelDiscovery extends CWebTest {
 					]
 				]
 			],
-			// #59.
+			// #38.
 			[
 				[
 					'fields' => [
@@ -1523,7 +1323,7 @@ class testLowLevelDiscovery extends CWebTest {
 					'trim' => true
 				]
 			],
-			// #60.
+			// #39.
 			[
 				[
 					'fields' => [
@@ -1534,7 +1334,7 @@ class testLowLevelDiscovery extends CWebTest {
 					]
 				]
 			],
-			// #61.
+			// #40.
 			[
 				[
 					'fields' => [
@@ -1545,7 +1345,7 @@ class testLowLevelDiscovery extends CWebTest {
 					]
 				]
 			],
-			// #62.
+			// #41.
 			[
 				[
 					'fields' => [
@@ -1555,7 +1355,7 @@ class testLowLevelDiscovery extends CWebTest {
 					]
 				]
 			],
-			// #63.
+			// #42.
 			[
 				[
 					'fields' => [
@@ -1568,7 +1368,7 @@ class testLowLevelDiscovery extends CWebTest {
 					'trim' => true
 				]
 			],
-			// #64.
+			// #43.
 			[
 				[
 					'fields' => [
@@ -1578,7 +1378,7 @@ class testLowLevelDiscovery extends CWebTest {
 					]
 				]
 			],
-			// #65.
+			// #44.
 			[
 				[
 					'fields' => [
@@ -1590,7 +1390,7 @@ class testLowLevelDiscovery extends CWebTest {
 					'trim' => true
 				]
 			],
-			// #66.
+			// #45.
 			[
 				[
 					'fields' => [
@@ -1601,7 +1401,7 @@ class testLowLevelDiscovery extends CWebTest {
 					]
 				]
 			],
-			// #67.
+			// #46.
 			[
 				[
 					'fields' => [
@@ -1614,7 +1414,7 @@ class testLowLevelDiscovery extends CWebTest {
 					]
 				]
 			],
-			// #68.
+			// #47.
 			[
 				[
 					'fields' => [
@@ -1627,7 +1427,7 @@ class testLowLevelDiscovery extends CWebTest {
 					]
 				]
 			],
-			// #69.
+			// #48.
 			[
 				[
 					'fields' => [
@@ -1652,7 +1452,7 @@ class testLowLevelDiscovery extends CWebTest {
 					]
 				]
 			],
-			// #70.
+			// #49.
 			[
 				[
 					'fields' => [
@@ -1673,12 +1473,10 @@ class testLowLevelDiscovery extends CWebTest {
 						'HTTP proxy' => '      {$MACRO}           ',
 						'HTTP authentication' => 'Basic',
 						'id:http_username' => '         {$MACRO}        ',
-						'id:http_password' => '        {$MACRO}        ',
 						'SSL verify peer' => false,
 						'SSL verify host' => false,
 						'SSL certificate file' => '        {$MACRO}      ',
 						'SSL key file' => '       {$MACRO}          ',
-						'SSL key password' => '              {$MACRO}       ',
 						'Update interval' => '      {$MACRO}      ',
 						'id:custom_timeout' => 'Override',
 						'id:timeout' => '       {$MACRO}      ',
@@ -1697,7 +1495,7 @@ class testLowLevelDiscovery extends CWebTest {
 					'trim' => true
 				]
 			],
-			// #71.
+			// #50.
 			[
 				[
 					'fields' => [
@@ -1723,7 +1521,7 @@ class testLowLevelDiscovery extends CWebTest {
 					]
 				]
 			],
-			// #72.
+			// #51.
 			[
 				[
 					'fields' => [
@@ -1741,15 +1539,15 @@ class testLowLevelDiscovery extends CWebTest {
 						'HTTP proxy' => '{HOST.HOST}',
 						'HTTP authentication' => 'Kerberos',
 						'id:http_username' => '{#LLD_MACRO}',
-						'id:http_password' => '{?EXPRESSION}',
+						'id:http_password' => '    {?EXPRESSION}    ',
 						'SSL certificate file' => '{#LLD_MACRO}',
 						'SSL key file' => '{#LLD_MACRO}',
-						'SSL key password' => '{#LLD_MACRO}',
+						'SSL key password' => '    {#LLD_MACRO}    ',
 						'Description' => '{?EXPRESSION}'
 					]
 				]
 			],
-			// #73.
+			// #52.
 			[
 				[
 					'fields' => [
@@ -1761,7 +1559,7 @@ class testLowLevelDiscovery extends CWebTest {
 					]
 				]
 			],
-			// #74.
+			// #53.
 			[
 				[
 					'fields' => [
@@ -1774,7 +1572,7 @@ class testLowLevelDiscovery extends CWebTest {
 					]
 				]
 			],
-			// #75.
+			// #54.
 			[
 				[
 					'fields' => [
@@ -1782,13 +1580,13 @@ class testLowLevelDiscovery extends CWebTest {
 						'Type' => 'SSH agent',
 						'Key' => 'ssh_check[🙂🙃み け め 𒁥]       ',
 						'User name' => '         🙂🙃み け め 𒁥        ',
-						'Password' => '       🙂🙃み け め 𒁥       ',
+						'Password' => '🙂🙃み け め 𒁥',
 						'Executed script' => '        🙂🙃み け め 𒁥         '
 					],
 					'trim' => true
 				]
 			],
-			// #76.
+			// #55.
 			[
 				[
 					'fields' => [
@@ -1796,12 +1594,12 @@ class testLowLevelDiscovery extends CWebTest {
 						'Type' => 'SSH agent',
 						'Key' => 'ssh_check[2]',
 						'User name' => '{$MACRO}',
-						'Password' => '{$MACRO}',
+						'Password' => '    {$MACRO}    ',
 						'Executed script' => '{$MACRO}'
 					]
 				]
 			],
-			// #77.
+			// #56.
 			[
 				[
 					'fields' => [
@@ -1809,13 +1607,13 @@ class testLowLevelDiscovery extends CWebTest {
 						'Type' => 'TELNET agent',
 						'Key' => 'telnet_check[{$MACRO}]',
 						'User name' => '  {$MACRO}     ',
-						'Password' => '   {$MACRO}       ',
+						'Password' => '{$MACRO}',
 						'Executed script' => '      {$MACRO}  🙂🙃み け め 𒁥     '
 					],
 					'trim' => true
 				]
 			],
-			// #78.
+			// #57.
 			[
 				[
 					'fields' => [
@@ -1830,7 +1628,7 @@ class testLowLevelDiscovery extends CWebTest {
 					'trim' => true
 				]
 			],
-			// #79.
+			// #58.
 			[
 				[
 					'fields' => [
@@ -1841,7 +1639,7 @@ class testLowLevelDiscovery extends CWebTest {
 					]
 				]
 			],
-			// #80.
+			// #59.
 			[
 				[
 					'fields' => [
@@ -1857,7 +1655,7 @@ class testLowLevelDiscovery extends CWebTest {
 					'trim' => true
 				]
 			],
-			// #81.
+			// #60.
 			[
 				[
 					'fields' => [
@@ -1865,8 +1663,8 @@ class testLowLevelDiscovery extends CWebTest {
 						'Type' => 'Script',
 						'Key' => 'script_check[2]',
 						'Script' => "const = 'Hello World!';".
-								"\r\nlet favePhrase = const;".
-								"\r\nnconsole.log(favePhrase);"
+								"\nlet favePhrase = const;".
+								"\nnconsole.log(favePhrase);"
 					],
 					'Parameters' => [
 						['Name' => 'param_1', 'Value' => 'value_1'],
@@ -1875,7 +1673,7 @@ class testLowLevelDiscovery extends CWebTest {
 				]
 			],
 			// LLD Macros tab.
-			// #82.
+			// #61.
 			[
 				[
 					'expected' => TEST_BAD,
@@ -1890,7 +1688,7 @@ class testLowLevelDiscovery extends CWebTest {
 					'error_details' => 'Invalid parameter "/1/lld_macro_paths/1/path": cannot be empty.'
 				]
 			],
-			// #83.
+			// #62.
 			[
 				[
 					'expected' => TEST_BAD,
@@ -1902,10 +1700,12 @@ class testLowLevelDiscovery extends CWebTest {
 					'LLD macros' => [
 						['LLD macro' => '{MACRO}', 'JSONPath' => '$.path']
 					],
-					'error_details' => 'Invalid parameter "/1/lld_macro_paths/1/lld_macro": a low-level discovery macro is expected.'
+					'inline_errors' => [
+						'id:lld_macro_paths_0_lld_macro' => 'Expected LLD macro format is "{#MACRO}".'
+					]
 				]
 			],
-			// #84.
+			// #63.
 			[
 				[
 					'expected' => TEST_BAD,
@@ -1917,10 +1717,12 @@ class testLowLevelDiscovery extends CWebTest {
 					'LLD macros' => [
 						['LLD macro' => '{#МАКРО}', 'JSONPath' => '$.path']
 					],
-					'error_details' => 'Invalid parameter "/1/lld_macro_paths/1/lld_macro": a low-level discovery macro is expected.'
+					'inline_errors' => [
+						'id:lld_macro_paths_0_lld_macro' => 'Expected LLD macro format is "{#MACRO}".'
+					]
 				]
 			],
-			// #85.
+			// #64.
 			[
 				[
 					'expected' => TEST_BAD,
@@ -1932,10 +1734,12 @@ class testLowLevelDiscovery extends CWebTest {
 					'LLD macros' => [
 						['LLD macro' => '{#MACRO!@$%^&*()_+|?}', 'JSONPath' => '$.path']
 					],
-					'error_details' => 'Invalid parameter "/1/lld_macro_paths/1/lld_macro": a low-level discovery macro is expected.'
+					'inline_errors' => [
+						'id:lld_macro_paths_0_lld_macro' => 'Expected LLD macro format is "{#MACRO}".'
+					]
 				]
 			],
-			// #86.
+			// #65.
 			[
 				[
 					'expected' => TEST_BAD,
@@ -1947,10 +1751,12 @@ class testLowLevelDiscovery extends CWebTest {
 					'LLD macros' => [
 						['LLD macro' => '', 'JSONPath' => '$.path']
 					],
-					'error_details' => 'Invalid parameter "/1/lld_macro_paths/1/lld_macro": cannot be empty.'
+					'inline_errors' => [
+						'id:lld_macro_paths_0_lld_macro' => 'This field cannot be empty.'
+					]
 				]
 			],
-			// #87.
+			// #66.
 			[
 				[
 					'expected' => TEST_BAD,
@@ -1962,10 +1768,12 @@ class testLowLevelDiscovery extends CWebTest {
 					'LLD macros' => [
 						['LLD macro' => '{$MACRO:A}', 'JSONPath' => '$.path']
 					],
-					'error_details' => 'Invalid parameter "/1/lld_macro_paths/1/lld_macro": a low-level discovery macro is expected.'
+					'inline_errors' => [
+						'id:lld_macro_paths_0_lld_macro' => 'Expected LLD macro format is "{#MACRO}".'
+					]
 				]
 			],
-			// #88.
+			// #67.
 			[
 				[
 					'expected' => TEST_BAD,
@@ -1978,10 +1786,12 @@ class testLowLevelDiscovery extends CWebTest {
 						['LLD macro' => '{#MACRO}', 'JSONPath' => '$.path.a'],
 						['LLD macro' => '{#MACRO}', 'JSONPath' => '$.path.2']
 					],
-					'error_details' => 'Invalid parameter "/1/lld_macro_paths/2": value (lld_macro)=({#MACRO}) already exists.'
+					'inline_errors' => [
+						'id:lld_macro_paths_1_lld_macro' => 'Entry "lld_macro={#MACRO}" is not unique.'
+					]
 				]
 			],
-			// #89.
+			// #68.
 			[
 				[
 					'fields' => [
@@ -1996,7 +1806,7 @@ class testLowLevelDiscovery extends CWebTest {
 				]
 			],
 			// Filters tab.
-			// #90.
+			// #69.
 			[
 				[
 					'fields' => [
@@ -2011,7 +1821,7 @@ class testLowLevelDiscovery extends CWebTest {
 					]
 				]
 			],
-			// #91.
+			// #70.
 			[
 				[
 					'fields' => [
@@ -2026,7 +1836,7 @@ class testLowLevelDiscovery extends CWebTest {
 					]
 				]
 			],
-			// #92.
+			// #71.
 			[
 				[
 					'fields' => [
@@ -2043,7 +1853,7 @@ class testLowLevelDiscovery extends CWebTest {
 					]
 				]
 			],
-			// #93.
+			// #72.
 			[
 				[
 					'fields' => [
@@ -2060,7 +1870,7 @@ class testLowLevelDiscovery extends CWebTest {
 					]
 				]
 			],
-			// #94.
+			// #73.
 			[
 				[
 					'fields' => [
@@ -2077,7 +1887,7 @@ class testLowLevelDiscovery extends CWebTest {
 					]
 				]
 			],
-			// #95.
+			// #74.
 			[
 				[
 					'fields' => [
@@ -2096,7 +1906,7 @@ class testLowLevelDiscovery extends CWebTest {
 					]
 				]
 			],
-			// #96.
+			// #75.
 			[
 				[
 					'expected' => TEST_BAD,
@@ -2110,10 +1920,12 @@ class testLowLevelDiscovery extends CWebTest {
 							['Macro' => '{TEST_MACRO}', 'operator' => 'does not match', 'Regular expression' => 'Test expression']
 						]
 					],
-					'error_details' => 'Invalid parameter "/1/filter/conditions/1/macro": a low-level discovery macro is expected.'
+					'inline_errors' => [
+						'id:conditions_0_macro' => 'Expected LLD macro format is "{#MACRO}".'
+					]
 				]
 			],
-			// #97.
+			// #76.
 			[
 				[
 					'expected' => TEST_BAD,
@@ -2130,10 +1942,12 @@ class testLowLevelDiscovery extends CWebTest {
 							['Macro' => '{#TEST_MACRO2}', 'operator' => 'exists']
 						]
 					],
-					'error_details' => 'Invalid parameter "/1/filter/formula": cannot be empty.'
+					'inline_errors' => [
+						'id:formula' => 'This field cannot be empty.'
+					]
 				]
 			],
-			// #98.
+			// #77.
 			[
 				[
 					'expected' => TEST_BAD,
@@ -2153,7 +1967,7 @@ class testLowLevelDiscovery extends CWebTest {
 					'error_details' => 'Invalid parameter "/1/filter/formula": missing filter condition "F".'
 				]
 			],
-			// #99.
+			// #78.
 			[
 				[
 					'expected' => TEST_BAD,
@@ -2175,7 +1989,7 @@ class testLowLevelDiscovery extends CWebTest {
 						' defined in the formula.'
 				]
 			],
-			// #100.
+			// #79.
 			[
 				[
 					'expected' => TEST_BAD,
@@ -2192,10 +2006,12 @@ class testLowLevelDiscovery extends CWebTest {
 							['Macro' => '{#TEST_MACRO2}', 'operator' => 'does not match', 'Regular expression' => 'Test expression 2']
 						]
 					],
-					'error_details' => 'Invalid parameter "/1/filter/formula": incorrect syntax near "Wrong formula".'
+					'inline_errors' => [
+						'id:formula' => 'Incorrect syntax near "Wrong formula".'
+					]
 				]
 			],
-			// #101.
+			// #80.
 			[
 				[
 					'expected' => TEST_BAD,
@@ -2212,10 +2028,12 @@ class testLowLevelDiscovery extends CWebTest {
 							['Macro' => '{#TEST_MACRO2}', 'operator' => 'does not match', 'Regular expression' => 'Test expression 2']
 						]
 					],
-					'error_details' => 'Invalid parameter "/1/filter/formula": incorrect syntax near "Not B"'
+					'inline_errors' => [
+						'id:formula' => 'Incorrect syntax near "Not B".'
+					]
 				]
 			],
-			// #102.
+			// #81.
 			[
 				[
 					'expected' => TEST_BAD,
@@ -2232,10 +2050,12 @@ class testLowLevelDiscovery extends CWebTest {
 							['Macro' => '{#TEST_MACRO2}', 'operator' => 'does not exist']
 						]
 					],
-					'error_details' => 'Invalid parameter "/1/filter/formula": incorrect syntax near " A and not B".'
+					'inline_errors' => [
+						'id:formula' => 'Incorrect syntax near " A and not B".'
+					]
 				]
 			],
-			// #103.
+			// #82.
 			[
 				[
 					'expected' => TEST_BAD,
@@ -2252,40 +2072,31 @@ class testLowLevelDiscovery extends CWebTest {
 							['Macro' => '{#TEST_MACRO2}', 'operator' => 'matches', 'Regular expression' => 'Test expression 2']
 						]
 					],
-					'error_details' => 'Invalid parameter "/1/filter/formula": incorrect syntax near " not B".'
+					'inline_errors' => [
+						'id:formula' => 'Incorrect syntax near " not B".'
+					]
 				]
 			],
-			// #104.
+			// #83.
 			[
 				[
 					'expected' => TEST_BAD,
 					'fields' => [
-						'Name' => 'Empty script in Browser item',
+						'Name' => 'Empty script an parameter name in Browser item',
 						'Type' => 'Browser',
 						'Key' => 'browser_check[2]',
 						'Script' => ''
 					],
-					'error' => 'Page received incorrect data',
-					'error_details' => 'Incorrect value for field "Script": cannot be empty.'
-				]
-			],
-			// #105.
-			[
-				[
-					'expected' => TEST_BAD,
-					'fields' => [
-						'Name' => 'Empty parameters in Browser item',
-						'Type' => 'Browser',
-						'Key' => 'browser_check[2]',
-						'Script' => 'test script'
-					],
 					'Parameters' => [
 						['Name' => '', 'Value' => 'value_1']
 					],
-					'error_details' => 'Invalid parameter "/1/parameters/1/name": cannot be empty.'
+					'inline_errors' => [
+						'id:browser_script' => 'This field cannot be empty.',
+						'name:parameters[0][name]' => 'This field cannot be empty.'
+					]
 				]
 			],
-			// #106.
+			// #84.
 			[
 				[
 					'expected' => TEST_BAD,
@@ -2299,10 +2110,12 @@ class testLowLevelDiscovery extends CWebTest {
 						['Name' => 'test_name', 'Value' => 'value_1'],
 						['Name' => 'test_name', 'Value' => 'value_2']
 					],
-					'error_details' => 'Invalid parameter "/1/parameters/2": value (name)=(test_name) already exists.'
+					'inline_errors' => [
+						'name:parameters[1][name]' => 'Entry "name=test_name" is not unique.'
+					]
 				]
 			],
-			// #107.
+			// #85.
 			[
 				[
 					'fields' => [
@@ -2341,10 +2154,11 @@ class testLowLevelDiscovery extends CWebTest {
 			? static::$templateid.'&context=template'
 			: static::$interfaces_hostid.'&context=host';
 
-		$this->page->login()->open('host_discovery.php?filter_set=1&filter_hostids%5B0%5D='.$url);
+		$this->page->login()->open('zabbix.php?action=lldrule.list&filter_set=1&filter_hostids%5B0%5D='.$url);
 		$this->query($update ? 'link:'.static::$update_lld : 'button:Create discovery rule')->waitUntilClickable()
 				->one()->click();
-		$form = $this->query('id:host-discovery-form')->asForm()->waitUntilVisible()->one();
+		$dialog = COverlayDialogElement::find()->waitUntilReady()->one();
+		$form = $dialog->asForm();
 
 		if (static::$context === 'template') {
 			unset($data['fields']['Host interface']);
@@ -2381,7 +2195,7 @@ class testLowLevelDiscovery extends CWebTest {
 
 		// Fill Headers.
 		if (array_key_exists('Headers', $data)) {
-			$this->fillComplexFields($data['Headers'], $form, 'Headers', 'input');
+			$this->fillComplexFields($data['Headers'], $form, 'Headers', 'z-textarea-flexible');
 		}
 
 		// Fill Parameters.
@@ -2392,13 +2206,13 @@ class testLowLevelDiscovery extends CWebTest {
 		// Fill LLD macros tab.
 		if (array_key_exists('LLD macros', $data)) {
 			$form->selectTab('LLD macros');
-			$this->fillComplexFields($data['LLD macros'], $form, 'LLD macros', 'textarea');
+			$this->fillComplexFields($data['LLD macros'], $form, 'LLD macros', 'z-textarea-flexible');
 		}
 
 		// Fill Filters tab.
 		if (array_key_exists('Filters', $data)) {
 			$form->selectTab('Filters');
-			$this->fillComplexFields($data['Filters']['filters'], $form, 'Filters', 'input');
+			$this->fillComplexFields($data['Filters']['filters'], $form, 'Filters', 'z-textarea-flexible');
 
 			if (array_key_exists('calculation', $data['Filters'])) {
 				$form->fill(['id:evaltype' => $data['Filters']['calculation']]);
@@ -2412,14 +2226,29 @@ class testLowLevelDiscovery extends CWebTest {
 		$form->submit();
 
 		if (CTestArrayHelper::get($data, 'expected', TEST_GOOD) === TEST_BAD) {
-			$this->assertMessage(TEST_BAD, CTestArrayHelper::get($data, 'error',
-					($update ? 'Cannot update discovery rule' : 'Cannot add discovery rule')), $data['error_details']
-			);
+			if (array_key_exists('inline_errors', $data)) {
+				if (CTestArrayHelper::get($data, 'submit')) {
+					$form->submit();
+				}
+				else {
+					$this->page->removeFocus();
+				}
+				$this->assertInlineError($form, $data['inline_errors']);
+			}
+			else {
+				$dialog->waitUntilReady();
+				$this->assertMessage(TEST_BAD, CTestArrayHelper::get($data, 'error',
+						($update ? 'Cannot update discovery rule' : 'Cannot add discovery rule')), $data['error_details']
+				);
+			}
 
 			// Check that DB hash is not changed.
 			$this->assertEquals($old_hash, CDBHelper::getHash(self::SQL));
+
+			$dialog->close();
 		}
 		else {
+			$dialog->ensureNotPresent();
 			$this->assertMessage(TEST_GOOD, $update ? 'Discovery rule updated' : 'Discovery rule created');
 
 			// Remove leading and trailing spaces from data for assertion.
@@ -2439,6 +2268,7 @@ class testLowLevelDiscovery extends CWebTest {
 			));
 
 			$this->query('link', $data['fields']['Name'])->waitUntilClickable()->one()->click();
+			COverlayDialogElement::find()->waitUntilReady();
 			$form->invalidate();
 
 			// Check parsed query fields.
@@ -2489,7 +2319,7 @@ class testLowLevelDiscovery extends CWebTest {
 
 			// Check Headers.
 			if (array_key_exists('Headers', $data)) {
-				$this->checkComplexFields($data['Headers'], $form, 'Headers', 'input');
+				$this->checkComplexFields($data['Headers'], $form, 'Headers', 'z-textarea-flexible');
 			}
 
 			// Check Parameters.
@@ -2500,13 +2330,13 @@ class testLowLevelDiscovery extends CWebTest {
 			// Check LLD macros.
 			if (array_key_exists('LLD macros', $data)) {
 				$form->selectTab('LLD macros');
-				$this->checkComplexFields($data['LLD macros'], $form, 'LLD macros', 'textarea');
+				$this->checkComplexFields($data['LLD macros'], $form, 'LLD macros', 'z-textarea-flexible');
 			}
 
 			// Check LLD Filters.
 			if (array_key_exists('Filters', $data)) {
 				$form->selectTab('Filters');
-				$this->checkComplexFields($data['Filters']['filters'], $form, 'Filters', 'input');
+				$this->checkComplexFields($data['Filters']['filters'], $form, 'Filters', 'z-textarea-flexible');
 
 				if (array_key_exists('calculation', $data['Filters'])) {
 					$form->checkValue(['id:evaltype' => $data['Filters']['calculation']]);
@@ -2516,6 +2346,8 @@ class testLowLevelDiscovery extends CWebTest {
 					}
 				}
 			}
+
+			$dialog->close();
 		}
 	}
 
@@ -2680,13 +2512,14 @@ class testLowLevelDiscovery extends CWebTest {
 
 		$host_name = (static::$context === 'template') ? 'Template with LLD' : 'Host for LLD form test';
 		$original_key = 'simple_update_clone_key';
-		$this->page->login()->open('host_discovery.php?filter_set=1&filter_hostids%5B0%5D='.$url);
+		$this->page->login()->open('zabbix.php?action=lldrule.list&filter_set=1&filter_hostids%5B0%5D='.$url);
 		$this->query('link', self::SIMPLE_UPDATE_CLONE_LLD)->waitUntilClickable()->one()->click();
-		$form = $this->query('id:host-discovery-form')->asForm()->waitUntilVisible()->one();
-		$form->query('button:Clone')->waitUntilClickable()->one()->click()->waitUntilNotVisible();
-		$form->invalidate();
-		$this->assertEquals(['Add', 'Test', 'Cancel'], $form->query('xpath:.//div[@class="form-actions"]/button')
-				->waitUntilVisible()->all()->filter(CElementFilter::CLICKABLE)->asText()
+		$dialog = COverlayDialogElement::find()->waitUntilReady()->one();
+		$dialog->query('button:Clone')->waitUntilClickable()->one()->click();
+		$dialog->waitUntilReady()->invalidate();
+		$form = $dialog->asForm();
+		$this->assertEquals(['Add', 'Test', 'Cancel'], $dialog->getFooter()->query('tag:button')->all()
+				->filter(CElementFilter::CLICKABLE)->asText()
 		);
 
 		if (CTestArrayHelper::get($data, 'fields')) {
@@ -2708,13 +2541,13 @@ class testLowLevelDiscovery extends CWebTest {
 		// Change LLD macros.
 		if (array_key_exists('LLD macros', $data)) {
 			$form->selectTab('LLD macros');
-			$this->fillComplexFields($data['LLD macros'], $form, 'LLD macros', 'textarea');
+			$this->fillComplexFields($data['LLD macros'], $form, 'LLD macros', 'z-textarea-flexible');
 		}
 
 		// Change Filters.
 		if (array_key_exists('Filters', $data)) {
 			$form->selectTab('Filters');
-			$this->fillComplexFields($data['Filters'], $form, 'Filters', 'input');
+			$this->fillComplexFields($data['Filters'], $form, 'Filters', 'z-textarea-flexible');
 		}
 
 		// Change Overrides.
@@ -2730,6 +2563,7 @@ class testLowLevelDiscovery extends CWebTest {
 		$form->submit();
 
 		if ($data['expected'] === TEST_GOOD) {
+			$dialog->ensureNotPresent();
 			$this->assertMessage(TEST_GOOD, 'Discovery rule created');
 
 			// Check that LLD created on the right host.
@@ -2741,6 +2575,8 @@ class testLowLevelDiscovery extends CWebTest {
 			// Open created new LLD form.
 			$this->query('class:list-table')->asTable()->one()->findRow('Key', $data['fields']['Key'])
 					->getColumn('Name')->query('tag:a')->waitUntilClickable()->one()->click();
+			$dialog->invalidate();
+			$dialog->waitUntilReady();
 			$form->invalidate();
 			$form->checkValue($data['expected_fields']);
 
@@ -2756,6 +2592,8 @@ class testLowLevelDiscovery extends CWebTest {
 				$override_dialog_form->waitUntilNotVisible();
 			}
 
+			$dialog->close();
+
 			// Check that original LLD remained in DB.
 			$this->assertEquals(1, CDBHelper::getCount(
 				'SELECT * FROM items'.
@@ -2765,9 +2603,8 @@ class testLowLevelDiscovery extends CWebTest {
 		}
 		else {
 			$this->assertEquals($old_hash, CDBHelper::getHash(self::SQL));
-			$this->assertMessage(TEST_BAD, 'Cannot add discovery rule', 'An LLD rule with key "'.$original_key.'"'.
-					' already exists on the '.static::$context.' "'.$host_name.'".'
-			);
+			$this->assertInlineError($form, ['Key' => 'This object already exists.']);
+			$dialog->close();
 		}
 	}
 
@@ -2792,28 +2629,29 @@ class testLowLevelDiscovery extends CWebTest {
 
 		$old_hash = CDBHelper::getHash(self::SQL);
 		$lld_name = 'LLD for cancel scenario';
-		$this->page->login()->open('host_discovery.php?filter_set=1&filter_hostids%5B0%5D='.$url);
+		$this->page->login()->open('zabbix.php?action=lldrule.list&filter_set=1&filter_hostids%5B0%5D='.$url);
 
 		if ($data['action'] === 'Add') {
 			$this->query('button:Create discovery rule')->waitUntilClickable()->one()->click();
 		}
 		else {
 			$this->query('link', $lld_name)->waitUntilClickable()->one()->click();
+		}
+		$dialog = COverlayDialogElement::find()->waitUntilReady()->one();
 
-			if ($data['action'] === 'Clone') {
-				$this->query('button:Clone')->waitUntilClickable()->one()->click();
-			}
+		if ($data['action'] === 'Clone') {
+			$dialog->query('button:Clone')->waitUntilClickable()->one()->click();
+		}
 
-			if ($data['action'] === 'Delete') {
-				$this->query('button:Delete')->waitUntilClickable()->one()->click();
-				$this->assertTrue($this->page->isAlertPresent());
-				$this->assertEquals('Delete discovery rule?', $this->page->getAlertText());
-				$this->page->dismissAlert();
-			}
+		if ($data['action'] === 'Delete') {
+			$dialog->query('button:Delete')->waitUntilClickable()->one()->click();
+			$this->assertTrue($this->page->isAlertPresent());
+			$this->assertEquals('Delete discovery rule?', $this->page->getAlertText());
+			$this->page->dismissAlert();
 		}
 
 		if ($data['action'] !== 'Delete') {
-			$form = $this->query('id:host-discovery-form')->asForm()->waitUntilVisible()->one();
+			$form = $dialog->asForm();
 
 			$fields = [
 				'lld_fields' => [
@@ -2893,16 +2731,16 @@ class testLowLevelDiscovery extends CWebTest {
 			$override_dialog_form = COverlayDialogElement::get('Override')->asForm();
 			$override_dialog_form->fill($fields['overrides_fields']['filters']);
 			$override_dialog_form->getFieldContainer('Operations')->query('button:Add')->waitUntilClickable()->one()->click();
-			$operation_dialog_form = COverlayDialogElement::find()->all()->last()->asForm()->waitUntilReady();
+			$operation_dialog_form = COverlayDialogElement::find(2)->waitUntilReady()->asForm()->one();
 			$operation_dialog_form->fill($fields['overrides_fields']['operations']);
 			$operation_dialog_form->submit();
 			$operation_dialog_form->waitUntilNotVisible();
 			$override_dialog_form->submit();
 			$operation_dialog_form->waitUntilNotVisible();
-			COverlayDialogElement::ensureNotPresent();
 		}
 
 		$this->query('button:Cancel')->waitUntilClickable()->one()->click();
+		$dialog->ensureNotPresent();
 		$this->page->waitUntilReady();
 		$this->assertTrue($this->query('link', $lld_name)->one()->isVisible());
 		$this->assertEquals($old_hash, CDBHelper::getHash(self::SQL));
@@ -2916,15 +2754,18 @@ class testLowLevelDiscovery extends CWebTest {
 			? static::$templateid.'&context=template'
 			: static::$hostid.'&context=host';
 
-		$this->page->login()->open('host_discovery.php?filter_set=1&filter_hostids%5B0%5D='.$url);
+		$this->page->login()->open('zabbix.php?action=lldrule.list&filter_set=1&filter_hostids%5B0%5D='.$url);
 		$lld_name = 'LLD for delete scenario';
 		$this->query('link', $lld_name)->waitUntilClickable()->one()->click();
-		$this->query('button:Delete')->waitUntilClickable()->one()->click();
+
+		$dialog = COverlayDialogElement::find()->waitUntilReady()->one();
+		$dialog->query('button:Delete')->waitUntilClickable()->one()->click();
 
 		// Check alert.
 		$this->assertTrue($this->page->isAlertPresent());
 		$this->assertEquals('Delete discovery rule?', $this->page->getAlertText());
 		$this->page->acceptAlert();
+		$dialog->ensureNotPresent();
 		$this->assertMessage(TEST_GOOD, 'Discovery rule deleted');
 
 		// Check DB.
@@ -2947,7 +2788,7 @@ class testLowLevelDiscovery extends CWebTest {
 	 * @param array $fields_array    given fields
 	 */
 	protected function checkFieldsParameters($fields_array) {
-		$form = $this->query('id:host-discovery-form')->asForm()->waitUntilVisible()->one();
+		$form = $this->query('id:lldrule-form')->asForm()->waitUntilVisible()->one();
 
 		foreach ($fields_array as $id => $parameters) {
 			$error_output = 'Failed field: '.$id;
@@ -2984,8 +2825,8 @@ class testLowLevelDiscovery extends CWebTest {
 
 		foreach ($dependant_array as $label => $status) {
 			$dependant_field = $form->getField($label);
-			$this->assertTrue($dependant_field->isVisible($status['visible']));
-			$this->assertTrue($dependant_field->isEnabled($status['enabled']));
+			$this->assertTrue($dependant_field->isVisible($status['visible']), 'Wrong "'.$label.'" visibility.');
+			$this->assertTrue($dependant_field->isEnabled($status['enabled']), 'Wrong "'.$label.'" state.');
 		}
 	}
 
@@ -2995,7 +2836,7 @@ class testLowLevelDiscovery extends CWebTest {
 	 * @param array        $data       given array of fields
 	 * @param CFormElement $form       LLD edit form
 	 * @param string       $label      container's label
-	 * @param string       $locator    field's locator input or textarea
+	 * @param string       $locator    field's locator input or z-textarea-flexible
 	 */
 	protected function fillComplexFields($data, $form, $label, $locator) {
 		$table = $form->getField($label);
@@ -3025,7 +2866,7 @@ class testLowLevelDiscovery extends CWebTest {
 	 * @param array        $data       given array of fields
 	 * @param CFormElement $form       LLD edit form
 	 * @param string       $label      container's label
-	 * @param string       $locator    field's locator input or textarea
+	 * @param string       $locator    field's locator input or z-textarea-flexible
 	 */
 	protected function checkComplexFields($data, $form, $label, $locator) {
 		$table = $form->getField($label);

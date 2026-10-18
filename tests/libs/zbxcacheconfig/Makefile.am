@@ -30,8 +30,9 @@ COMMON_WRAP_FUNCS = \
 	-Wl,--wrap=zbx_shmem_dump_stats \
 	-Wl,--wrap=zbx_history_get_values \
 	-Wl,--wrap=zbx_history_add_values \
-	-Wl,--wrap=zbx_history_sql_init \
-	-Wl,--wrap=zbx_history_elastic_init \
+	-Wl,--wrap=history_sql_open \
+	-Wl,--wrap=history_elastic_open \
+	-Wl,--wrap=history_clickhouse_open \
 	-Wl,--wrap=zbx_elastic_version_extract \
 	-Wl,--wrap=zbx_elastic_version_get \
 	-Wl,--wrap=time
@@ -54,11 +55,11 @@ dc_check_maintenance_period_CFLAGS = \
 	$(CMOCKA_CFLAGS) \
 	$(YAML_CFLAGS)
 
-dc_maintenance_match_tags_SOURCES = dc_maintenance_match_tags.c
+dc_maintenance_match_tags_SOURCES = dc_maintenance_match_tags.c dbconfig_maintenance_test.c
 dc_maintenance_match_tags_LDADD = $(CACHE_LIBS) @SERVER_LIBS@ $(CMOCKA_LIBS) $(YAML_LIBS) $(TLS_LIBS)
 dc_maintenance_match_tags_LDFLAGS = @SERVER_LDFLAGS@ $(CMOCKA_LDFLAGS) $(YAML_LDFLAGS) $(TLS_LDFLAGS)
 
-dc_check_maintenance_period_SOURCES = dc_check_maintenance_period.c
+dc_check_maintenance_period_SOURCES = dc_check_maintenance_period.c dbconfig_maintenance_test.c
 dc_check_maintenance_period_LDADD = $(CACHE_LIBS) @SERVER_LIBS@ $(CMOCKA_LIBS) $(YAML_LIBS) $(TLS_LIBS)
 dc_check_maintenance_period_LDFLAGS = @SERVER_LDFLAGS@ $(CMOCKA_LDFLAGS) $(YAML_LDFLAGS) $(TLS_LDFLAGS)
 
@@ -67,7 +68,7 @@ is_item_processed_by_server_LDADD = $(CACHE_LIBS) @SERVER_LIBS@ $(CMOCKA_LIBS) $
 is_item_processed_by_server_LDFLAGS = @SERVER_LDFLAGS@ $(CMOCKA_LDFLAGS) $(YAML_LDFLAGS) $(TLS_LDFLAGS)
 is_item_processed_by_server_CFLAGS = -I@top_srcdir@/tests $(CMOCKA_CFLAGS) $(YAML_CFLAGS) $(TLS_CFLAGS)
 
-dc_item_poller_type_update_SOURCES = dc_item_poller_type_update.c
+dc_item_poller_type_update_SOURCES = dc_item_poller_type_update.c dc_item_poller_type_update_test.c
 dc_item_poller_type_update_LDADD = $(CACHE_LIBS) @SERVER_LIBS@ $(CMOCKA_LIBS) $(YAML_LIBS) $(TLS_LIBS)
 dc_item_poller_type_update_LDFLAGS = @SERVER_LDFLAGS@ $(CMOCKA_LDFLAGS) $(YAML_LDFLAGS) $(TLS_LDFLAGS)
 dc_item_poller_type_update_CFLAGS = -I@top_srcdir@/tests -I@top_srcdir@/src/libs/zbxcacheconfig \
@@ -95,7 +96,8 @@ dc_expand_user_macros_in_func_params_LDFLAGS = @SERVER_LDFLAGS@ $(CMOCKA_LDFLAGS
 dc_function_calculate_nextcheck_CFLAGS = \
 	-I@top_srcdir@/tests $(CMOCKA_CFLAGS) $(YAML_CFLAGS) $(TLS_CFLAGS)
 dc_function_calculate_nextcheck_SOURCES = \
-	dc_function_calculate_nextcheck.c
+	dc_function_calculate_nextcheck.c \
+	dc_function_calculate_nextcheck_test.c
 dc_function_calculate_nextcheck_LDADD = \
 	$(CACHE_LIBS) @SERVER_LIBS@ $(CMOCKA_LIBS) $(YAML_LIBS) $(TLS_LIBS)
 dc_function_calculate_nextcheck_LDFLAGS = @SERVER_LDFLAGS@ $(CMOCKA_LDFLAGS) $(YAML_LDFLAGS) $(TLS_LDFLAGS)

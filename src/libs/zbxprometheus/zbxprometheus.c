@@ -16,7 +16,6 @@
 
 #include "zbxalgo.h"
 #include "zbxeval.h"
-#include "zbxexpr.h"
 #include "zbxjson.h"
 #include "zbxnum.h"
 #include "zbxregexp.h"
@@ -1716,7 +1715,7 @@ static void	prometheus_lock(zbx_prometheus_t *prom)
 	{
 		zabbix_log(LOG_LEVEL_CRIT, "Cannot lock prometheus cache: %s", zbx_strerror(errno));
 		THIS_SHOULD_NEVER_HAPPEN;
-		exit(EXIT_FAILURE);
+		zbx_exit(EXIT_FAILURE);
 	}
 }
 
@@ -1726,7 +1725,7 @@ static void	prometheus_unlock(zbx_prometheus_t *prom)
 	{
 		zabbix_log(LOG_LEVEL_CRIT, "Cannot unlock prometheus cache: %s", zbx_strerror(errno));
 		THIS_SHOULD_NEVER_HAPPEN;
-		exit(EXIT_FAILURE);
+		zbx_exit(EXIT_FAILURE);
 	}
 }
 
@@ -2219,7 +2218,3 @@ int	zbx_prometheus_validate_label(const char *label)
 
 	return SUCCEED;
 }
-
-#ifdef HAVE_TESTS
-#	include "../../../tests/libs/zbxprometheus/prometheus_test.c"
-#endif

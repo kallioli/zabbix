@@ -7,7 +7,7 @@ This template is designed for the effortless deployment of InfluxDB monitoring b
 
 ## Requirements
 
-Zabbix version: 7.4 and higher.
+Zabbix version: 8.0 and higher.
 
 ## Tested versions
 
@@ -16,7 +16,7 @@ This template has been tested on:
 
 ## Configuration
 
-> Zabbix should be configured according to the instructions in the [Templates out of the box](https://www.zabbix.com/documentation/7.4/manual/config/templates_out_of_the_box) section.
+> Zabbix should be configured according to the instructions in the [Templates out of the box](https://www.zabbix.com/documentation/8.0/manual/config/templates_out_of_the_box) section.
 
 ## Setup
 
@@ -32,10 +32,10 @@ Also, see the Macros section for a list of macros used to set trigger values.
 
 |Name|Description|Default|
 |----|-----------|-------|
-|{$INFLUXDB.URL}|<p>InfluxDB instance URL</p>|`http://localhost:8086`|
-|{$INFLUXDB.API.TOKEN}|<p>InfluxDB API Authorization Token</p>||
-|{$INFLUXDB.ORG_NAME.MATCHES}|<p>Filter of discoverable organizations</p>|`.*`|
-|{$INFLUXDB.ORG_NAME.NOT_MATCHES}|<p>Filter to exclude discovered organizations</p>|`CHANGE_IF_NEEDED`|
+|{$INFLUXDB.URL}|<p>InfluxDB instance URL.</p>|`http://localhost:8086`|
+|{$INFLUXDB.API.TOKEN}|<p>InfluxDB API Authorization Token.</p>||
+|{$INFLUXDB.ORG_NAME.MATCHES}|<p>Filter of discoverable organizations.</p>|`.*`|
+|{$INFLUXDB.ORG_NAME.NOT_MATCHES}|<p>Filter to exclude discovered organizations.</p>|`CHANGE_IF_NEEDED`|
 |{$INFLUXDB.TASK.RUN.FAIL.MAX.WARN}|<p>Maximum number of tasks runs failures for trigger expression.</p>|`2`|
 |{$INFLUXDB.REQ.FAIL.MAX.WARN}|<p>Maximum number of query requests failures for trigger expression.</p>|`2`|
 

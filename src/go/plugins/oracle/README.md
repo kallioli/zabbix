@@ -20,7 +20,7 @@ You can extend it or create your own template to cater to specific needs.
 
 In CDB installations, it is possible to monitor tablespaces from CDB _(container database)_ and all PDBs _(pluggable databases)_. In this case, a common user is needed with the correct rights:
 
-```
+```sql
 CREATE USER c##zabbix_mon IDENTIFIED BY <PASSWORD>;
 -- Grant access to the c##zabbix_mon user.
 ALTER USER c##zabbix_mon SET CONTAINER_DATA=ALL CONTAINER=CURRENT;
@@ -48,7 +48,7 @@ This is needed because the template uses ```CDB_*``` views to monitor tablespace
 
 However, if you wish to monitor only a single PDB or non-CDB instance, a local user is enough:
 
-```
+```sql
 CREATE USER zabbix_mon IDENTIFIED BY <PASSWORD>;
 -- Grant access to the zabbix_mon user.
 GRANT CONNECT, CREATE SESSION TO zabbix_mon;
@@ -151,6 +151,9 @@ Currently has no effect and the maximum wait time is determined by item timeout 
 *Limits:* 1-30
 
 **Plugins.Oracle.ConnectTimeout** — the maximum wait time in seconds for a connection to be established.
+
+> The value is now *deprecated*, and used only for requests coming from Zabbix servers older than 7.0 version.
+
 *Default value:* equals the global<sup>[1](#footnote-1)</sup> "Timeout" configuration option.
 *Limits:* 1-30
 
@@ -161,7 +164,7 @@ Currently has no effect and the maximum wait time is determined by item timeout 
 - `*:\Program Files\Zabbix Agent 2\Custom Queries\Oracle` for Microsoft Windows systems,
 where * is drive name taken from `ProgramFiles` environment variable.
 
-**Plugins.Oracle.CustomQueriesEnabled** — if set, enables the execution of `mysql.custom.query`item key.
+**Plugins.Oracle.CustomQueriesEnabled** — if set, enables the execution of `oracle.custom.query` item key.
 If disabled, will not load any queries from the custom query dir path.
 *Default value:* false
 
@@ -169,8 +172,13 @@ If disabled, will not load any queries from the custom query dir path.
 *Default value:* 300 sec.
 *Limits:* 60-900
 
-**Plugins.Oracle.ResolveTNS** — specifies how to interpret the URI string — provided either in the metrics key (ConnString part) or the Uri option parameter in Oracle plugin's config file — for a connection to the Oracle server. If ResolveTNS set to true, the URI schema and port will be ignored and only hostname part will be used as TNS descriptor — either key or value. If the descriptor is a TNS key, the Oracle client looks up the connection description in the tnsnames.ora file. If a TNS value (begins with `(DESCRIPTION...`), the Oracle client will use it for the Oracle server connection as is.
-*Default value:* true
+**Plugins.Oracle.ResolveTNS** — specifies how to interpret the URI string — provided either in the metrics key 
+(ConnString part) or the Uri option parameter in Oracle plugin's config file — for a connection to the Oracle server. 
+If ResolveTNS set to true, the URI scheme and port will be ignored and only hostname part will be used as TNS descriptor 
+— either key or value. If the descriptor is a TNS key, the Oracle client looks up the connection description in the 
+tnsnames.ora file. If a TNS value (begins with `(DESCRIPTION...`), the Oracle client will use it for the Oracle server 
+connection as is.
+*Default value:* true 
 
 ### Configuring connection
 
@@ -186,7 +194,7 @@ The connection can be configured using either key parameters or named sessions.
 
       oracle.ping[tcp://127.0.0.1,USER,password,XE]
 
-* The only supported URI network schema is "tcp". Examples of valid URIs:
+* The only supported URI network scheme is "tcp". Examples of valid URIs:
 
     - tcp://localhost:1521
     - tcp://localhost
@@ -195,9 +203,7 @@ The connection can be configured using either key parameters or named sessions.
 
     The hostname "localhost" in examples can be IP address, e.g., 127.0.0.1 or any other hostname.
 
-* Usernames are supported only if written in uppercase characters.
-
-* Both oracle TNS key and value can be specified as Hostname (omitting schema and port). See chapter [Using TNS Names](#using-tns-names).
+* Both Oracle TNS key and value can be specified as Hostname (omitting scheme and port). See chapter [Using TNS Names](#using-tns-names).
 
 #### Multitenant architecture tablespace monitoring (across CDB and PDBs)
 
@@ -208,7 +214,7 @@ To be able to monitor tablespaces across multiple containers, the Oracle service
 Common parameters for all keys are: [ConnString][User][Password][Service] where `ConnString` can be an URI, session name, TNS key or its value.
 `ConnString` will be treated as follows:
   - as session name — if such a name is found in the plugin's configuration file
-  - as URI — if no any session with the given name is found, and Plugins.Oracle.ResolveTNS is set to false. If it contains a schema, e.g., "tcp://", port, e.g., 1521 or both, ResolveTNS option will not be taken into account, and it anyway will be treated as URI
+  - as URI — if no any session with the given name is found, and Plugins.Oracle.ResolveTNS is set to false. If it contains a scheme, e.g., "tcp://", port, e.g., 1521 or both, ResolveTNS option will not be taken into account, and it anyway will be treated as URI
   - as TNS key — if the plugin's option ResolveTNS is set to true, and none of the above conditions apply
   - as TNS value — if it starts with the open bracket “(“ (leading spaces ignored). In this case, the ResolveTNS option is not taken into account.
 
@@ -226,7 +232,7 @@ If the specified ConnString is resolved as a DNS name, the Oracle client attempt
 
 #### Using named sessions
 
-Named sessions allow defining specific parameters for each Oracle instance. Currently, there are four supported parameters: `Uri`, `User`, `Password` and `Service`.
+Named sessions allow defining specific parameters for each Oracle instance. Currently, there are four supported parameters: `Uri`, `User`, `Password`, `Service` and `ConnectionTimeout`.
 This option to store credentials is a slightly more secure way compared to item keys or macros.
 
 For example, if you have two Oracle instances: "Oracle12" and "Oracle19", you should add the following options to the agent configuration file:
@@ -235,11 +241,13 @@ For example, if you have two Oracle instances: "Oracle12" and "Oracle19", you sh
     Plugins.Oracle.Sessions.Oracle12.User=<USERFORORACLE12>
     Plugins.Oracle.Sessions.Oracle12.Password=<PasswordForOracle12>
     Plugins.Oracle.Sessions.Oracle12.Service=orcl
+    Plugins.Oracle.Sessions.Oracle12.ConnectionTimeout=10
 
     Plugins.Oracle.Sessions.Oracle19.Uri=tcp://192.168.1.2:1521
     Plugins.Oracle.Sessions.Oracle19.User=<USERFORORACLE19>
     Plugins.Oracle.Sessions.Oracle19.Password=<PasswordForOracle19>
     Plugins.Oracle.Sessions.Oracle19.Service=orcl
+    Plugins.Oracle.Sessions.Oracle19.ConnectionTimeout=10
 
 Then you will be able to use these names as the first parameter (ConnString) in keys instead of URIs.
 For example:
@@ -252,13 +260,36 @@ _Notes_:
 - URI can also contain either TNS key or value.
 - ConnectTimeout option parameter is not applicable when the Oracle client looks the TNS key up in the tnsnames.ora file.
 
+#### Using TLS
+TLS<sup>[3](#footnote-3)</sup> or Transport Layer Security (TLS) protocol can be used when the scheme "tcps" is 
+specified. When using TLS, ensure that the correct port is specified as well as the server is configured properly. There 
+are no special Oracle TLS client-side plugin parameters that need to be defined in the plugin's configuration file. 
+TLS in Oracle client must be configured in _sqlnet.ora_ and _tnsnames.ora_ files, usually in the 
+_$ORACLE_HOME/network/admin_ directory (in case of Linux). Example of _sqlnet.ora_ with TLS client-side configuration:
+
+```oracle
+WALLET_LOCATION =
+	  (SOURCE =
+		(METHOD = FILE)
+		(METHOD_DATA = (DIRECTORY = /path/to/wallet))
+	  )
+```
+The wallet is Oracle-specific file which contains the same cryptographic material as p12 but in a format that 
+doesn't require a password to access (auto-login feature). The file can contain private keys, X.509 certificates,
+certificate chains and metadata. 
+
+**Note!** If client-side wallet is changed, the Zabbix agent 2 must be restarted!
+
+See Oracle documentation for proper Oracle client configuration.
+
 #### Using TNS Names
-TNS names are useful if you want to specify a connection description of some clustered DB environment (it is not possible using only key params without TNS). TNS names also hide details of an Oracle connection from a Zabbix environment.
+TNS names are useful if you want to specify a connection description of some clustered DB environment (it is not possible 
+using only key params without TNS). TNS names also hide details of an Oracle connection from a Zabbix environment.
 Example of TNS descriptions:
 
-As a TNS descriptor you can use either the TNS key or its value.
+As a TNS descriptor you can use either the TNS key or its value.  Non-TLS example:
 
-```
+```oracle
 zbx_tns_example=
     (DESCRIPTION=
         (ADDRESS=
@@ -271,7 +302,21 @@ zbx_tns_example=
                 )
     )
 ```
-In the example above, `zbx_tns_example`  is the TNS key, while the rest — starting from `(DESCRIPTION...` — is the TNS value. Either a key or value can be used in keys params, named sessions, and default options. Usually TNS names are stored in a tnsnames.ora file. Refer to Oracle documentation to find the file location and compose a correct TNS name description.
+TLS example:
+```oracle
+zbx_tns_example_tls=
+    (DESCRIPTION=
+        (ADDRESS=
+                (PROTOCOL=TCPS)
+                (HOST=localhost)
+                (PORT= 2484)
+          )
+          (CONNECT_DATA=
+                (SERVICE_NAME=xe)
+                )
+    )
+```
+In the examples above, `zbx_tns_example` and `zbx_tns_example_tls` is the TNS key, while the rest — starting from `(DESCRIPTION...` — is the TNS value. Either a key or value can be used in keys params, named sessions, and default options. Usually TNS names are stored in a _tnsnames.ora_ file. Refer to Oracle documentation to find the file location and compose a correct TNS name description.
 
 _Usage Examples_
 
@@ -398,7 +443,7 @@ You can pass as many parameters to a query as you need.
 The syntax for placeholder parameters uses ":#" where "#" is an index number of the parameter.
 For example:
 
-```
+```sql
 /* payment.sql */
 
 SELECT
@@ -414,7 +459,6 @@ WHERE
     oracle.custom.query[<commonParams>,payment,"John Doe",1,"10/25/2020"]
 
 ### Developer Section
-Golang tests also include integration tests that run when Oracle server is started and available. The default port ```1521``` should be configured for Oracle Server. Other Oracle connection configuration, see in the type testConfig in the file oracle_export_integration_test.go.
 Golang tests also include integration tests that run when Oracle server is started and available. The default port ```1521``` should be configured for Oracle Server. Other Oracle connection configuration, see in the type testConfig in the file oracle_export_integration_test.go.
 To run integration tests, use tag ```-tags integration_tests```. Some negative subtests run long. To skip them, use ```-test.short``` argument: ```go test -test.short``` <pckg>
 
@@ -437,4 +481,7 @@ See [ODPI-C Debugging](https://oracle.github.io/odpi/doc/user_guide/debugging.ht
 ## Footnotes
 <a name="footnote-1">1</a>: Global timeout is defined in Zabbix agent 2 configuration file zabbix_agent2.conf or zabbix_agent2.win.conf the option "Timeout".
 
-<a name="footnote-2">2</a>: TNS or Transparent Network Substrate is a connection description format used by Oracle databases to manage communication between clients (like SQL*Plus, Oracle SQL Developer, etc.) and Oracle databases. TNS is part of Oracle Net Services, which is responsible for enabling communication between different systems in an Oracle environment.
+<a name="footnote-2">2</a>: TNS or Transparent Network Substrate is a connection description format used by 
+Oracle databases to manage communication between clients (like SQL*Plus, Oracle SQL Developer, etc.) and Oracle databases. TNS is part of Oracle Net Services, which is responsible for enabling communication between different systems in an Oracle environment.
+<a name="footnote-3">3</a>: TLS or Transport Layer Security protocol is an encryption-based Internet security protocol which 
+provides privacy, authentication, and data integrity for online communications. TLS is successor of SSL (Secure Socket Layer).

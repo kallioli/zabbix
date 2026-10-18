@@ -54,9 +54,9 @@ class CAuthentication extends CApiService {
 	 * required.
 	 */
 	public static function getPublic(): array {
-		global $ALLOW_HTTP_AUTH;
+		global $ZBX_FEATURE_FLAGS;
 
-		return ($ALLOW_HTTP_AUTH ? [] : ['http_auth_enabled' => ZBX_AUTH_HTTP_DISABLED]) +
+		return ($ZBX_FEATURE_FLAGS['http_auth_enabled'] ? [] : ['http_auth_enabled' => ZBX_AUTH_HTTP_DISABLED]) +
 			CApiSettingsHelper::getParameters([
 				'authentication_type', 'http_auth_enabled', 'http_login_form', 'http_strip_domains',
 				'http_case_sensitive', 'saml_auth_enabled', 'saml_case_sensitive',	'saml_jit_status',
@@ -82,6 +82,22 @@ class CAuthentication extends CApiService {
 
 		CApiSettingsHelper::updateParameters($auth, $db_auth);
 
+		if ($auth['saml_auth_enabled'] != $db_auth['saml_auth_enabled']
+				&& $auth['saml_auth_enabled'] == ZBX_AUTH_SAML_DISABLED) {
+			$db_userdirectories = API::UserDirectory()->get([
+				'output' => [],
+				'filter' => ['idp_type' => IDP_TYPE_SAML],
+				'preservekeys' => true
+			]);
+
+			if ($db_userdirectories) {
+				DB::update('userdirectory_saml', [
+					'values' => ['idp_certificate' => '', 'sp_certificate' => '', 'sp_private_key' => ''],
+					'where' => ['userdirectoryid' => array_keys($db_userdirectories)]
+				]);
+			}
+		}
+
 		self::addAuditLog(CAudit::ACTION_UPDATE, CAudit::RESOURCE_AUTHENTICATION, [$auth], [$db_auth]);
 
 		return array_keys($auth);
@@ -93,8 +109,8 @@ class CAuthentication extends CApiService {
 	 *
 	 * @throws APIException
 	 */
-	protected function validateUpdate(array $auth, ?array &$db_auth): void {
-		global $ALLOW_HTTP_AUTH;
+	protected function validateUpdate(array &$auth, ?array &$db_auth): void {
+		global $ZBX_FEATURE_FLAGS;
 
 		$auth += CApiSettingsHelper::getParameters(['authentication_type']);
 		$api_input_rules = ['type' => API_OBJECT, 'fields' => [
@@ -117,7 +133,7 @@ class CAuthentication extends CApiService {
 			'mfaid' =>						['type' => API_ID]
 		]];
 
-		if ($ALLOW_HTTP_AUTH) {
+		if ($ZBX_FEATURE_FLAGS['http_auth_enabled']) {
 			$api_input_rules['fields'] += [
 				'http_auth_enabled' =>		['type' => API_INT32, 'in' => ZBX_AUTH_HTTP_DISABLED.','.ZBX_AUTH_HTTP_ENABLED],
 				'http_login_form' =>		['type' => API_INT32, 'in' => ZBX_AUTH_FORM_ZABBIX.','.ZBX_AUTH_FORM_HTTP],
@@ -137,10 +153,22 @@ class CAuthentication extends CApiService {
 			'disabled_usrgrpid', 'saml_auth_enabled', 'saml_jit_status', 'ldap_jit_status', 'mfa_status', 'mfaid'
 		]));
 
+		self::checkSamlRequirements($auth, $db_auth);
 		self::checkUserDirectoryid($auth, $db_auth);
 		self::checkDeprovisionedUsersGroup($auth);
 		self::checkMfaExists($auth);
 		self::checkMfaid($auth, $db_auth);
+	}
+
+	private static function checkSamlRequirements($auth, $db_auth): void {
+		if ($auth['saml_auth_enabled'] == ZBX_AUTH_SAML_ENABLED
+				&& $auth['saml_auth_enabled'] != $db_auth['saml_auth_enabled']) {
+			$openssl_status = (new CFrontendSetup())->checkPhpOpenSsl();
+
+			if ($openssl_status['result'] != CFrontendSetup::CHECK_OK) {
+				self::exception(ZBX_API_ERROR_INTERNAL, $openssl_status['error']);
+			}
+		}
 	}
 
 	private static function checkUserDirectoryid(array $auth, array $db_auth): void {
@@ -227,7 +255,7 @@ class CAuthentication extends CApiService {
 	 * @return array
 	 */
 	public static function getOutputFields(): array {
-		global $ALLOW_HTTP_AUTH;
+		global $ZBX_FEATURE_FLAGS;
 
 		$output_fields = ['authentication_type', 'ldap_auth_enabled', 'ldap_case_sensitive', 'ldap_userdirectoryid',
 			'saml_auth_enabled', 'saml_case_sensitive', 'passwd_min_length', 'passwd_check_rules', 'disabled_usrgrpid',
@@ -236,6 +264,8 @@ class CAuthentication extends CApiService {
 
 		$http_output_fields = ['http_auth_enabled', 'http_login_form', 'http_strip_domains', 'http_case_sensitive'];
 
-		return $ALLOW_HTTP_AUTH ? array_merge($output_fields, $http_output_fields) : $output_fields;
+		return $ZBX_FEATURE_FLAGS['http_auth_enabled']
+			? array_merge($output_fields, $http_output_fields)
+			: $output_fields;
 	}
 }

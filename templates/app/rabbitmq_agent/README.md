@@ -11,7 +11,7 @@ The template `RabbitMQ Cluster` — collects metrics by polling [RabbitMQ manage
 
 ## Requirements
 
-Zabbix version: 7.4 and higher.
+Zabbix version: 8.0 and higher.
 
 ## Tested versions
 
@@ -20,7 +20,7 @@ This template has been tested on:
 
 ## Configuration
 
-> Zabbix should be configured according to the instructions in the [Templates out of the box](https://www.zabbix.com/documentation/7.4/manual/config/templates_out_of_the_box) section.
+> Zabbix should be configured according to the instructions in the [Templates out of the box](https://www.zabbix.com/documentation/8.0/manual/config/templates_out_of_the_box) section.
 
 ## Setup
 
@@ -44,15 +44,15 @@ In the case of a single-node installation, you can assign the `cluster` template
 
 If you use another API endpoint, then don't forget to change `{$RABBITMQ.API.CLUSTER_HOST}` macro.
 
-Install and setup [Zabbix agent](https://www.zabbix.com/documentation/7.4/manual/installation/install_from_packages).
+Install and setup [Zabbix agent](https://www.zabbix.com/documentation/8.0/manual/installation/install_from_packages).
 
 
 ### Macros used
 
 |Name|Description|Default|
 |----|-----------|-------|
-|{$RABBITMQ.API.USER}||`zbx_monitor`|
-|{$RABBITMQ.API.PASSWORD}||`zabbix`|
+|{$RABBITMQ.API.USER}|<p>RabbitMQ API username.</p>|`zbx_monitor`|
+|{$RABBITMQ.API.PASSWORD}|<p>RabbitMQ API password.</p>|`zabbix`|
 |{$RABBITMQ.API.CLUSTER_HOST}|<p>The hostname or IP of the API endpoint for the RabbitMQ cluster.</p>|`127.0.0.1`|
 |{$RABBITMQ.API.PORT}|<p>The port of the RabbitMQ API endpoint.</p>|`15672`|
 |{$RABBITMQ.API.SCHEME}|<p>The request scheme, which may be HTTP or HTTPS.</p>|`http`|
@@ -157,7 +157,7 @@ Most of the metrics are collected in one go, thanks to Zabbix bulk data collecti
 
 ## Requirements
 
-Zabbix version: 7.4 and higher.
+Zabbix version: 8.0 and higher.
 
 ## Tested versions
 
@@ -166,7 +166,7 @@ This template has been tested on:
 
 ## Configuration
 
-> Zabbix should be configured according to the instructions in the [Templates out of the box](https://www.zabbix.com/documentation/7.4/manual/config/templates_out_of_the_box) section.
+> Zabbix should be configured according to the instructions in the [Templates out of the box](https://www.zabbix.com/documentation/8.0/manual/config/templates_out_of_the_box) section.
 
 ## Setup
 
@@ -186,15 +186,15 @@ A login name and password are also supported in macros functions:
 - {$RABBITMQ.API.PASSWORD}
 
 If you use another API endpoint, then don't forget to change `{$RABBITMQ.API.HOST}` macro.
-Install and setup [Zabbix agent](https://www.zabbix.com/documentation/7.4/manual/installation/install_from_packages).
+Install and setup [Zabbix agent](https://www.zabbix.com/documentation/8.0/manual/installation/install_from_packages).
 
 
 ### Macros used
 
 |Name|Description|Default|
 |----|-----------|-------|
-|{$RABBITMQ.API.USER}||`zbx_monitor`|
-|{$RABBITMQ.API.PASSWORD}||`zabbix`|
+|{$RABBITMQ.API.USER}|<p>RabbitMQ API username.</p>|`zbx_monitor`|
+|{$RABBITMQ.API.PASSWORD}|<p>RabbitMQ API password.</p>|`zabbix`|
 |{$RABBITMQ.CLUSTER.NAME}|<p>The name of the RabbitMQ cluster.</p>|`rabbit`|
 |{$RABBITMQ.NODE.NAME}|<p>The name of the RabbitMQ node.</p>||
 |{$RABBITMQ.API.PORT}|<p>The port of the RabbitMQ API endpoint.</p>|`15672`|

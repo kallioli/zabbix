@@ -37,7 +37,10 @@ class CControllerGeomapsEdit extends CController {
 
 		$data = [
 			'geomaps_tile_provider' => $geomaps_tile_provider,
-			'tile_providers' => $tile_providers
+			'tile_providers' => $tile_providers,
+			'js_validation_rules' => (new CFormValidator(
+				CControllerGeomapsUpdate::getValidationRules()
+			))->getRules()
 		];
 
 		if ($geomaps_tile_provider === '') {

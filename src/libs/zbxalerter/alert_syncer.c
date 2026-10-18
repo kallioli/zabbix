@@ -12,11 +12,13 @@
 ** If not, see <https://www.gnu.org/licenses/>.
 **/
 
+#include "zbx_rtc_constants.h"
 #include "zbxalerter.h"
 #include "alerter_defs.h"
 
 #include "alerter_protocol.h"
 
+#include "zbxcommon.h"
 #include "zbxtimekeeper.h"
 #include "zbxlog.h"
 #include "zbxalgo.h"
@@ -27,12 +29,13 @@
 #include "zbxnix.h"
 #include "zbxnum.h"
 #include "zbxself.h"
-#include "zbxservice.h"
 #include "zbxstr.h"
 #include "zbxthreads.h"
 #include "zbxtime.h"
 #include "zbxmedia.h"
 #include "zbxcacheconfig.h"
+#include "zbx_cep_client.h"
+#include "zbxservice.h"
 
 typedef struct
 {
@@ -51,8 +54,9 @@ zbx_am_db_t;
  *                                                                            *
  ******************************************************************************/
 static zbx_am_db_alert_t	*am_db_create_alert(zbx_uint64_t alertid, zbx_uint64_t mediatypeid, int source,
-		int object, zbx_uint64_t objectid, zbx_uint64_t eventid, zbx_uint64_t p_eventid, const char *sendto,
-		const char *subject, const char *message, const char *params, int status, int retries)
+		int object, zbx_uint64_t objectid, zbx_uint64_t eventid, zbx_uint64_t p_eventid, zbx_uint64_t actionid,
+		zbx_uint64_t min_alertid, int message_type, const char *sendto, const char *subject,
+		const char *message, const char *params, int status, int retries)
 {
 	zbx_am_db_alert_t	*alert;
 
@@ -64,6 +68,9 @@ static zbx_am_db_alert_t	*am_db_create_alert(zbx_uint64_t alertid, zbx_uint64_t 
 	alert->objectid = objectid;
 	alert->eventid = eventid;
 	alert->p_eventid = p_eventid;
+	alert->actionid = actionid;
+	alert->min_alertid = min_alertid;
+	alert->message_type = message_type;
 
 	alert->sendto = zbx_strdup(NULL, sendto);
 	alert->subject = zbx_strdup(NULL, subject);
@@ -134,12 +141,18 @@ static int	am_db_get_alerts(zbx_vector_am_db_alert_ptr_t *alerts)
 
 	zbx_snprintf_alloc(&sql, &sql_alloc, &sql_offset,
 			"select a.alertid,a.mediatypeid,a.sendto,a.subject,a.message,a.status,a.retries,"
-				"e.source,e.object,e.objectid,a.parameters,a.eventid,a.p_eventid"
+				"e.source,e.object,e.objectid,a.parameters,a.eventid,a.p_eventid,a.actionid,"
+				"(select min(aa.alertid)"
+				" from alerts aa"
+				" where aa.eventid=a.eventid"
+					" and aa.actionid=a.actionid"
+					" and aa.sendto=a.sendto"
+				") as min_alertid"
 			" from alerts a"
 			" left join events e"
 				" on a.eventid=e.eventid"
 			" where alerttype=%d"
-			" and",
+				" and",
 			ALERT_TYPE_MESSAGE);
 
 	zbx_db_add_condition_alloc(&sql, &sql_alloc, &sql_offset, "a.status", status_filter, status_limit);
@@ -151,13 +164,15 @@ static int	am_db_get_alerts(zbx_vector_am_db_alert_ptr_t *alerts)
 
 	while (NULL != (row = zbx_db_fetch(result)))
 	{
-		zbx_uint64_t	alertid, mediatypeid, objectid, eventid, p_eventid;
+		zbx_uint64_t	alertid, mediatypeid, objectid, eventid, p_eventid, actionid, min_alertid;
 		int		status, attempts, source, object;
 
 		ZBX_STR2UINT64(alertid, row[0]);
 		ZBX_STR2UINT64(mediatypeid, row[1]);
 		ZBX_STR2UINT64(eventid, row[11]);
 		ZBX_DBROW2UINT64(p_eventid, row[12]);
+		ZBX_STR2UINT64(actionid, row[13]);
+		ZBX_STR2UINT64(min_alertid, row[14]);
 		status = atoi(row[5]);
 		attempts = atoi(row[6]);
 
@@ -175,8 +190,8 @@ static int	am_db_get_alerts(zbx_vector_am_db_alert_ptr_t *alerts)
 		object = atoi(row[8]);
 		ZBX_STR2UINT64(objectid, row[9]);
 
-		alert = am_db_create_alert(alertid, mediatypeid, source, object, objectid, eventid, p_eventid, row[2],
-				row[3], row[4], row[10], status, attempts);
+		alert = am_db_create_alert(alertid, mediatypeid, source, object, objectid, eventid, p_eventid, actionid,
+			min_alertid, ZBX_ALERT_MESSAGE_EVENT, row[2], row[3], row[4], row[10], status, attempts);
 
 		zbx_vector_am_db_alert_ptr_append(alerts, alert);
 
@@ -536,70 +551,28 @@ out:
 	return alerts_num;
 }
 
-typedef struct
-{
-	zbx_uint64_t		eventid;
-	zbx_vector_tags_ptr_t	tags;
-	int			need_to_add_problem_tag;
-}
-zbx_event_tags_t;
-
-ZBX_PTR_VECTOR_DECL(events_tags, zbx_event_tags_t*)
-ZBX_PTR_VECTOR_IMPL(events_tags, zbx_event_tags_t*)
-
-static int	zbx_event_tags_compare_func(const void *d1, const void *d2)
-{
-	const zbx_event_tags_t	*event_tags_1 = *(const zbx_event_tags_t * const *)d1;
-	const zbx_event_tags_t	*event_tags_2 = *(const zbx_event_tags_t * const *)d2;
-
-	ZBX_RETURN_IF_NOT_EQUAL(event_tags_1->eventid, event_tags_2->eventid);
-
-	return 0;
-}
-
-static void	event_tags_free(zbx_event_tags_t *event_tags)
-{
-	zbx_vector_tags_ptr_clear_ext(&event_tags->tags, zbx_free_tag);
-	zbx_vector_tags_ptr_destroy(&event_tags->tags);
-	zbx_free(event_tags);
-}
-
 /******************************************************************************
  *                                                                            *
  * Purpose: adds event tags to sql query                                      *
  *                                                                            *
- * Parameters: eventid     - [IN]  problem_tag update db event                *
- *             params      - [IN]  values to process                          *
+ * Parameters: eventid     - [IN] problem_tag update db event                 *
+ *             source      - [IN] event source                                *
+ *             params      - [IN] values to process                           *
  *             events_tags - [OUT] vector of events with tags                 *
  *                                                                            *
  * Comments: The event tags are in json object format.                        *
  *                                                                            *
  ******************************************************************************/
-static void	am_db_update_event_tags(zbx_uint64_t eventid, const char *params, zbx_vector_events_tags_t *events_tags)
+static void	am_db_update_event_tags(zbx_uint64_t eventid, int source, const char *params,
+		zbx_vector_event_tags_t *events_tags)
 {
-	zbx_db_result_t		result;
-	zbx_db_row_t		row;
 	struct zbx_json_parse	jp, jp_tags;
 	const char		*pnext = NULL;
 	char			key[ZBX_DB_TAG_NAME_LEN * 4 + 1], value[ZBX_DB_TAG_VALUE_LEN * 4 + 1];
-	int			event_tag_index, need_to_add_problem_tag = 0;
-	zbx_event_tags_t	*event_tags, local_event_tags;
+	int			event_tag_index;
+	zbx_event_tags_t	*et, et_local;
 
 	zabbix_log(LOG_LEVEL_DEBUG, "In %s() eventid:" ZBX_FS_UI64 " tags:%s", __func__, eventid, params);
-
-	result = zbx_db_select("select p.eventid"
-			" from events e left join problem p"
-				" on p.eventid=e.eventid"
-			" where e.eventid=" ZBX_FS_UI64, eventid);
-
-	if (NULL == (row = zbx_db_fetch(result)))
-	{
-		zabbix_log(LOG_LEVEL_DEBUG, "cannot add event tags: event " ZBX_FS_UI64 " was removed", eventid);
-		goto out;
-	}
-
-	if (SUCCEED != zbx_db_is_null(row[0]))
-		need_to_add_problem_tag = 1;
 
 	if (FAIL == zbx_json_open(params, &jp))
 	{
@@ -613,24 +586,22 @@ static void	am_db_update_event_tags(zbx_uint64_t eventid, const char *params, zb
 		goto out;
 	}
 
-	local_event_tags.eventid = eventid;
+	et_local.eventid = eventid;
 
-	event_tag_index = zbx_vector_events_tags_search(events_tags, &local_event_tags, zbx_event_tags_compare_func);
+	event_tag_index = zbx_vector_event_tags_search(events_tags, et_local, zbx_event_tags_compare);
 
 	if (FAIL == event_tag_index)
 	{
-		event_tags = (zbx_event_tags_t*) zbx_malloc(NULL, sizeof(zbx_event_tags_t));
-		event_tags->eventid = eventid;
-		zbx_vector_tags_ptr_create(&(event_tags->tags));
-		event_tags->need_to_add_problem_tag = need_to_add_problem_tag;
-		zbx_vector_events_tags_append(events_tags, event_tags);
+		event_tag_index = events_tags->values_num;
+		et_local.source = source;
+		zbx_vector_tag_create(&et_local.tags);
+		zbx_vector_event_tags_append(events_tags, et_local);
 	}
-	else
-		event_tags = events_tags->values[event_tag_index];
+	et = &events_tags->values[event_tag_index];
 
 	while (NULL != (pnext = zbx_json_pair_next(&jp_tags, pnext, key, sizeof(key))))
 	{
-		zbx_tag_t	*tag, tag_local = {.tag = key, .value = value};
+		zbx_tag_t	tag_local;
 
 		if (NULL == zbx_json_decodevalue(pnext, value, sizeof(value), NULL))
 		{
@@ -649,103 +620,44 @@ static void	am_db_update_event_tags(zbx_uint64_t eventid, const char *params, zb
 		zbx_rtrim(key, ZBX_WHITESPACE);
 		zbx_rtrim(value, ZBX_WHITESPACE);
 
-		if (FAIL == zbx_vector_tags_ptr_search(&(event_tags->tags), &tag_local, zbx_compare_tags_and_values))
-		{
-			tag = (zbx_tag_t *)zbx_malloc(NULL, sizeof(zbx_tag_t));
-			tag->tag = zbx_strdup(NULL, key);
-			tag->value = zbx_strdup(NULL, value);
-			zbx_vector_tags_ptr_append(&(event_tags->tags), tag);
-		}
+		tag_local.tag = zbx_strdup(NULL, key);
+		tag_local.value = zbx_strdup(NULL, value);
+
+		if (FAIL == zbx_vector_tag_search(&et->tags, tag_local, zbx_tag_compare))
+			zbx_vector_tag_append(&et->tags, tag_local);
+		else
+			zbx_tag_clear(&tag_local);
 	}
 out:
-	zbx_db_free_result(result);
-
 	zabbix_log(LOG_LEVEL_DEBUG, "End of %s()", __func__);
 }
 
-/******************************************************************************
- *                                                                            *
- * Purpose: removes duplicate event tags and checks if problem tags need to   *
- *          be updated                                                        *
- *                                                                            *
- * Parameters: update_event_tags - [IN/OUT] vector of pointers to events with *
- *                                          tags                              *
- *             db_event          - [IN/OUT] event_tag update db event         *
- *             db_problem        - [IN/OUT] problem_tag update db event       *
- *                                                                            *
- ******************************************************************************/
-static void	am_db_validate_tags_for_update(zbx_vector_events_tags_t *update_events_tags, zbx_db_insert_t *db_event,
-		zbx_db_insert_t *db_problem)
+static void	am_send_event_tags(const zbx_vector_event_tags_t *event_tags)
 {
-	zabbix_log(LOG_LEVEL_DEBUG, "In %s()", __func__);
+	zbx_vector_event_tags_ptr_t	et_cep, et_service;
 
-	for (int i = 0; i < update_events_tags->values_num; i++)
+	zbx_vector_event_tags_ptr_create(&et_cep);
+	zbx_vector_event_tags_ptr_create(&et_service);
+
+	zbx_vector_event_tags_ptr_reserve(&et_cep, (size_t)event_tags->values_num);
+	zbx_vector_event_tags_ptr_reserve(&et_service, (size_t)event_tags->values_num);
+
+	for (int i = 0; i < event_tags->values_num; i++)
 	{
-		zbx_tag_t		tag_local, *tag;
-		zbx_db_result_t		result;
-		zbx_db_row_t		row;
-		zbx_event_tags_t	*local_event_tags = update_events_tags->values[i];
-
-		/* remove duplicate tags */
-		if (0 != local_event_tags->tags.values_num)
-		{
-			result = zbx_db_select("select tag,value from event_tag where eventid=" ZBX_FS_UI64,
-					local_event_tags->eventid);
-
-			while (NULL != (row = zbx_db_fetch(result)))
-			{
-				int	index;
-
-				tag_local.tag = row[0];
-				tag_local.value = row[1];
-
-				if (FAIL != (index = zbx_vector_tags_ptr_search(&(local_event_tags->tags), &tag_local,
-						zbx_compare_tags_and_values)))
-				{
-					zbx_free_tag(local_event_tags->tags.values[index]);
-					zbx_vector_tags_ptr_remove_noorder(&(local_event_tags->tags), index);
-				}
-			}
-
-			zbx_db_free_result(result);
-		}
-
-		for (int j = 0; j < local_event_tags->tags.values_num; j++)
-		{
-			tag = local_event_tags->tags.values[j];
-			zbx_db_insert_add_values(db_event, __UINT64_C(0), local_event_tags->eventid, tag->tag,
-					tag->value);
-
-			if (0 != local_event_tags->need_to_add_problem_tag)
-			{
-				zbx_db_insert_add_values(db_problem, __UINT64_C(0), local_event_tags->eventid,
-						tag->tag, tag->value);
-			}
-		}
+		if (EVENT_SOURCE_SERVICE == event_tags->values[i].source)
+			zbx_vector_event_tags_ptr_append(&et_service, &event_tags->values[i]);
+		else
+			zbx_vector_event_tags_ptr_append(&et_cep, &event_tags->values[i]);
 	}
 
-	zabbix_log(LOG_LEVEL_DEBUG, "End of %s()", __func__);
-}
+	if (0 != et_cep.values_num)
+		zbx_cep_send_event_tags(et_cep.values, et_cep.values_num);
 
-static void	am_service_add_event_tags(zbx_vector_events_tags_t *events_tags)
-{
-	unsigned char	*data = NULL;
-	size_t		data_alloc = 0, data_offset = 0;
+	if (0 != et_service.values_num)
+		zbx_service_send_event_tags(et_service.values, et_service.values_num);
 
-	for (int i = 0; i < events_tags->values_num; i++)
-	{
-		zbx_event_tags_t	*event_tag = events_tags->values[i];
-
-		zbx_service_serialize_problem_tags(&data, &data_alloc, &data_offset, event_tag->eventid,
-				&event_tag->tags);
-	}
-
-	if (NULL == data)
-		return;
-
-	if (0 != zbx_dc_get_itservices_num())
-		zbx_service_flush(ZBX_IPC_SERVICE_SERVICE_PROBLEMS_TAGS, data, data_offset);
-	zbx_free(data);
+	zbx_vector_event_tags_ptr_destroy(&et_service);
+	zbx_vector_event_tags_ptr_destroy(&et_cep);
 }
 
 /******************************************************************************
@@ -760,13 +672,13 @@ static void	am_service_add_event_tags(zbx_vector_events_tags_t *events_tags)
  ******************************************************************************/
 static int	am_db_flush_results(zbx_hashset_t *mediatypes, const unsigned char *data)
 {
-	int				results_num;
-	zbx_vector_events_tags_t	update_events_tags;
-	zbx_am_result_t			**results;
+	int			results_num;
+	zbx_vector_event_tags_t	update_events_tags;
+	zbx_am_result_t		**results;
 
 	zabbix_log(LOG_LEVEL_DEBUG, "In %s()", __func__);
 
-	zbx_vector_events_tags_create(&update_events_tags);
+	zbx_vector_event_tags_create(&update_events_tags);
 
 	zbx_alerter_deserialize_results(data, &results, &results_num);
 
@@ -775,20 +687,14 @@ static int	am_db_flush_results(zbx_hashset_t *mediatypes, const unsigned char *d
 		int 		ret;
 		char		*sql;
 		size_t		sql_alloc = results_num * 128, sql_offset;
-		zbx_db_insert_t	db_event, db_problem;
 
 		sql = (char *)zbx_malloc(NULL, sql_alloc);
 
 		do
 		{
-			zbx_vector_events_tags_clear_ext(&update_events_tags, event_tags_free);
 			sql_offset = 0;
 
 			zbx_db_begin();
-			zbx_db_insert_prepare(&db_event, "event_tag", "eventtagid", "eventid", "tag", "value",
-					(char *)NULL);
-			zbx_db_insert_prepare(&db_problem, "problem_tag", "problemtagid", "eventid", "tag", "value",
-					(char *)NULL);
 
 			for (int i = 0; i < results_num; i++)
 			{
@@ -820,28 +726,19 @@ static int	am_db_flush_results(zbx_hashset_t *mediatypes, const unsigned char *d
 					mediatype = zbx_hashset_search(mediatypes, &result->mediatypeid);
 					if (NULL != mediatype && 0 != mediatype->process_tags)
 					{
-						am_db_update_event_tags(result->eventid, result->value,
+						am_db_update_event_tags(result->eventid, result->source, result->value,
 								&update_events_tags);
 					}
 				}
 				zbx_db_execute_overflowed_sql(&sql, &sql_alloc, &sql_offset);
 			}
 
-			am_db_validate_tags_for_update(&update_events_tags, &db_event, &db_problem);
-
 			(void)zbx_db_flush_overflowed_sql(sql, sql_offset);
-			zbx_db_insert_autoincrement(&db_event, "eventtagid");
-			zbx_db_insert_execute(&db_event);
-			zbx_db_insert_clean(&db_event);
-
-			zbx_db_insert_autoincrement(&db_problem, "problemtagid");
-			zbx_db_insert_execute(&db_problem);
-			zbx_db_insert_clean(&db_problem);
 		}
 		while (ZBX_DB_DOWN == (ret = zbx_db_commit()));
 
 		if (ZBX_DB_OK == ret)
-			am_service_add_event_tags(&update_events_tags);
+			am_send_event_tags(&update_events_tags);
 
 		for (int i = 0; i < results_num; i++)
 		{
@@ -857,8 +754,9 @@ static int	am_db_flush_results(zbx_hashset_t *mediatypes, const unsigned char *d
 		zbx_free(results);
 	}
 
-	zbx_vector_events_tags_clear_ext(&update_events_tags, event_tags_free);
-	zbx_vector_events_tags_destroy(&update_events_tags);
+	for (int i = 0; i < update_events_tags.values_num; i++)
+		zbx_event_tags_clear(&update_events_tags.values[i]);
+	zbx_vector_event_tags_destroy(&update_events_tags);
 
 	zabbix_log(LOG_LEVEL_DEBUG, "End of %s() flushed:%d", __func__, results_num);
 
@@ -970,11 +868,13 @@ static void	am_db_update_watchdog(zbx_am_db_t *amdb, uint64_t alert_usrgrpid)
 				" and m.mediatypeid=mt.mediatypeid"
 				" and m.active=%d"
 				" and mt.status=%d"
+				" and mt.type<>%d"
 				" and mt.type<>%d",
 				alert_usrgrpid,
 				MEDIA_STATUS_ACTIVE,
 				MEDIA_TYPE_STATUS_ACTIVE,
-				MEDIA_TYPE_WEBHOOK);
+				MEDIA_TYPE_WEBHOOK,
+				MEDIA_TYPE_PUSH);
 
 	zbx_vector_uint64_create(&mediatypeids);
 	zbx_vector_am_media_ptr_create(&medias);
@@ -1068,7 +968,7 @@ ZBX_THREAD_ENTRY(zbx_alert_syncer_thread, args)
 	{
 		zabbix_log(LOG_LEVEL_CRIT, "cannot initialize alert loader: %s", error);
 		zbx_free(error);
-		exit(EXIT_FAILURE);
+		zbx_exit(EXIT_FAILURE);
 	}
 
 	zbx_setproctitle("%s [connecting to the database]", get_process_type_string(process_type));
@@ -1101,7 +1001,7 @@ ZBX_THREAD_ENTRY(zbx_alert_syncer_thread, args)
 			zabbix_log(LOG_LEVEL_CRIT, "cannot read alert syncer request");
 			am_db_clear(&amdb);
 			zbx_db_close();
-			exit(EXIT_FAILURE);
+			zbx_exit(EXIT_FAILURE);
 		}
 		zbx_update_selfmon_counter(info, ZBX_PROCESS_STATE_BUSY);
 
@@ -1119,6 +1019,9 @@ ZBX_THREAD_ENTRY(zbx_alert_syncer_thread, args)
 					break;
 				case ZBX_IPC_ALERTER_RESULTS:
 					results_num = am_db_flush_results(&amdb.mediatypes, message->data);
+					break;
+				case ZBX_RTC_SHUTDOWN:
+					zbx_set_exiting_with_succeed();
 					break;
 				default:
 					zabbix_log(LOG_LEVEL_WARNING, "unrecognized message in alert syncer %u",

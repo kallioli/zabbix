@@ -76,7 +76,6 @@ type OraConn struct {
 	version          godror.VersionInfo
 	lastAccessTime   time.Time
 	lastAccessTimeMu sync.Mutex
-	ctx              context.Context //nolint:containedctx
 	queryStorage     *yarn.Yarn
 	username         string
 }
@@ -175,15 +174,15 @@ func (conn *OraConn) closeWithLog() {
 
 	err := conn.Client.Close()
 	if err != nil {
-		log.Debugf("Cannot close Oracle connection: %w", err)
+		log.Debugf("[Oracle] cannot close the connection: %w", err)
 	}
 }
 
 // createDBConnector function creates a connection string and godror connection by ConnDetails.
-func createDBConnector(cd *ConnDetails, connectTimeout time.Duration, resolveTNS bool) (driver.Connector, error) {
+func createDBConnector(cd *ConnDetails, connectionTimeout int, resolveTNS bool) (driver.Connector, error) {
 	tnsInterpretationType := getTNSType(cd.Uri.Host(), cd.OnlyHostname, resolveTNS)
 
-	connectString, err := prepareConnectString(tnsInterpretationType, cd, connectTimeout)
+	connectString, err := prepareConnectString(tnsInterpretationType, cd, connectionTimeout)
 	if err != nil {
 		return nil, errs.WrapConst(err, zbxerr.ErrorInvalidParams)
 	}
@@ -222,7 +221,7 @@ func getTNSType(host string, onlyHostname, resolveTNS bool) TNSNameType {
 	return tnsNone
 }
 
-func prepareConnectString(tnsType TNSNameType, cd *ConnDetails, connectTimeout time.Duration) (string, error) {
+func prepareConnectString(tnsType TNSNameType, cd *ConnDetails, connectionTimeout int) (string, error) {
 	var connectString string
 
 	switch tnsType {
@@ -245,12 +244,13 @@ func prepareConnectString(tnsType TNSNameType, cd *ConnDetails, connectTimeout t
 		}
 
 		connectString = fmt.Sprintf(
-			`(DESCRIPTION=(ADDRESS=(PROTOCOL=tcp)(HOST=%s)(PORT=%s))`+
+			`(DESCRIPTION=(ADDRESS=(PROTOCOL=%s)(HOST=%s)(PORT=%s))`+
 				`(CONNECT_DATA=(SERVICE_NAME="%s"))(CONNECT_TIMEOUT=%d)(RETRY_COUNT=0))`,
+			cd.Uri.Scheme(),
 			cd.Uri.Host(),
 			cd.Uri.Port(),
 			service,
-			connectTimeout/time.Second,
+			connectionTimeout,
 		)
 	default:
 		panic(fmt.Sprintf("unknown TNS interpretation type: %d", tnsType))

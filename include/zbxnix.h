@@ -35,6 +35,12 @@ int	zbx_coredump_disable(void);
 /* the signal-set operations are no-ops. Their callers still declare the mask they pass, so the type has to exist; */
 /* MSVC does not provide it. */
 typedef int	sigset_t;
+
+/* A worker thread on Unix arms a jump buffer so that a fatal signal lands it back in its entry function; there */
+/* are no such signals here and the structured exception handler in zbx_thread_start()'s entry covers the thread, */
+/* so the buffer is a placeholder and the jump never happens. */
+typedef int	sigjmp_buf;
+#	define sigsetjmp(env, savemask)	(ZBX_UNUSED(env), 0)
 #endif
 
 typedef int	(*zbx_get_process_info_by_thread_f)(int local_server_num, unsigned char *local_process_type,
@@ -52,7 +58,29 @@ void	zbx_set_exiting_with_fail(void);
 void	zbx_set_exiting_with_succeed(void);
 int	ZBX_IS_RUNNING(void);
 int	ZBX_EXIT_STATUS(void);
-int	zbx_init_thread_signal_handler(void);
+int	ZBX_IS_NORMAL_EXIT(void);
+int	zbx_init_thread_signal_handler(sigjmp_buf *jmp_ret);
+
+void	zbx_set_is_running(int (*is_running_func)(void *args), void *args);
+
+void	zbx_exit_thread(int ret) ZBX_NORETURN;
+
+#define ZBX_THREAD_FAILURE	((void *)EXIT_FAILURE)
+
+#if defined(_WINDOWS)
+/* the exit hook is all a thread needs here: zbx_exit() then ends the thread alone, as pthread_exit() does on Unix */
+#define ZBX_INIT_THREAD_OR_RETURN(jmp_ret, unit_status)		\
+		ZBX_UNUSED(jmp_ret);				\
+		zbx_set_exit(zbx_exit_from_thread, unit_status)
+#else
+#define ZBX_INIT_THREAD_OR_RETURN(jmp_ret, unit_status)		\
+		zbx_init_thread_signal_handler(&jmp_ret);	\
+		zbx_set_exit(zbx_exit_from_thread, unit_status);\
+		if (0 != sigsetjmp(jmp_ret, 1))			\
+		{						\
+			zbx_exit(EXIT_FAILURE);			\
+		}
+#endif
 
 int	zbx_daemon_start(int allow_root, const char *user, unsigned int flags,
 		zbx_get_config_str_f get_pid_file_cb, zbx_on_exit_t zbx_on_exit_cb_arg, int config_log_type,
@@ -126,7 +154,7 @@ void	zbx_block_thread_signals(sigset_t *orig_mask);
 void	zbx_unblock_signals(const sigset_t *orig_mask);
 
 void	zbx_set_exit_on_terminate(void);
-void	zbx_unset_exit_on_terminate(void);
+void	zbx_unset_exit_on_terminate(zbx_on_exit_t on_exit_cb);
 
 void	zbx_log_exit_signal(void);
 void	zbx_set_on_exit_args(void *args);

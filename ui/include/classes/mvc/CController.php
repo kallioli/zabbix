@@ -83,6 +83,20 @@ abstract class CController {
 	protected $input = [];
 
 	/**
+	 * Non-validated files parameters.
+	 *
+	 * @var array|null
+	 */
+	private ?array $raw_files;
+
+	/**
+	 * Validated files parameters.
+	 *
+	 * @var array|null
+	 */
+	private array $files = [];
+
+	/**
 	 * Validate CSRF token flag, if true CSRF token must be validated.
 	 *
 	 * @var bool
@@ -263,41 +277,49 @@ abstract class CController {
 		return $input;
 	}
 
+	private static function getFileInput(): array {
+		return $_FILES;
+	}
+
 	/**
 	 * Validate input parameters.
 	 *
 	 * @param array $validation_rules
+	 * @param bool  $global_errors     Add validation errors to global errors for INPUT_VALIDATION_FORM.
 	 *
 	 * @return bool
 	 */
-	protected function validateInput(array $validation_rules): bool {
-		if ($this->raw_input === null) {
+	protected function validateInput(array $validation_rules, bool $global_errors = false): bool {
+		if ($this->raw_input === null && $this->raw_files === null) {
 			$this->validation_result = self::VALIDATION_FATAL_ERROR;
 
 			return false;
 		}
 
 		return $this->input_validation_method == self::INPUT_VALIDATION_FORM
-			? $this->validateWithFormValidator($validation_rules)
+			? $this->validateWithFormValidator($validation_rules, $global_errors)
 			: $this->validateWithNewValidator($validation_rules);
 	}
 
 	/**
 	 * Validate input using CFormValidator.
 	 *
-	 * @param array    $validation_rules  Validation rules.
+	 * @param array $validation_rules  Validation rules.
+	 * @param bool  $global_errors     Add validation errors as global errors.
 	 *
 	 * @return bool
 	 */
-	protected function validateWithFormValidator(array $validation_rules): bool {
+	protected function validateWithFormValidator(array $validation_rules, bool $global_errors = false): bool {
 		$validator = new CFormValidator($validation_rules);
 		$data = $this->raw_input;
+		$files = $this->raw_files;
 
-		switch ($validator->validate($data)) {
+		switch ($validator->validate($data, $files)) {
 			case CFormValidator::SUCCESS:
 				$this->validation_result = self::VALIDATION_OK;
 				$this->validation_errors = [];
 				$this->input = $data;
+				$this->files = $files;
 				break;
 
 			case CFormValidator::ERROR:
@@ -311,25 +333,11 @@ abstract class CController {
 				break;
 		}
 
+		if ($global_errors) {
+			$validator->addErrorsToGlobal();
+		}
+
 		return $this->validation_result == self::VALIDATION_OK;
-	}
-
-	public function addFormError(string $path, string $message, $level = CFormValidator::ERROR_LEVEL_UNKNOWN): void {
-		if (!array_key_exists($path, $this->validation_errors)) {
-			$this->validation_errors[$path] = [];
-		}
-
-		$same_error = array_filter($this->validation_errors[$path],
-			static fn ($error) => $error['message'] === $message && $error['level'] == $level
-		);
-
-		if (!$same_error) {
-			$this->validation_errors[$path][] = [
-				'message' => $message,
-				'level' => $level
-			];
-			$this->validation_result = self::VALIDATION_ERROR;
-		}
 	}
 
 	/**
@@ -478,6 +486,14 @@ abstract class CController {
 		return $this->input;
 	}
 
+	protected function hasFile(string $var): bool {
+		return array_key_exists($var, $this->files);
+	}
+
+	protected function getFile(string $var): array {
+		return $this->files[$var];
+	}
+
 	/**
 	 * Check user permissions.
 	 *
@@ -538,14 +554,17 @@ abstract class CController {
 		switch ($this->getPostContentType()) {
 			case self::POST_CONTENT_TYPE_FORM:
 				$this->raw_input = self::getFormInput();
+				$this->raw_files = self::getFileInput();
 				break;
 
 			case self::POST_CONTENT_TYPE_JSON:
 				$this->raw_input = self::getJsonInput();
+				$this->raw_files = null;
 				break;
 
 			default:
 				$this->raw_input = null;
+				$this->raw_files = null;
 		}
 	}
 

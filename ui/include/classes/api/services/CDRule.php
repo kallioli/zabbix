@@ -42,7 +42,7 @@ class CDRule extends CApiService {
 
 		$sqlParts = [
 			'select'	=> ['drules' => 'dr.druleid'],
-			'from'		=> ['drules' => 'drules dr'],
+			'from'		=> 'drules dr',
 			'where'		=> [],
 			'group'		=> [],
 			'order'		=> [],
@@ -89,9 +89,8 @@ class CDRule extends CApiService {
 		if (!is_null($options['dhostids'])) {
 			zbx_value2array($options['dhostids']);
 
-			$sqlParts['from']['dhosts'] = 'dhosts dh';
+			$sqlParts['join']['dh'] = ['table' => 'dhosts', 'using' => 'druleid'];
 			$sqlParts['where']['dhostid'] = dbConditionInt('dh.dhostid', $options['dhostids']);
-			$sqlParts['where']['dhdr'] = 'dh.druleid=dr.druleid';
 
 			if ($options['groupCount']) {
 				$sqlParts['group']['dhostid'] = 'dh.dhostid';
@@ -102,16 +101,22 @@ class CDRule extends CApiService {
 		if (!is_null($options['dserviceids'])) {
 			zbx_value2array($options['dserviceids']);
 
-			$sqlParts['from']['dhosts'] = 'dhosts dh';
-			$sqlParts['from']['dservices'] = 'dservices ds';
-
+			$sqlParts['join']['dh'] = ['table' => 'dhosts', 'using' => 'druleid'];
+			$sqlParts['join']['ds'] = ['left_table' => 'dh', 'table' => 'dservices', 'using' => 'dhostid'];
 			$sqlParts['where']['dserviceid'] = dbConditionInt('ds.dserviceid', $options['dserviceids']);
-			$sqlParts['where']['dhdr'] = 'dh.druleid=dr.druleid';
-			$sqlParts['where']['dhds'] = 'dh.dhostid=ds.dhostid';
 
 			if ($options['groupCount']) {
 				$sqlParts['group']['dserviceid'] = 'ds.dserviceid';
 			}
+		}
+
+// proxy
+		if (self::$userData['type'] != USER_TYPE_SUPER_ADMIN) {
+			$sqlParts['join']['p'] = ['type' => 'left', 'table' => 'proxy', 'using' => 'proxyid'];
+			$sqlParts['where'][] = '('.
+				'dr.proxyid IS NULL'.
+				' OR '.CApiUserGroupHelper::getProxyPermissionsCondition('p').
+			')';
 		}
 
 // search
@@ -179,17 +184,19 @@ class CDRule extends CApiService {
 	 *
 	 * @throws APIException if the input is invalid.
 	 */
-	protected function validateCreate(array $drules) {
+	protected function validateCreate(array &$drules) {
 		// Check permissions.
 		if (self::$userData['type'] == USER_TYPE_ZABBIX_USER) {
 			self::exception(ZBX_API_ERROR_PARAMETERS, _('No permissions to referred object or it does not exist!'));
 		}
 
-		if (!$drules) {
-			self::exception(ZBX_API_ERROR_PARAMETERS, _('Empty input parameter.'));
-		}
+		$api_input_rules = ['type' => API_OBJECTS, 'flags' => API_NOT_EMPTY | API_NORMALIZE | API_ALLOW_UNEXPECTED, 'fields' => [
+			'proxyid' =>	['type' => API_ID]
+		]];
 
-		$proxyids = [];
+		if (!CApiInputValidator::validate($api_input_rules, $drules, '/', $error)) {
+			self::exception(ZBX_API_ERROR_PARAMETERS, $error);
+		}
 
 		$ip_range_parser = new CIPRangeParser(['v6' => ZBX_HAVE_IPV6, 'dns' => false, 'max_ipv4_cidr' => 30]);
 		$allowed_fields = array_flip(['proxyid', 'name', 'iprange', 'delay', 'status', 'concurrency_max', 'dchecks']);
@@ -253,18 +260,6 @@ class CDRule extends CApiService {
 				);
 			}
 
-			if (array_key_exists('proxyid', $drule)) {
-				if (!zbx_is_int($drule['proxyid'])) {
-					self::exception(ZBX_API_ERROR_PARAMETERS,
-						_s('Incorrect value "%1$s" for "%2$s" field.', $drule['proxyid'], 'proxyid')
-					);
-				}
-
-				if ($drule['proxyid'] > 0) {
-					$proxyids[] = $drule['proxyid'];
-				}
-			}
-
 			if (array_key_exists('dchecks', $drule) && $drule['dchecks']) {
 				$this->validateDChecks($drule['dchecks']);
 			}
@@ -283,34 +278,20 @@ class CDRule extends CApiService {
 		}
 
 		// Check drule name duplicates in DB.
-		$db_duplicate = $this->get([
-			'output' => ['name'],
-			'filter' => ['name' => zbx_objectValues($drules, 'name')],
-			'limit' => 1
-		]);
+		$db_duplicate = DBfetch(DBselect(
+			'SELECT name'.
+			' FROM drules'.
+			' WHERE '.dbConditionString('name', array_column($drules, 'name')),
+			1
+		));
 
 		if ($db_duplicate) {
 			self::exception(ZBX_API_ERROR_PARAMETERS,
-				_s('Discovery rule "%1$s" already exists.', $db_duplicate[0]['name'])
+				_s('Discovery rule "%1$s" already exists.', $db_duplicate['name'])
 			);
 		}
 
-		// Check proxy IDs.
-		if ($proxyids) {
-			$db_proxies = API::Proxy()->get([
-				'output' => ['proxyid'],
-				'proxyids' => $proxyids,
-				'preservekeys' => true
-			]);
-
-			foreach ($proxyids as $proxyid) {
-				if (!array_key_exists($proxyid, $db_proxies)) {
-					self::exception(ZBX_API_ERROR_PARAMETERS,
-						_s('Incorrect value "%1$s" for "%2$s" field.', $proxyid, 'proxyid')
-					);
-				}
-			}
-		}
+		self::checkProxies($drules);
 	}
 
 	/**
@@ -320,31 +301,28 @@ class CDRule extends CApiService {
 	 *
 	 * @throws APIException if the input is invalid.
 	 */
-	protected function validateUpdate(array $drules) {
+	protected function validateUpdate(array &$drules) {
 		// Check permissions.
 		if (self::$userData['type'] == USER_TYPE_ZABBIX_USER) {
 			self::exception(ZBX_API_ERROR_PARAMETERS, _('No permissions to referred object or it does not exist!'));
 		}
 
-		if (!$drules) {
-			self::exception(ZBX_API_ERROR_PARAMETERS, _('Empty input parameter.'));
+		$api_input_rules = ['type' => API_OBJECTS, 'flags' => API_NOT_EMPTY | API_NORMALIZE | API_ALLOW_UNEXPECTED, 'uniq' => [['druleid']], 'fields' => [
+			'druleid' =>	['type' => API_ID, 'flags' => API_REQUIRED],
+			'proxyid' =>	['type' => API_ID]
+		]];
+
+		if (!CApiInputValidator::validate($api_input_rules, $drules, '/', $error)) {
+			self::exception(ZBX_API_ERROR_PARAMETERS, $error);
 		}
 
-		// Validate given IDs.
-		$this->checkObjectIds($drules, 'druleid',
-			_('Field "%1$s" is mandatory.'),
-			_s('Incorrect value for field "%1$s": %2$s.', 'druleid', _('cannot be empty')),
-			_s('Incorrect value for field "%1$s": %2$s.', 'druleid', _('a numeric value is expected'))
-		);
-
 		$db_drules = $this->get([
-			'output' => ['druleid', 'name'],
+			'output' => ['druleid', 'name', 'proxyid'],
 			'druleids' => zbx_objectValues($drules, 'druleid'),
 			'preservekeys' => true
 		]);
 
 		$drule_names_changed = [];
-		$proxyids = [];
 
 		$ip_range_parser = new CIPRangeParser(['v6' => ZBX_HAVE_IPV6, 'dns' => false, 'max_ipv4_cidr' => 30]);
 		$allowed_fields = array_flip([
@@ -419,18 +397,6 @@ class CDRule extends CApiService {
 				);
 			}
 
-			if (array_key_exists('proxyid', $drule)) {
-				if (!zbx_is_int($drule['proxyid'])) {
-					self::exception(ZBX_API_ERROR_PARAMETERS,
-						_s('Incorrect value "%1$s" for "%2$s" field.', $drule['proxyid'], 'proxyid')
-					);
-				}
-
-				if ($drule['proxyid'] > 0) {
-					$proxyids[] = $drule['proxyid'];
-				}
-			}
-
 			if (array_key_exists('dchecks', $drule)) {
 				if ($drule['dchecks']) {
 					$this->validateDChecks($drule['dchecks']);
@@ -452,35 +418,21 @@ class CDRule extends CApiService {
 			}
 
 			// Check drule name duplicates in DB.
-			$db_duplicate = $this->get([
-				'output' => ['name'],
-				'filter' => ['name' => zbx_objectValues($drule_names_changed, 'name')],
-				'limit' => 1
-			]);
+			$db_duplicate = DBfetch(DBselect(
+				'SELECT name'.
+				' FROM drules'.
+				' WHERE '.dbConditionString('name', array_column($drule_names_changed, 'name')),
+				1
+			));
 
 			if ($db_duplicate) {
 				self::exception(ZBX_API_ERROR_PARAMETERS,
-					_s('Discovery rule "%1$s" already exists.', $db_duplicate[0]['name'])
+					_s('Discovery rule "%1$s" already exists.', $db_duplicate['name'])
 				);
 			}
 		}
 
-		// Check proxy IDs.
-		if ($proxyids) {
-			$db_proxies = API::Proxy()->get([
-				'output' => ['proxyid'],
-				'proxyids' => $proxyids,
-				'preservekeys' => true
-			]);
-
-			foreach ($proxyids as $proxyid) {
-				if (!array_key_exists($proxyid, $db_proxies)) {
-					self::exception(ZBX_API_ERROR_PARAMETERS,
-						_s('Incorrect value "%1$s" for "%2$s" field.', $proxyid, 'proxyid')
-					);
-				}
-			}
-		}
+		self::checkProxies($drules, $db_drules);
 
 		self::addAffectedObjects($drules, $db_drules);
 
@@ -708,6 +660,54 @@ class CDRule extends CApiService {
 		}
 	}
 
+	private static function checkProxies(array $drules, ?array $db_drules = null): void {
+		$proxyids = [];
+
+		foreach ($drules as $i => $drule) {
+			$proxyid = array_key_exists('proxyid', $drule) ? $drule['proxyid'] : null;
+
+			if ($db_drules !== null) {
+				if ($proxyid === null || bccomp($proxyid, $db_drules[$drule['druleid']]['proxyid']) == 0) {
+					continue;
+				}
+			}
+			elseif ($proxyid === null) {
+				$proxyid = 0;
+			}
+
+			if (!self::checkAccess(CRoleHelper::ACTIONS_SELECT_SERVER_FOR_MONITORING)) {
+				if ($proxyid == 0 || $db_drules !== null && $db_drules[$drule['druleid']]['proxyid'] == 0) {
+					self::exception(ZBX_API_ERROR_PERMISSIONS, _s('Invalid parameter "%1$s": %2$s.',
+						'/'.($i + 1).'/proxyid',
+						_('you do not have permission to select Server for monitoring and discovery')
+					));
+				}
+			}
+
+			if ($proxyid != 0 && !array_key_exists($proxyid, $proxyids)) {
+				$proxyids[$proxyid] = $i;
+			}
+		}
+
+		if (!$proxyids) {
+			return;
+		}
+
+		$db_proxies = API::Proxy()->get([
+			'output' => [],
+			'proxyids' => array_keys($proxyids),
+			'preservekeys' => true
+		]);
+
+		foreach ($proxyids as $proxyid => $i) {
+			if (!array_key_exists($proxyid, $db_proxies)) {
+				self::exception(ZBX_API_ERROR_PERMISSIONS, _s('Invalid parameter "%1$s": %2$s.',
+					'/'.($i + 1).'/proxyid', _('object does not exist, or you have no permissions to it')
+				));
+			}
+		}
+	}
+
 	private static function addAffectedObjects(array $drules, array &$db_rules): void {
 		$druleids = [];
 
@@ -808,7 +808,6 @@ class CDRule extends CApiService {
 	 * @return array
 	 */
 	public function create(array $drules) {
-		$drules = zbx_toArray($drules);
 		$this->validateCreate($drules);
 
 		$druleids = DB::insert('drules', $drules);
@@ -864,10 +863,9 @@ class CDRule extends CApiService {
 	 * @return array
 	 */
 	public function update(array $drules) {
-		$drules = zbx_toArray($drules);
-		$druleids = zbx_objectValues($drules, 'druleid');
-
 		$this->validateUpdate($drules);
+
+		$druleids = zbx_objectValues($drules, 'druleid');
 
 		$db_drules = API::DRule()->get([
 			'output' => ['druleid', 'proxyid', 'name', 'iprange', 'delay', 'status', 'concurrency_max'],
@@ -880,41 +878,91 @@ class CDRule extends CApiService {
 			'preservekeys' => true
 		]);
 
-		$default_values = DB::getDefaults('dchecks');
+		$upd_drules = [];
 
 		foreach ($drules as $drule) {
-			$db_drule = $db_drules[$drule['druleid']];
+			$upd_drule = DB::getUpdatedValues('drules', $drule, $db_drules[$drule['druleid']]);
 
-			// Update drule if it's modified.
-			if (DB::recordModified('drules', $db_drule, $drule)) {
-				DB::updateByPk('drules', $drule['druleid'], $drule);
-			}
-
-			if (array_key_exists('dchecks', $drule)) {
-				// Update dchecks.
-				$db_dchecks = $db_drule['dchecks'];
-
-				$new_dchecks = [];
-				$old_dchecks = [];
-
-				foreach ($drule['dchecks'] as $check) {
-					$check['druleid'] = $drule['druleid'];
-
-					if (!isset($check['dcheckid'])) {
-						$new_dchecks[] = array_merge($default_values, $check);
-					}
-					else {
-						$old_dchecks[] = $check;
-					}
-				}
-
-				DB::replace('dchecks', $db_dchecks, array_merge($old_dchecks, $new_dchecks));
+			if ($upd_drule) {
+				$upd_drules[] = [
+					'values' => $upd_drule,
+					'where' => ['druleid' => $drule['druleid']]
+				];
 			}
 		}
+
+		if ($upd_drules) {
+			DB::update('drules', $upd_drules);
+		}
+
+		self::updateDchecks($drules, $db_drules);
 
 		$this->addAuditBulk(CAudit::ACTION_UPDATE, CAudit::RESOURCE_DISCOVERY_RULE, $drules, $db_drules);
 
 		return ['druleids' => $druleids];
+	}
+
+	private static function updateDchecks(array $drules, ?array $db_drules = null): void {
+		$ins_dchecks = [];
+		$upd_dchecks = [];
+		$del_dcheckids = [];
+
+		foreach ($drules as $drule) {
+			if (!array_key_exists('dchecks', $drule)) {
+				continue;
+			}
+
+			$db_dchecks = $db_drules !== null
+				? array_column($db_drules[$drule['druleid']]['dchecks'], null, 'dcheckid')
+				: [];
+
+			foreach ($drule['dchecks'] as $dcheck) {
+				if (array_key_exists('dcheckid', $dcheck)) {
+					$upd_dcheck = DB::getUpdatedValues('dchecks', $dcheck, $db_dchecks[$dcheck['dcheckid']]);
+
+					if ($upd_dcheck) {
+						$upd_dchecks[] = [
+							'values' => $upd_dcheck,
+							'where' => ['dcheckid' => $dcheck['dcheckid']]
+						];
+					}
+
+					unset($db_dchecks[$dcheck['dcheckid']]);
+				}
+				else {
+					$ins_dchecks[] = ['druleid' => $drule['druleid']] + $dcheck;
+				}
+			}
+
+			$del_dcheckids = array_merge($del_dcheckids, array_keys($db_dchecks));
+		}
+
+		if ($del_dcheckids) {
+			DB::delete('dservices', ['dcheckid' => $del_dcheckids]);
+			DB::delete('dchecks', ['dcheckid' => $del_dcheckids]);
+		}
+
+		if ($upd_dchecks) {
+			DB::update('dchecks', $upd_dchecks);
+		}
+
+		if ($ins_dchecks) {
+			$dcheckids = DB::insert('dchecks', $ins_dchecks);
+
+			foreach ($drules as &$drule) {
+				if (!array_key_exists('dchecks', $drule)) {
+					continue;
+				}
+
+				foreach ($drule['dchecks'] as &$dcheck) {
+					if (!array_key_exists('dcheckid', $dcheck)) {
+						$dcheck['dcheckid'] = array_shift($dcheckids);
+					}
+				}
+				unset($dcheck);
+			}
+			unset($drule);
+		}
 	}
 
 	/**
@@ -925,6 +973,17 @@ class CDRule extends CApiService {
 	public function delete(array $druleids): array {
 		$this->validateDelete($druleids, $db_drules);
 
+		DBexecute(
+			'DELETE FROM dservices'.
+			' WHERE EXISTS ('.
+				'SELECT NULL'.
+				' FROM dhosts dh'.
+				' WHERE dservices.dhostid=dh.dhostid'.
+					' AND '.dbConditionId('dh.druleid', $druleids).
+			')'
+		);
+
+		DB::delete('dhosts', ['druleid' => $druleids]);
 		DB::delete('dchecks', ['druleid' => $druleids]);
 		DB::delete('drules', ['druleid' => $druleids]);
 

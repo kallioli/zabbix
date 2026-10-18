@@ -7,7 +7,7 @@ This template is designed for the effortless deployment of MSSQL monitoring by Z
 
 ## Requirements
 
-Zabbix version: 7.4 and higher.
+Zabbix version: 8.0 and higher.
 
 ## Tested versions
 
@@ -16,7 +16,7 @@ This template has been tested on:
 
 ## Configuration
 
-> Zabbix should be configured according to the instructions in the [Templates out of the box](https://www.zabbix.com/documentation/7.4/manual/config/templates_out_of_the_box) section.
+> Zabbix should be configured according to the instructions in the [Templates out of the box](https://www.zabbix.com/documentation/8.0/manual/config/templates_out_of_the_box) section.
 
 ## Setup
 
@@ -74,10 +74,10 @@ Note: You can use the context macros `{$MSSQL.BACKUP_FULL.USED}`, `{$MSSQL.BACKU
 
 |Name|Description|Default|
 |----|-----------|-------|
-|{$MSSQL.DSN}|<p>System data source name.</p>||
+|{$MSSQL.DSN}|<p>Data Source Name of the MSSQL instance.</p>||
 |{$MSSQL.USER}|<p>MSSQL database username.</p>||
 |{$MSSQL.PASSWORD}|<p>MSSQL database password.</p>||
-|{$MSSQL.HOST}|<p>The hostname or IP address of the MSSQL instance.</p>|`localhost`|
+|{$MSSQL.HOST}|<p>Hostname or IP address of the MSSQL instance.</p>|`localhost`|
 |{$MSSQL.PORT}|<p>MSSQL TCP port.</p>|`1433`|
 |{$MSSQL.WORK_FILES.MAX}|<p>The maximum number of work files created per second - for the trigger expression.</p>|`20`|
 |{$MSSQL.WORK_TABLES.MAX}|<p>The maximum number of work tables created per second - for the trigger expression.</p>|`20`|

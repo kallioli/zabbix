@@ -21,10 +21,10 @@ void	zbx_audit_trigger_create_entry(int audit_context_mode, int audit_action, zb
 		const char *name, int flags);
 
 void	zbx_audit_trigger_update_json_add_data(int audit_context_mode, zbx_uint64_t triggerid, zbx_uint64_t templateid,
-		unsigned char recovery_mode, unsigned char status, unsigned char type, zbx_uint64_t value,
-		zbx_uint64_t state, unsigned char priority, const char *comments, const char *url,
-		const char *url_name, int flags, unsigned char correlation_mode, const char *correlation_tag,
-		unsigned char manual_close, const char *opdata, unsigned char discover, const char *event_name);
+		unsigned char recovery_mode, unsigned char status, unsigned char type, unsigned char priority,
+		const char *comments, const char *url, const char *url_name, int flags, unsigned char correlation_mode,
+		const char *correlation_tag, unsigned char manual_close, const char *opdata, unsigned char discover,
+		const char *event_name);
 
 void	zbx_audit_trigger_update_json_add_expr(int audit_context_mode, zbx_uint64_t triggerid, int flags,
 		const char *expression);
@@ -59,7 +59,7 @@ void	zbx_audit_trigger_update_json_add_dependency(int audit_context_mode, int fl
 void	zbx_audit_trigger_update_json_remove_dependency(int audit_context_mode, int flags, zbx_uint64_t triggerdepid,
 		zbx_uint64_t triggerid);
 void	zbx_audit_trigger_update_json_add_tags_and_values(int audit_context_mode, zbx_uint64_t triggerid, int flags,
-		zbx_uint64_t triggertagid, const char *tag, const char *value);
+		zbx_uint64_t triggertagid, const char *tag, const char *value, int automatic);
 void	zbx_audit_trigger_update_json_delete_tags(int audit_context_mode, zbx_uint64_t triggerid, int flags,
 		zbx_uint64_t triggertagid);
 void	zbx_audit_trigger_update_json_update_trigger_tag_create_entry(int audit_context_mode, zbx_uint64_t triggerid,
@@ -70,5 +70,6 @@ void	zbx_audit_trigger_update_json_update_tag_##resource(int audit_context_mode,
 		int trigger_flags, zbx_uint64_t triggertagid, type1 resource##_old, type1 resource##_new);
 PREPARE_AUDIT_TRIGGER_UPDATE_TAG_H(tag, const char*)
 PREPARE_AUDIT_TRIGGER_UPDATE_TAG_H(value, const char*)
+PREPARE_AUDIT_TRIGGER_UPDATE_TAG_H(automatic, int)
 
 #endif	/* ZABBIX_AUDIT_TRIGGER_H */

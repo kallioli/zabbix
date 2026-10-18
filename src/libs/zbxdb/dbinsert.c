@@ -45,6 +45,7 @@ static void	db_insert_clear_rows(zbx_db_insert_t *db_insert)
 				case ZBX_TYPE_LONGTEXT:
 				case ZBX_TYPE_CUID:
 				case ZBX_TYPE_BLOB:
+				case ZBX_TYPE_JSON:
 					zbx_free(row[j].str);
 					break;
 			}
@@ -102,7 +103,7 @@ void	zbx_dbconn_prepare_insert_dyn(zbx_dbconn_t *db, zbx_db_insert_t *db_insert,
 	if (0 == fields_num)
 	{
 		THIS_SHOULD_NEVER_HAPPEN;
-		exit(EXIT_FAILURE);
+		zbx_exit(EXIT_FAILURE);
 	}
 
 	db_insert->db = db;
@@ -128,36 +129,31 @@ void	zbx_dbconn_prepare_insert_dyn(zbx_dbconn_t *db, zbx_db_insert_t *db_insert,
  *           function.                                                        *
  *                                                                            *
  ******************************************************************************/
-void	zbx_dbconn_prepare_vinsert(zbx_dbconn_t *db, zbx_db_insert_t *db_insert, const char *table, va_list args)
+void	zbx_dbconn_prepare_vinsert(zbx_dbconn_t *db, zbx_db_insert_t *db_insert, const zbx_db_table_t *db_table,
+		va_list args)
 {
 	zbx_vector_const_db_field_ptr_t	fields;
 	char				*field;
-	const zbx_db_table_t		*ptable;
 	const zbx_db_field_t		*pfield;
 
-	/* find the table and fields in database schema */
-	if (NULL == (ptable = zbx_db_get_table(table)))
-	{
-		THIS_SHOULD_NEVER_HAPPEN;
-		exit(EXIT_FAILURE);
-	}
+	/* find fields in database schema */
 
 	zbx_vector_const_db_field_ptr_create(&fields);
 
 	while (NULL != (field = va_arg(args, char *)))
 	{
-		if (NULL == (pfield = zbx_db_get_field(ptable, field)))
+		if (NULL == (pfield = zbx_db_get_field(db_table, field)))
 		{
 			zabbix_log(LOG_LEVEL_ERR, "Cannot locate table \"%s\" field \"%s\" in database schema",
-					table, field);
+					db_table, field);
 			THIS_SHOULD_NEVER_HAPPEN;
-			exit(EXIT_FAILURE);
+			zbx_exit(EXIT_FAILURE);
 		}
 
 		zbx_vector_const_db_field_ptr_append(&fields, pfield);
 	}
 
-	zbx_dbconn_prepare_insert_dyn(db, db_insert, ptable, (const zbx_db_field_t * const *)fields.values,
+	zbx_dbconn_prepare_insert_dyn(db, db_insert, db_table, (const zbx_db_field_t * const *)fields.values,
 			fields.values_num);
 
 	zbx_vector_const_db_field_ptr_destroy(&fields);
@@ -171,11 +167,34 @@ void	zbx_dbconn_prepare_vinsert(zbx_dbconn_t *db, zbx_db_insert_t *db_insert, co
 void	zbx_dbconn_prepare_insert(zbx_dbconn_t *db, zbx_db_insert_t *db_insert, const char *table, ...)
 {
 	va_list	args;
+	const zbx_db_table_t	*db_table;
+
+	if (NULL == (db_table = zbx_db_get_table(table)))
+	{
+		THIS_SHOULD_NEVER_HAPPEN;
+		zbx_exit(EXIT_FAILURE);
+	}
 
 	va_start(args, table);
-	zbx_dbconn_prepare_vinsert(db, db_insert, table, args);
+	zbx_dbconn_prepare_vinsert(db, db_insert, db_table, args);
 	va_end(args);
 }
+
+/******************************************************************************
+ *                                                                            *
+ * Purpose: prepare for database bulk insert operation                        *
+ *                                                                            *
+ ******************************************************************************/
+void	zbx_dbconn_prepare_insert_table(zbx_dbconn_t *db, zbx_db_insert_t *db_insert, const zbx_db_table_t *db_table,
+		...)
+{
+	va_list	args;
+
+	va_start(args, db_table);
+	zbx_dbconn_prepare_vinsert(db, db_insert, db_table, args);
+	va_end(args);
+}
+
 
 /******************************************************************************
  *                                                                            *
@@ -197,7 +216,7 @@ void	zbx_db_insert_add_values_dyn(zbx_db_insert_t *db_insert, zbx_db_value_t **v
 	if (values_num != db_insert->fields.values_num)
 	{
 		THIS_SHOULD_NEVER_HAPPEN;
-		exit(EXIT_FAILURE);
+		zbx_exit(EXIT_FAILURE);
 	}
 
 	if (0 != db_insert->batch_size && db_insert->batch_size <= db_insert->rows.values_num)
@@ -215,12 +234,14 @@ void	zbx_db_insert_add_values_dyn(zbx_db_insert_t *db_insert, zbx_db_value_t **v
 
 		switch (field->type)
 		{
-			case ZBX_TYPE_LONGTEXT:
 			case ZBX_TYPE_CHAR:
 			case ZBX_TYPE_TEXT:
+			case ZBX_TYPE_LONGTEXT:
 			case ZBX_TYPE_CUID:
 			case ZBX_TYPE_BLOB:
-				row[i].str = db_dyn_escape_field_len(field, value->str, ESCAPE_SEQUENCE_ON);
+			case ZBX_TYPE_JSON:
+				row[i].str = dbconn_dyn_escape_field_len(db_insert->db, field, value->str,
+						ESCAPE_SEQUENCE_ON);
 				break;
 			case ZBX_TYPE_INT:
 			case ZBX_TYPE_FLOAT:
@@ -231,7 +252,7 @@ void	zbx_db_insert_add_values_dyn(zbx_db_insert_t *db_insert, zbx_db_value_t **v
 				break;
 			default:
 				THIS_SHOULD_NEVER_HAPPEN;
-				exit(EXIT_FAILURE);
+				zbx_exit(EXIT_FAILURE);
 		}
 	}
 
@@ -276,6 +297,7 @@ void	zbx_db_insert_add_values(zbx_db_insert_t *db_insert, ...)
 			case ZBX_TYPE_LONGTEXT:
 			case ZBX_TYPE_CUID:
 			case ZBX_TYPE_BLOB:
+			case ZBX_TYPE_JSON:
 				value->str = va_arg(args, char *);
 				break;
 			case ZBX_TYPE_INT:
@@ -290,7 +312,7 @@ void	zbx_db_insert_add_values(zbx_db_insert_t *db_insert, ...)
 				break;
 			default:
 				THIS_SHOULD_NEVER_HAPPEN;
-				exit(EXIT_FAILURE);
+				zbx_exit(EXIT_FAILURE);
 		}
 
 		zbx_vector_ptr_append(&values, value);
@@ -436,10 +458,11 @@ int	zbx_db_insert_execute(zbx_db_insert_t *db_insert)
 	{
 		switch (field->type)
 		{
-			case ZBX_TYPE_BLOB:
 			case ZBX_TYPE_TEXT:
 			case ZBX_TYPE_LONGTEXT:
 			case ZBX_TYPE_CUID:
+			case ZBX_TYPE_BLOB:
+			case ZBX_TYPE_JSON:
 				if (FAIL != zbx_vector_const_db_field_ptr_search(&db_insert->fields, field,
 						ZBX_DEFAULT_PTR_COMPARE_FUNC))
 				{
@@ -479,6 +502,7 @@ int	zbx_db_insert_execute(zbx_db_insert_t *db_insert)
 				case ZBX_TYPE_TEXT:
 				case ZBX_TYPE_LONGTEXT:
 				case ZBX_TYPE_CUID:
+				case ZBX_TYPE_JSON:
 					if (0 != (field->flags & ZBX_UPPER))
 					{
 						zbx_strcpy_alloc(&sql, &sql_alloc, &sql_offset, "upper(\'");
@@ -519,7 +543,7 @@ int	zbx_db_insert_execute(zbx_db_insert_t *db_insert)
 					break;
 				default:
 					THIS_SHOULD_NEVER_HAPPEN;
-					exit(EXIT_FAILURE);
+					zbx_exit(EXIT_FAILURE);
 			}
 		}
 #ifdef HAVE_MYSQL
@@ -585,7 +609,7 @@ void	zbx_db_insert_autoincrement(zbx_db_insert_t *db_insert, const char *field_n
 	}
 
 	THIS_SHOULD_NEVER_HAPPEN;
-	exit(EXIT_FAILURE);
+	zbx_exit(EXIT_FAILURE);
 }
 
 /******************************************************************************
@@ -634,4 +658,21 @@ void	zbx_db_insert_set_batch_size(zbx_db_insert_t *self, int batch_size)
 int	zbx_db_insert_get_row_count(zbx_db_insert_t *self)
 {
 	return self->rows.values_num;
+}
+
+/******************************************************************************
+ *                                                                            *
+ * Purpose: check if database insert structure is prepared                    *
+ *                                                                            *
+ * Parameters: self - [IN] pointer to the database insert structure           *
+ *                                                                            *
+ * Return value: SUCCEED - insert structure is prepared                       *
+ *               FAIL    - otherwise                                          *
+ *                                                                            *
+ * Comments: Works only if db_insert is initialized with {0}.                 *
+ *                                                                            *
+ ******************************************************************************/
+int	zbx_db_insert_is_prepared(zbx_db_insert_t *self)
+{
+	return NULL != self->db ? SUCCEED : FAIL;
 }

@@ -1,5 +1,5 @@
 zabbix_export:
-  version: '7.4'
+  version: '8.0'
   template_groups:
     - uuid: a571c0d144b14fd4a87a9d9b2aa9fcd6
       name: Templates/Applications
@@ -29,7 +29,7 @@ zabbix_export:
         Test availability: `zabbix_get -s docker-host -k docker.info`
       vendor:
         name: Zabbix
-        version: 7.4-2
+        version: 8.0-2
       groups:
         - name: Templates/Applications
       items:
@@ -1724,6 +1724,14 @@ zabbix_export:
       tags:
         - tag: class
           value: software
+        - tag: subclass
+          value: containers
+        - tag: subclass
+          value: deploy
+        - tag: subclass
+          value: development
+        - tag: subclass
+          value: virtualization
         - tag: target
           value: docker
       macros:

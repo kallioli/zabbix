@@ -29,7 +29,6 @@
 #include "zbxthreads.h"
 #include "zbxtimekeeper.h"
 #include "zbxalgo.h"
-#include "zbxexpr.h"
 
 typedef struct
 {
@@ -126,8 +125,8 @@ static void	process_value(zbx_uint64_t itemid, zbx_uint64_t *value_ui64, double 
 	if (NOTSUPPORTED == ping_result)
 	{
 		item.state = ITEM_STATE_NOTSUPPORTED;
-		zbx_preprocess_item_value(item.itemid, item.host.hostid, item.value_type, item.flags,
-			item.preprocessing, NULL, ts, item.state, error);
+		zbx_preprocess_item_value(item.itemid, item.value_type, item.flags, item.preprocessing, NULL, ts,
+				item.state, error);
 	}
 	else
 	{
@@ -141,8 +140,8 @@ static void	process_value(zbx_uint64_t itemid, zbx_uint64_t *value_ui64, double 
 			SET_DBL_RESULT(&value, *value_dbl);
 
 		item.state = ITEM_STATE_NORMAL;
-		zbx_preprocess_item_value(item.itemid, item.host.hostid, item.value_type, item.flags,
-				item.preprocessing, &value, ts, item.state, NULL);
+		zbx_preprocess_item_value(item.itemid, item.value_type, item.flags, item.preprocessing, &value, ts,
+				item.state, NULL);
 
 		zbx_free_agent_result(&value);
 	}
@@ -484,6 +483,7 @@ static void	add_icmpping_item(zbx_hashset_t *pinger_items, zbx_pinger_t *pinger_
 static void	get_pinger_hosts(zbx_hashset_t *pinger_items, int config_timeout)
 {
 	zbx_dc_item_t		item, *items;
+	zbx_dc_poller_item_t	poller_item;
 	int			num, errcode = SUCCEED, items_count = 0;
 	char			error[MAX_STRING_LEN], *addr = NULL, *errmsg = NULL;
 	icmpping_t		icmpping;
@@ -494,16 +494,18 @@ static void	get_pinger_hosts(zbx_hashset_t *pinger_items, int config_timeout)
 
 	um_handle = zbx_dc_open_user_macros_masked();
 
-	items = &item;
-	num = zbx_dc_config_get_poller_items(ZBX_POLLER_TYPE_PINGER, config_timeout, 0, 0, &items);
+	poller_item.dc_items = &item;
+	num = zbx_dc_config_get_poller_items(ZBX_POLLER_TYPE_PINGER, config_timeout, 0, 0, &poller_item);
+	items = poller_item.dc_items;
 
 	for (int i = 0; i < num; i++)
 	{
 		zbx_pinger_t	pinger_local;
 
 		ZBX_STRDUP(items[i].key, items[i].key_orig);
-		int	rc = zbx_substitute_item_key_params(&items[i].key, error, sizeof(error),
-				zbx_item_key_subst_cb, um_handle, &items[i]);
+		int	rc = zbx_substitute_item_key_params_default(&items[i].key, error, sizeof(error), um_handle,
+				items[i].host.hostid, items[i].host.host, items[i].host.name, items[i].itemid,
+				&items[i].interface);
 
 		if (SUCCEED == rc)
 		{
@@ -525,8 +527,8 @@ static void	get_pinger_hosts(zbx_hashset_t *pinger_items, int config_timeout)
 			zbx_timespec(&ts);
 
 			items[i].state = ITEM_STATE_NOTSUPPORTED;
-			zbx_preprocess_item_value(items[i].itemid, items[i].host.hostid, items[i].value_type,
-					items[i].flags, items[i].preprocessing, NULL, &ts, items[i].state, errmsg);
+			zbx_preprocess_item_value(items[i].itemid, items[i].value_type, items[i].flags,
+					items[i].preprocessing, NULL, &ts, items[i].state, errmsg);
 
 			zbx_dc_requeue_items(&items[i].itemid, &ts.sec, &errcode, 1);
 			zbx_free(errmsg);

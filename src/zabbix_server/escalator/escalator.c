@@ -13,13 +13,14 @@
 **/
 
 #include "escalator.h"
+#include "get_build_push_param.h"
 
 #include "../server_constants.h"
 #include "../db_lengths_constants.h"
 #include "../actions/actions.h"
 
+#include "zbx_cep_client.h"
 #include "zbxtimekeeper.h"
-#include "zbxexpression.h"
 #include "zbxnix.h"
 #include "zbxself.h"
 #include "zbxscripts.h"
@@ -46,6 +47,10 @@
 #include "zbxrtc.h"
 #include "zbx_rtc_constants.h"
 #include "zbxserialize.h"
+#include "zbxcurl.h"
+#ifdef HAVE_ARES_QUERY_CACHE
+#include "zbxresolver.h"
+#endif
 
 #define CONFIG_ESCALATOR_FREQUENCY	3
 
@@ -72,6 +77,7 @@ typedef struct
 	char		*message;
 	char		*tz;
 	int		err;
+	int		all_mediatypes;
 	void		*next;
 }
 zbx_user_msg_t;
@@ -124,7 +130,7 @@ static void	zbx_tag_filter_free(zbx_tag_filter_t *tag_filter)
 static void	add_message_alert(const zbx_db_event *event, const zbx_db_event *r_event, zbx_uint64_t actionid,
 		int esc_step, zbx_uint64_t userid, zbx_uint64_t mediatypeid, const char *subject, const char *message,
 		const zbx_db_acknowledge *ack, const zbx_service_alarm_t *service_alarm, const zbx_db_service *service,
-		int err_type, const char *tz);
+		int err_type, int all_mediatypes, const char *tz);
 
 typedef enum
 {
@@ -173,7 +179,7 @@ static void	notify_alerter(zbx_alerter_notify_mode_t mode)
 		{
 			zabbix_log(LOG_LEVEL_CRIT, "cannot open IPC connection to alert manager: %s", error);
 			zbx_free(error);
-			exit(EXIT_FAILURE);
+			zbx_exit(EXIT_FAILURE);
 		}
 	}
 
@@ -629,23 +635,25 @@ out2:
 static void	add_user_msg(zbx_uint64_t userid, zbx_uint64_t mediatypeid, zbx_user_msg_t **user_msg, const char *subj,
 		const char *msg, zbx_uint64_t actionid, const zbx_db_event *event, const zbx_db_event *r_event,
 		const zbx_db_acknowledge *ack, const zbx_service_alarm_t *service_alarm, const zbx_db_service *service,
-		int expand_macros, int macro_type, int err_type, const char *tz)
+		int expand_macros, int macro_type, int err_type, int all_mediatypes, const char *tz)
 {
 	zbx_user_msg_t	*p;
-	char		*subject, *message, *tz_tmp;
 
 	zabbix_log(LOG_LEVEL_DEBUG, "In %s()", __func__);
 
-	subject = zbx_strdup(NULL, subj);
-	message = zbx_strdup(NULL, msg);
-	tz_tmp = zbx_strdup(NULL, tz);
+	char	*subject = zbx_strdup(NULL, subj);
+	char	*message = zbx_strdup(NULL, msg);
 
 	if (ZBX_MACRO_EXPAND_YES == expand_macros)
 	{
-		zbx_substitute_simple_macros(&actionid, event, r_event, &userid, NULL, NULL, NULL, NULL, ack,
-				service_alarm, service, tz, &subject, macro_type, NULL, 0);
-		zbx_substitute_simple_macros(&actionid, event, r_event, &userid, NULL, NULL, NULL, NULL, ack,
-				service_alarm, service, tz, &message, macro_type, NULL, 0);
+		zbx_dc_um_handle_t	*um_handle = zbx_dc_open_user_macros();
+
+		substitute_message_macros(&subject, NULL, 0, macro_type, um_handle, &actionid, event, r_event, &userid,
+				NULL, NULL, service_alarm, service, tz, ack);
+		substitute_message_macros(&message, NULL, 0, macro_type, um_handle, &actionid, event, r_event, &userid,
+				NULL, NULL, service_alarm, service, tz, ack);
+
+		zbx_dc_close_user_macros(um_handle);
 	}
 
 	if (0 == mediatypeid)
@@ -658,6 +666,7 @@ static void	add_user_msg(zbx_uint64_t userid, zbx_uint64_t mediatypeid, zbx_user
 					0 == strcmp(p->message, message) && 0 != p->mediatypeid)
 			{
 				*pnext = (zbx_user_msg_t *)p->next;
+				all_mediatypes |= p->all_mediatypes;
 
 				zbx_free(p->subject);
 				zbx_free(p->message);
@@ -686,18 +695,19 @@ static void	add_user_msg(zbx_uint64_t userid, zbx_uint64_t mediatypeid, zbx_user
 		p->userid = userid;
 		p->mediatypeid = mediatypeid;
 		p->err = err_type;
+		p->all_mediatypes = all_mediatypes;
 		p->subject = subject;
 		p->message = message;
-		p->tz = tz_tmp;
+		p->tz = zbx_strdup(NULL, tz);
 		p->next = *user_msg;
 
 		*user_msg = p;
 	}
 	else
 	{
+		p->all_mediatypes |= all_mediatypes;
 		zbx_free(subject);
 		zbx_free(message);
-		zbx_free(tz_tmp);
 	}
 
 	zabbix_log(LOG_LEVEL_DEBUG, "End of %s()", __func__);
@@ -706,12 +716,13 @@ static void	add_user_msg(zbx_uint64_t userid, zbx_uint64_t mediatypeid, zbx_user
 static void	add_user_msgs(zbx_uint64_t userid, zbx_uint64_t operationid, zbx_uint64_t mediatypeid,
 		zbx_user_msg_t **user_msg, zbx_uint64_t actionid, const zbx_db_event *event,
 		const zbx_db_event *r_event, const zbx_db_acknowledge *ack, const zbx_service_alarm_t *service_alarm,
-		const zbx_db_service *service, int macro_type, unsigned char evt_src, unsigned char op_mode,
+		const zbx_db_service *service, int message_type, unsigned char evt_src, unsigned char op_mode,
 		const char *default_timezone, const char *user_timezone)
 {
 	zbx_db_result_t	result;
 	zbx_db_row_t	row;
 	zbx_uint64_t	mtid;
+	int		all_mediatypes;
 	const char	*tz;
 
 	zabbix_log(LOG_LEVEL_DEBUG, "In %s()", __func__);
@@ -727,14 +738,19 @@ static void	add_user_msgs(zbx_uint64_t userid, zbx_uint64_t operationid, zbx_uin
 
 	if (NULL != (row = zbx_db_fetch(result)))
 	{
+		all_mediatypes = 0;
+
 		if (0 == mediatypeid)
+		{
 			ZBX_DBROW2UINT64(mediatypeid, row[0]);
+			all_mediatypes = (0 == mediatypeid);
+		}
 
 		if (1 != atoi(row[1]))
 		{
 			add_user_msg(userid, mediatypeid, user_msg, row[2], row[3], actionid, event, r_event, ack,
-					service_alarm, service, ZBX_MACRO_EXPAND_YES, macro_type,
-					ZBX_ALERT_MESSAGE_ERR_NONE, tz);
+					service_alarm, service, ZBX_MACRO_EXPAND_YES, message_type,
+					ZBX_ALERT_MESSAGE_ERR_NONE, all_mediatypes, tz);
 			goto out;
 		}
 
@@ -775,13 +791,14 @@ static void	add_user_msgs(zbx_uint64_t userid, zbx_uint64_t operationid, zbx_uin
 		if (0 != mtmid)
 		{
 			add_user_msg(userid, mediatypeid, user_msg, row[1], row[2], actionid, event, r_event, ack,
-					service_alarm, service, ZBX_MACRO_EXPAND_YES, macro_type,
-					ZBX_ALERT_MESSAGE_ERR_NONE, tz);
+					service_alarm, service, ZBX_MACRO_EXPAND_YES, message_type,
+					ZBX_ALERT_MESSAGE_ERR_NONE, all_mediatypes, tz);
 		}
 		else
 		{
 			add_user_msg(userid, mediatypeid, user_msg, "", "", actionid, event, r_event, ack,
-					service_alarm, service, ZBX_MACRO_EXPAND_NO, 0, ZBX_ALERT_MESSAGE_ERR_MSG, tz);
+					service_alarm, service, ZBX_MACRO_EXPAND_NO, 0, ZBX_ALERT_MESSAGE_ERR_MSG,
+					all_mediatypes, tz);
 		}
 	}
 
@@ -789,7 +806,7 @@ static void	add_user_msgs(zbx_uint64_t userid, zbx_uint64_t operationid, zbx_uin
 	{
 		add_user_msg(userid, mtid, user_msg, "", "", actionid, event, r_event, ack, service_alarm, service,
 				ZBX_MACRO_EXPAND_NO, 0,
-				0 == mtid ? ZBX_ALERT_MESSAGE_ERR_USR : ZBX_ALERT_MESSAGE_ERR_MSG, tz);
+				0 == mtid ? ZBX_ALERT_MESSAGE_ERR_USR : ZBX_ALERT_MESSAGE_ERR_MSG, all_mediatypes, tz);
 	}
 out:
 	zbx_db_free_result(result);
@@ -799,7 +816,7 @@ out:
 
 static void	add_object_msg(zbx_uint64_t actionid, zbx_uint64_t operationid, zbx_user_msg_t **user_msg,
 		zbx_db_event *event, const zbx_db_event *r_event, const zbx_db_acknowledge *ack,
-		const zbx_service_alarm_t *service_alarm, const zbx_db_service *service, int macro_type,
+		const zbx_service_alarm_t *service_alarm, const zbx_db_service *service, int message_type,
 		unsigned char evt_src, unsigned char op_mode, const char *default_timezone, zbx_hashset_t *roles)
 {
 	zbx_db_result_t	result;
@@ -852,7 +869,7 @@ static void	add_object_msg(zbx_uint64_t actionid, zbx_uint64_t operationid, zbx_
 		}
 
 		add_user_msgs(userid, operationid, 0, user_msg, actionid, event, r_event, ack, service_alarm, service,
-				macro_type, evt_src, op_mode, default_timezone, user_timezone);
+				message_type, evt_src, op_mode, default_timezone, user_timezone);
 clean:
 		zbx_free(user_timezone);
 	}
@@ -906,16 +923,16 @@ static void	add_sentusers_msg(zbx_user_msg_t **user_msg, zbx_uint64_t actionid, 
 
 	if (NULL != r_event)
 	{
-		message_type = ZBX_MACRO_TYPE_MESSAGE_RECOVERY;
+		message_type = ZBX_MESSAGE_TYPE_RECOVERY;
 		zbx_snprintf_alloc(&sql, &sql_alloc, &sql_offset, " or eventid=" ZBX_FS_UI64, r_event->eventid);
 	}
 	else
-		message_type = ZBX_MACRO_TYPE_MESSAGE_NORMAL;
+		message_type = ZBX_MESSAGE_TYPE_NORMAL;
 
 	zbx_chrcpy_alloc(&sql, &sql_alloc, &sql_offset, ')');
 
 	if (NULL != ack)
-		message_type = ZBX_MACRO_TYPE_MESSAGE_UPDATE;
+		message_type = ZBX_MESSAGE_TYPE_UPDATE;
 
 	result = zbx_db_select("%s", sql);
 
@@ -1052,8 +1069,9 @@ static void	add_sentusers_msg_esc_cancel(zbx_user_msg_t **user_msg, zbx_uint64_t
 
 		tz = NULL == user_timezone || 0 == strcmp(user_timezone, "default") ? default_timezone : user_timezone;
 
+		/* escalation cancellation message always targets a single media type */
 		add_user_msg(userid, mediatypeid, user_msg, row[2], message_dyn, actionid, event, NULL, NULL,
-				NULL, NULL, ZBX_MACRO_EXPAND_NO, 0, ZBX_ALERT_MESSAGE_ERR_NONE, tz);
+				NULL, NULL, ZBX_MACRO_EXPAND_NO, 0, ZBX_ALERT_MESSAGE_ERR_NONE, 0, tz);
 
 		zbx_free(message_dyn);
 clean:
@@ -1091,9 +1109,10 @@ static void	add_sentusers_ack_msg(zbx_user_msg_t **user_msg, zbx_uint64_t action
 	zabbix_log(LOG_LEVEL_DEBUG, "In %s()", __func__);
 
 	result = zbx_db_select(
-			"select distinct userid"
-			" from acknowledges"
-			" where eventid=" ZBX_FS_UI64,
+			"select distinct u.userid"
+			" from acknowledges a,users u"
+			" where a.eventid=" ZBX_FS_UI64
+				" and a.userid=u.userid",	/* we skip all acknowledges where userid is NULL */
 			event->eventid);
 
 	while (NULL != (row = zbx_db_fetch(result)))
@@ -1114,7 +1133,7 @@ static void	add_sentusers_ack_msg(zbx_user_msg_t **user_msg, zbx_uint64_t action
 			goto clean;
 
 		add_user_msgs(userid, operationid, 0, user_msg, actionid, event, r_event, ack, NULL, NULL,
-				ZBX_MACRO_TYPE_MESSAGE_UPDATE, evt_src, ZBX_OPERATION_MODE_UPDATE, default_timezone,
+				ZBX_MESSAGE_TYPE_UPDATE, evt_src, ZBX_OPERATION_MODE_UPDATE, default_timezone,
 				user_timezone);
 clean:
 		zbx_free(user_timezone);
@@ -1136,7 +1155,7 @@ static void	flush_user_msg(zbx_user_msg_t **user_msg, int esc_step, const zbx_db
 		*user_msg = (zbx_user_msg_t *)(*user_msg)->next;
 
 		add_message_alert(event, r_event, actionid, esc_step, p->userid, p->mediatypeid, p->subject,
-					p->message, ack, service_alarm, service, p->err, p->tz);
+					p->message, ack, service_alarm, service, p->err, p->all_mediatypes, p->tz);
 
 		zbx_free(p->subject);
 		zbx_free(p->message);
@@ -1220,7 +1239,7 @@ static void	get_operation_groupids(zbx_uint64_t operationid, zbx_vector_uint64_t
 
 static void	execute_commands(const zbx_db_event *event, const zbx_db_event *r_event, const zbx_db_acknowledge *ack,
 		const zbx_service_alarm_t *service_alarm, const zbx_db_service *service, zbx_uint64_t actionid,
-		zbx_uint64_t operationid, int esc_step, int macro_type, const char *default_timezone,
+		zbx_uint64_t operationid, int esc_step, int message_type, const char *default_timezone,
 		int config_timeout, int config_trapper_timeout, const char *config_source_ip,
 		const char *config_ssh_key_location, zbx_get_config_forks_f get_config_forks,
 		int config_enable_global_scripts, unsigned char program_type)
@@ -1232,7 +1251,7 @@ static void	execute_commands(const zbx_db_event *event, const zbx_db_event *r_ev
 	char			*buffer = NULL;
 	size_t			buffer_alloc = 2 * ZBX_KIBIBYTE, buffer_offset = 0;
 	zbx_vector_uint64_t	executed_on_hosts, groupids;
-	zbx_dc_um_handle_t	*um_handle;
+	zbx_dc_um_handle_t	*um_handle, *um_handle_unmasked;
 
 	zabbix_log(LOG_LEVEL_DEBUG, "In %s()", __func__);
 
@@ -1331,6 +1350,7 @@ static void	execute_commands(const zbx_db_event *event, const zbx_db_event *r_ev
 	zbx_vector_uint64_create(&executed_on_hosts);
 
 	um_handle = zbx_dc_open_user_macros();
+	um_handle_unmasked = zbx_dc_open_user_macros_secure();
 
 	while (NULL != (row = zbx_db_fetch(result)))
 	{
@@ -1463,18 +1483,18 @@ static void	execute_commands(const zbx_db_event *event, const zbx_db_event *r_ev
 
 		if (ZBX_SCRIPT_TYPE_WEBHOOK != script.type)
 		{
-			if (SUCCEED != zbx_substitute_simple_macros_unmasked(&actionid, event, r_event, NULL, NULL,
-					&host, NULL, NULL, ack, service_alarm, service, default_timezone,
-					&script.command, macro_type, error, sizeof(error)))
+			if (SUCCEED != substitute_message_macros(&script.command, error, sizeof(error), message_type,
+					um_handle_unmasked, &actionid, event, r_event, NULL, &host, NULL, service_alarm,
+					service, default_timezone, ack))
 			{
 				rc = FAIL;
 				goto fail;
 			}
 
 			/* expand macros in command_orig used for non-secure logging */
-			if (SUCCEED != zbx_substitute_simple_macros(&actionid, event, r_event, NULL, NULL, &host,
-					NULL, NULL, ack, service_alarm, service, default_timezone, &script.command_orig,
-					macro_type, error, sizeof(error)))
+			if (SUCCEED != substitute_message_macros(&script.command_orig, error, sizeof(error),
+					message_type, um_handle, &actionid, event, r_event, NULL, &host, NULL,
+					service_alarm, service, default_timezone, ack))
 			{
 				/* script command_orig is a copy of script command - if the script command  */
 				/* macro substitution succeeded, then it will succeed also for command_orig */
@@ -1494,10 +1514,10 @@ static void	execute_commands(const zbx_db_event *event, const zbx_db_event *r_ev
 
 			for (i = 0; i < webhook_params.values_num; i++)
 			{
-				if (SUCCEED != zbx_substitute_simple_macros_unmasked(&actionid, event, r_event, NULL,
-						NULL, &host, NULL, NULL, ack, service_alarm, service, default_timezone,
-						(char **)&webhook_params.values[i].second, macro_type, error,
-						sizeof(error)))
+				if (SUCCEED != substitute_message_macros((char **)&webhook_params.values[i].second,
+						error, sizeof(error), message_type, um_handle_unmasked, &actionid,
+						event, r_event, NULL, &host, NULL, service_alarm, service,
+						default_timezone, ack))
 				{
 					rc = FAIL;
 					goto fail;
@@ -1559,6 +1579,7 @@ skip:
 	zbx_db_free_result(result);
 	zbx_vector_uint64_destroy(&executed_on_hosts);
 
+	zbx_dc_close_user_macros(um_handle_unmasked);
 	zbx_dc_close_user_macros(um_handle);
 
 	if (0 < alerts_num)
@@ -1581,16 +1602,17 @@ static void	get_mediatype_params_object(const zbx_db_event *event, const zbx_db_
 	zbx_db_row_t		row;
 	struct zbx_json		json;
 	int			message_type;
-	zbx_dc_um_handle_t	*um_handle;
+	zbx_dc_um_handle_t	*um_handle, *um_handle_unmasked;
 
 	if (NULL != ack)
-		message_type = ZBX_MACRO_TYPE_MESSAGE_UPDATE;
+		message_type = ZBX_MESSAGE_TYPE_UPDATE;
 	else
-		message_type = (NULL != r_event ? ZBX_MACRO_TYPE_MESSAGE_RECOVERY : ZBX_MACRO_TYPE_MESSAGE_NORMAL);
+		message_type = (NULL != r_event ? ZBX_MESSAGE_TYPE_RECOVERY : ZBX_MESSAGE_TYPE_NORMAL);
 
 	zbx_json_init(&json, 1024);
 
-	um_handle = zbx_dc_open_user_macros();
+	um_handle = zbx_dc_open_user_macros_masked();
+	um_handle_unmasked = zbx_dc_open_user_macros_secure();
 
 	result = zbx_db_select("select name,value from media_type_param where mediatypeid=" ZBX_FS_UI64, mediatypeid);
 
@@ -1605,10 +1627,10 @@ static void	get_mediatype_params_object(const zbx_db_event *event, const zbx_db_
 		name = zbx_strdup(NULL, row[0]);
 		value = zbx_strdup(NULL, row[1]);
 
-		zbx_substitute_simple_macros(&actionid, event, r_event, &userid, NULL, NULL, NULL, &alert,
-				ack, service_alarm, service, tz, &name, message_type, NULL, 0);
-		zbx_substitute_simple_macros_unmasked(&actionid, event, r_event, &userid, NULL, NULL, NULL, &alert,
-				ack, service_alarm, service, tz, &value, message_type, NULL, 0);
+		substitute_message_macros(&name, NULL, 0, message_type, um_handle, &actionid, event, r_event, &userid,
+				NULL, &alert, service_alarm, service, tz, ack);
+		substitute_message_macros(&value, NULL, 0, message_type, um_handle_unmasked, &actionid, event, r_event,
+				&userid, NULL, &alert, service_alarm, service, tz, ack);
 
 		zbx_json_addstring(&json, name, value, ZBX_JSON_TYPE_STRING);
 		zbx_free(name);
@@ -1617,6 +1639,7 @@ static void	get_mediatype_params_object(const zbx_db_event *event, const zbx_db_
 	}
 	zbx_db_free_result(result);
 
+	zbx_dc_close_user_macros(um_handle_unmasked);
 	zbx_dc_close_user_macros(um_handle);
 
 	*params = zbx_strdup(NULL, json.buffer);
@@ -1632,14 +1655,14 @@ static void	get_mediatype_params_array(const zbx_db_event *event, const zbx_db_e
 	zbx_db_row_t		row;
 	struct zbx_json		json;
 	int			message_type;
-	zbx_dc_um_handle_t	*um_handle;
+	zbx_dc_um_handle_t	*um_handle_unmasked;
 
 	if (NULL != ack)
-		message_type = ZBX_MACRO_TYPE_MESSAGE_UPDATE;
+		message_type = ZBX_MESSAGE_TYPE_UPDATE;
 	else
-		message_type = (NULL != r_event ? ZBX_MACRO_TYPE_MESSAGE_RECOVERY : ZBX_MACRO_TYPE_MESSAGE_NORMAL);
+		message_type = (NULL != r_event ? ZBX_MESSAGE_TYPE_RECOVERY : ZBX_MESSAGE_TYPE_NORMAL);
 
-	um_handle = zbx_dc_open_user_macros();
+	um_handle_unmasked = zbx_dc_open_user_macros_secure();
 
 	result = zbx_db_select(
 			"select value"
@@ -1660,8 +1683,8 @@ static void	get_mediatype_params_array(const zbx_db_event *event, const zbx_db_e
 
 		value = zbx_strdup(NULL, row[0]);
 
-		zbx_substitute_simple_macros_unmasked(&actionid, event, r_event, &userid, NULL, NULL, NULL, &alert,
-				ack, service_alarm, service, tz, &value, message_type, NULL, 0);
+		substitute_message_macros(&value, NULL, 0, message_type, um_handle_unmasked, &actionid, event, r_event,
+				&userid, NULL, &alert, service_alarm, service, tz, ack);
 
 		zbx_json_addstring(&json, NULL, value, ZBX_JSON_TYPE_STRING);
 
@@ -1670,7 +1693,7 @@ static void	get_mediatype_params_array(const zbx_db_event *event, const zbx_db_e
 	}
 	zbx_db_free_result(result);
 
-	zbx_dc_close_user_macros(um_handle);
+	zbx_dc_close_user_macros(um_handle_unmasked);
 
 	*params = zbx_strdup(NULL, json.buffer);
 	zbx_json_free(&json);
@@ -1679,11 +1702,11 @@ static void	get_mediatype_params_array(const zbx_db_event *event, const zbx_db_e
 static void	add_message_alert(const zbx_db_event *event, const zbx_db_event *r_event, zbx_uint64_t actionid,
 		int esc_step, zbx_uint64_t userid, zbx_uint64_t mediatypeid, const char *subject, const char *message,
 		const zbx_db_acknowledge *ack, const zbx_service_alarm_t *service_alarm, const zbx_db_service *service,
-		int err_type, const char *tz)
+		int err_type, int all_mediatypes, const char *tz)
 {
 	zbx_db_result_t	result;
 	zbx_db_row_t	row;
-	int		now, priority, have_alerts = 0;
+	int		now, priority, have_alerts = 0, have_push_alerts = 0;
 	zbx_db_insert_t	db_insert;
 	zbx_uint64_t	ackid, eventid, p_eventid;
 	char		*period = NULL;
@@ -1752,6 +1775,35 @@ static void	add_message_alert(const zbx_db_event *event, const zbx_db_event *r_e
 		zbx_dc_expand_user_and_func_macros(um_handle, &period, NULL, 0, NULL);
 		zbx_dc_close_user_macros(um_handle);
 
+		/* push notifications are supported only for trigger events */
+		if (MEDIA_TYPE_PUSH == type && EVENT_SOURCE_TRIGGERS != event->source)
+		{
+			const char	*push_error = "Cannot send notification to device: "
+					"push notifications are supported only for trigger actions.";
+
+			if (0 != all_mediatypes)
+				continue;
+
+			zabbix_log(LOG_LEVEL_WARNING, "%s actionid:" ZBX_FS_UI64 " eventid:" ZBX_FS_UI64
+					" userid:" ZBX_FS_UI64 " mediatypeid:" ZBX_FS_UI64,
+					push_error, actionid, eventid, userid, mediatypeid);
+
+			if (0 == have_alerts)
+			{
+				have_alerts = 1;
+				zbx_db_insert_prepare(&db_insert, "alerts", "alertid", "actionid", "eventid",
+						"userid", "clock", "mediatypeid", "sendto", "subject", "message",
+						"status", "error", "esc_step", "alerttype", "acknowledgeid",
+						"parameters", "p_eventid", (char *)NULL);
+			}
+
+			zbx_db_insert_add_values(&db_insert, __UINT64_C(0), actionid, eventid, userid, now,
+					mediatypeid, row[1], subject, message, (int)ALERT_STATUS_FAILED,
+					push_error, esc_step, (int)ALERT_TYPE_MESSAGE, ackid, "{}", p_eventid);
+
+			continue;
+		}
+
 		zabbix_log(LOG_LEVEL_DEBUG, "severity:%d, media severity:%d, period:'%s', userid:" ZBX_FS_UI64,
 				priority, severity, period, userid);
 
@@ -1807,6 +1859,40 @@ static void	add_message_alert(const zbx_db_event *event, const zbx_db_event *r_e
 			get_mediatype_params_array(event, r_event, actionid, userid, mediatypeid, row[1], subject,
 					message, ack, service_alarm, service, &params, tz);
 		}
+		else if (MEDIA_TYPE_PUSH == type)
+		{
+			zbx_vector_push_alert_t	push_alerts;
+
+			zbx_vector_push_alert_create(&push_alerts);
+
+			get_build_push_params(event, r_event, actionid, userid, row[1], subject, message,
+					ack, service_alarm, service, &push_alerts, tz);
+
+			if (0 != push_alerts.values_num)
+				have_push_alerts = 1;
+
+			for (int i = 0; i < push_alerts.values_num; i++)
+			{
+				const zbx_push_alert_t	*push_alert = push_alerts.values[i];
+				const char		*push_error = push_alert->error;
+				int			push_status = push_alert->status;
+
+				if (ALERT_STATUS_FAILED != push_status)
+				{
+					push_status = status;
+					push_error = perror;
+				}
+
+				zbx_db_insert_add_values(&db_insert, __UINT64_C(0), actionid, eventid, userid,
+						now, mediatypeid, push_alert->sendto, subject, message, push_status,
+						push_error, esc_step, (int)ALERT_TYPE_MESSAGE, ackid,
+						push_alert->params, p_eventid);
+			}
+
+			zbx_vector_push_alert_clear_ext(&push_alerts, zbx_push_alert_free);
+			zbx_vector_push_alert_destroy(&push_alerts);
+			continue;
+		}
 		else
 		{
 			get_mediatype_params_object(event, r_event, actionid, userid, mediatypeid, row[1], subject,
@@ -1846,8 +1932,18 @@ err_alert:
 
 	if (0 != have_alerts)
 	{
+		zbx_db_query_mask_t	old_queries = ZBX_DB_DONT_MASK_QUERIES;
+
 		zbx_db_insert_autoincrement(&db_insert, "alertid");
+
+		if (0 != have_push_alerts)
+			old_queries = zbx_db_set_log_masked_values(ZBX_DB_MASK_QUERIES);
+
 		zbx_db_insert_execute(&db_insert);
+
+		if (0 != have_push_alerts)
+			zbx_db_set_log_masked_values(old_queries);
+
 		zbx_db_insert_clean(&db_insert);
 
 		/* because alerts are inserted without transaction there no need to wait for */
@@ -2019,14 +2115,14 @@ static void	escalation_execute_operations(zbx_db_escalation *escalation, zbx_db_
 			{
 				case ZBX_OPERATION_TYPE_MESSAGE:
 					add_object_msg(action->actionid, operationid, &user_msg, event, NULL, NULL,
-							NULL, service, ZBX_MACRO_TYPE_MESSAGE_NORMAL,
+							NULL, service, ZBX_MESSAGE_TYPE_NORMAL,
 							action->eventsource, ZBX_OPERATION_MODE_NORMAL,
 							default_timezone, roles);
 					break;
 				case ZBX_OPERATION_TYPE_COMMAND:
 					execute_commands(event, NULL, NULL, NULL, service, action->actionid,
 							operationid, escalation->esc_step,
-							ZBX_MACRO_TYPE_MESSAGE_NORMAL, default_timezone, config_timeout,
+							ZBX_MESSAGE_TYPE_NORMAL, default_timezone, config_timeout,
 							config_trapper_timeout, config_source_ip,
 							config_ssh_key_location, get_config_forks, config_enable_global_scripts, program_type);
 					break;
@@ -2130,7 +2226,7 @@ static void	escalation_execute_recovery_operations(zbx_db_event *event, const zb
 		{
 			case ZBX_OPERATION_TYPE_MESSAGE:
 				add_object_msg(action->actionid, operationid, &user_msg, event, r_event, NULL, NULL,
-						service, ZBX_MACRO_TYPE_MESSAGE_RECOVERY, action->eventsource,
+						service, ZBX_MESSAGE_TYPE_RECOVERY, action->eventsource,
 						ZBX_OPERATION_MODE_RECOVERY, default_timezone, roles);
 				break;
 			case ZBX_OPERATION_TYPE_RECOVERY_MESSAGE:
@@ -2140,7 +2236,7 @@ static void	escalation_execute_recovery_operations(zbx_db_event *event, const zb
 				break;
 			case ZBX_OPERATION_TYPE_COMMAND:
 				execute_commands(event, r_event, NULL, NULL, service, action->actionid, operationid, 1,
-						ZBX_MACRO_TYPE_MESSAGE_RECOVERY, default_timezone, config_timeout,
+						ZBX_MESSAGE_TYPE_RECOVERY, default_timezone, config_timeout,
 						config_trapper_timeout, config_source_ip, config_ssh_key_location,
 						get_config_forks, config_enable_global_scripts, program_type);
 				break;
@@ -2208,9 +2304,8 @@ static void	escalation_execute_update_operations(zbx_db_event *event, const zbx_
 		{
 			case ZBX_OPERATION_TYPE_MESSAGE:
 				add_object_msg(action->actionid, operationid, &user_msg, event, r_event, ack,
-						service_alarm, service, ZBX_MACRO_TYPE_MESSAGE_UPDATE,
-						action->eventsource, ZBX_OPERATION_MODE_UPDATE, default_timezone,
-						roles);
+						service_alarm, service, ZBX_MESSAGE_TYPE_UPDATE, action->eventsource,
+						ZBX_OPERATION_MODE_UPDATE, default_timezone, roles);
 				break;
 			case ZBX_OPERATION_TYPE_UPDATE_MESSAGE:
 				add_sentusers_msg(&user_msg, action->actionid, operationid, event, r_event, ack,
@@ -2225,10 +2320,10 @@ static void	escalation_execute_update_operations(zbx_db_event *event, const zbx_
 				break;
 			case ZBX_OPERATION_TYPE_COMMAND:
 				execute_commands(event, r_event, ack, service_alarm, service, action->actionid,
-						operationid, 1, ZBX_MACRO_TYPE_MESSAGE_UPDATE, default_timezone,
+						operationid, 1, ZBX_MESSAGE_TYPE_UPDATE, default_timezone,
 						config_timeout, config_trapper_timeout, config_source_ip,
-						config_ssh_key_location, get_config_forks,
-						config_enable_global_scripts, program_type);
+						config_ssh_key_location, get_config_forks, config_enable_global_scripts,
+						program_type);
 				break;
 		}
 	}
@@ -2310,7 +2405,7 @@ static int	check_escalation_trigger(zbx_uint64_t triggerid, unsigned char source
 			zbx_vector_uint64_append(&itemids, functions[i].itemid);
 	}
 
-	zbx_dc_config_clean_functions(functions, errcodes, (size_t)functionids.values_num);
+	zbx_dc_config_clean_functions(functions, (size_t)functionids.values_num);
 	zbx_free(functions);
 
 	zbx_vector_uint64_sort(&itemids, ZBX_DEFAULT_UINT64_COMPARE_FUNC);
@@ -2354,7 +2449,7 @@ static int	check_escalation_trigger(zbx_uint64_t triggerid, unsigned char source
 	if (NULL != *error)
 		goto out;
 
-	*ignore = (SUCCEED == zbx_dc_config_check_trigger_dependencies(trigger.triggerid) ? 0 : 1);
+	*ignore = (SUCCEED == zbx_cep_check_trigger_deps(trigger.triggerid) ? 0 : 1);
 
 	ret = SUCCEED;
 out:
@@ -3749,9 +3844,11 @@ ZBX_THREAD_ENTRY(escalator_thread, args)
 	{
 		zabbix_log(LOG_LEVEL_CRIT, "cannot open IPC connection to alert manager: %s", error);
 		zbx_free(error);
-		exit(EXIT_FAILURE);
+		zbx_exit(EXIT_FAILURE);
 	}
-
+#ifdef HAVE_ARES_QUERY_CACHE
+	zbx_ares_library_init();
+#endif
 #if defined(HAVE_GNUTLS) || defined(HAVE_OPENSSL)
 	zbx_tls_init_child(escalator_args_in->zbx_config_tls, escalator_args_in->zbx_get_program_type_cb_arg,
 			zbx_dc_get_psk_by_identity);
@@ -3877,6 +3974,7 @@ out:
 	zbx_vector_uint64_destroy(&escalationids);
 	notify_alerter(ALERTER_CLOSE);
 	zbx_db_close();
+	zbx_curl_cleanup();
 
 	zbx_setproctitle("%s #%d [terminated]", get_process_type_string(process_type), process_num);
 

@@ -17,16 +17,62 @@
 
 #if defined(_WINDOWS) || defined(__MINGW32__)
 #	include <stddef.h>
+#	include <process.h>
 #endif
 
 #include "zbxcommon.h"
 #include "zbxtypes.h"
+#include "zbxtypes_ext.h"
 
 #if defined(_WINDOWS) || defined(__MINGW32__)
 #	include "zbxstr.h"
 #endif
 
 static ZBX_THREAD_LOCAL volatile sig_atomic_t	zbx_timed_out;	/* 0 - no timeout occurred, 1 - SIGALRM took place */
+
+/* The exit hooks are per thread so that a worker running as a thread of a larger process ends only itself. That */
+/* is what the supervisor units do on every platform, and what every worker of the Windows build does, where the */
+/* workers are threads rather than forked processes. */
+static ZBX_THREAD_LOCAL void	(*zbx_exit_impl)(int) = exit;
+static ZBX_THREAD_LOCAL void	(*zbx_exit_immediate_impl)(int) = _exit;
+static ZBX_THREAD_LOCAL zbx_atomic_uint32_t	*zbx_exit_num;
+
+void	zbx_set_exit(zbx_exit_cb_t exit_cb, zbx_atomic_uint32_t *exit_num)
+{
+	zbx_exit_impl = exit_cb;
+	zbx_exit_num = exit_num;
+}
+
+void	zbx_set_exit_immediate(zbx_exit_cb_t exit_cb)
+{
+	zbx_exit_immediate_impl = exit_cb;
+}
+
+void	zbx_exit(int ret)
+{
+	zbx_exit_impl(ret);
+	abort();
+}
+
+void	zbx_exit_immediate(int ret)
+{
+	zbx_exit_immediate_impl(ret);
+	abort();
+}
+
+void	zbx_exit_from_thread(int ret)
+{
+#if defined(HAVE_STDATOMIC_H)
+	if (NULL != zbx_exit_num)
+		atomic_fetch_add(zbx_exit_num, 1);
+#endif
+#if defined(_WINDOWS) || defined(__MINGW32__)
+	/* the threads are started with _beginthreadex(), and this is its counterpart */
+	_endthreadex((unsigned int)ret);
+#else
+	pthread_exit((void *)(zbx_int64_t)ret);
+#endif
+}
 
 #if defined(_WINDOWS) || defined(__MINGW32__)
 
@@ -115,7 +161,7 @@ void	*zbx_calloc2(const char *filename, int line, void *old, size_t nmemb, size_
 			"[file:%s,line:%d] zbx_calloc: out of memory. Requested " ZBX_FS_SIZE_T " bytes.",
 			filename, line, (zbx_fs_size_t)size);
 
-	exit(EXIT_FAILURE);
+	zbx_exit(EXIT_FAILURE);
 }
 
 /******************************************************************************
@@ -153,7 +199,7 @@ void	*zbx_malloc2(const char *filename, int line, void *old, size_t size, void *
 			"Requested " ZBX_FS_SIZE_T " byte(s).",
 			filename, line, (zbx_fs_size_t)size);
 
-	exit(EXIT_FAILURE);
+	zbx_exit(EXIT_FAILURE);
 }
 
 /******************************************************************************
@@ -181,7 +227,7 @@ void	*zbx_realloc2(const char *filename, int line, size_t size, void *new_ptr)
 			"[file:%s,line:%d] zbx_realloc: out of memory. Requested " ZBX_FS_SIZE_T " bytes.",
 			filename, line, (zbx_fs_size_t)size);
 
-	exit(EXIT_FAILURE);
+	zbx_exit(EXIT_FAILURE);
 }
 
 char	*zbx_strdup2(const char *filename, int line, char *old, const char *str)
@@ -198,7 +244,7 @@ char	*zbx_strdup2(const char *filename, int line, char *old, const char *str)
 			"[file:%s,line:%d] zbx_strdup: out of memory. Requested " ZBX_FS_SIZE_T " bytes.",
 			filename, line, (zbx_fs_size_t)(strlen(str) + 1));
 
-	exit(EXIT_FAILURE);
+	zbx_exit(EXIT_FAILURE);
 }
 
 /****************************************************************************************

@@ -8,7 +8,7 @@ Official JMX Template for WildFly Domain Controller.
 
 ## Requirements
 
-Zabbix version: 7.4 and higher.
+Zabbix version: 8.0 and higher.
 
 ## Tested versions
 
@@ -17,7 +17,7 @@ This template has been tested on:
 
 ## Configuration
 
-> Zabbix should be configured according to the instructions in the [Templates out of the box](https://www.zabbix.com/documentation/7.4/manual/config/templates_out_of_the_box) section.
+> Zabbix should be configured according to the instructions in the [Templates out of the box](https://www.zabbix.com/documentation/8.0/manual/config/templates_out_of_the_box) section.
 
 ## Setup
 
@@ -35,9 +35,9 @@ Depending on your server setup, you may need to specify a custom JMX scheme in m
 
 |Name|Description|Default|
 |----|-----------|-------|
-|{$WILDFLY.USER}||`zabbix`|
-|{$WILDFLY.PASSWORD}||`zabbix`|
-|{$WILDFLY.JMX.PROTOCOL}||`remote+http`|
+|{$WILDFLY.USER}|<p>WildFly JMX username.</p>|`zabbix`|
+|{$WILDFLY.PASSWORD}|<p>WildFly JMX password.</p>|`zabbix`|
+|{$WILDFLY.JMX.PROTOCOL}|<p>WildFly JMX protocol.</p>|`remote+http`|
 |{$WILDFLY.DEPLOYMENT.MATCHES}|<p>Filter of discoverable deployments</p>|`.*`|
 |{$WILDFLY.DEPLOYMENT.NOT_MATCHES}|<p>Filter to exclude discovered deployments</p>|`CHANGE_IF_NEEDED`|
 |{$WILDFLY.SERVER.MATCHES}|<p>Filter of discoverable servers</p>|`.*`|

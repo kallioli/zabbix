@@ -65,7 +65,7 @@ foreach (range(0, 11) as $month) {
 
 $form_grid = (new CFormGrid())
 	->addItem([
-		new CLabel(_('Period type'), 'timeperiod_type-focusable'),
+		new CLabel(_('Period type'), 'timeperiod-type-focusable'),
 		(new CFormField(
 			(new CSelect('timeperiod_type'))
 				->setFocusableElementId('timeperiod-type-focusable')
@@ -112,6 +112,8 @@ $form_grid = (new CFormGrid())
 				->setOptions($weekly_days_options)
 				->setVertical()
 				->setColumns(3)
+				->setAttribute('data-field-type', 'array')
+				->setAttribute('data-field-name', 'weekly_days')
 		))->addClass('js-weekly-days')
 	])
 	->addItem([
@@ -124,6 +126,8 @@ $form_grid = (new CFormGrid())
 				->setOptions($months_options)
 				->setVertical()
 				->setColumns(3)
+				->setAttribute('data-field-type', 'array')
+				->setAttribute('data-field-name', 'months')
 		))->addClass('js-months')
 	])
 	->addItem([
@@ -157,6 +161,8 @@ $form_grid = (new CFormGrid())
 				->setOptions($monthly_days_options)
 				->setVertical()
 				->setColumns(3)
+				->setAttribute('data-field-type', 'array')
+				->setAttribute('data-field-name', 'monthly_days')
 		))->addClass('js-monthly-days')
 	)
 	->addItem([
@@ -181,15 +187,22 @@ $form_grid = (new CFormGrid())
 		))->addClass('js-start-date')
 	])
 	->addItem([
-		(new CLabel(_('At (hour:minute)'), 'hour'))->addClass('js-hour-minute'),
+		(new CLabel(_('At (hour:minute)'), 'hour'))->addClass('js-hour-minute')->setAsteriskMark(),
 		(new CFormField([
 			(new CNumericBox('hour', $data['form']['hour'], 2, false, false, false))
+				->padWithZeroes(2)
 				->setWidth(ZBX_TEXTAREA_NUMERIC_STANDARD_WIDTH)
-				->padWithZeroes(2),
+				->setErrorContainer('hour-minute-error-container')
+				->setErrorLabel(_('Hour')),
 			' : ',
 			(new CNumericBox('minute', $data['form']['minute'], 2, false, false, false))
-				->setWidth(ZBX_TEXTAREA_NUMERIC_STANDARD_WIDTH)
 				->padWithZeroes(2)
+				->setWidth(ZBX_TEXTAREA_NUMERIC_STANDARD_WIDTH)
+				->setErrorContainer('hour-minute-error-container')
+				->setErrorLabel(_('Minute')),
+			(new CDiv())
+				->addClass(ZBX_STYLE_ERROR_CONTAINER)
+				->setId('hour-minute-error-container')
 		]))->addClass('js-hour-minute')
 	])
 	->addItem([
@@ -197,29 +210,33 @@ $form_grid = (new CFormGrid())
 		(new CFormField([
 			(new CDiv([
 				(new CNumericBox('period_days', $data['form']['period_days'], 3))
-					->setWidth(ZBX_TEXTAREA_NUMERIC_STANDARD_WIDTH),
+					->setWidth(ZBX_TEXTAREA_NUMERIC_STANDARD_WIDTH)
+					->setErrorLabel(_('Days'))
+					->setErrorContainer('period-length-error-container'),
 				new CLabel(_('Days'), 'period_days'),
 				(new CSelect('period_hours'))
 					->setFocusableElementId('period-hours-focusable')
 					->addOptions(CSelect::createOptionsFromArray(range(0, 23)))
-					->setValue($data['form']['period_hours']),
+					->setValue($data['form']['period_hours'])
+					->setErrorLabel(_('Hours'))
+					->setErrorContainer('period-length-error-container'),
 				new CLabel(_('Hours'), 'period-hours-focusable'),
 				(new CSelect('period_minutes'))
 					->setFocusableElementId('period-minutes-focusable')
 					->addOptions(CSelect::createOptionsFromArray(range(0, 59)))
-					->setValue($data['form']['period_minutes']),
+					->setValue($data['form']['period_minutes'])
+					->setErrorLabel(_('Minutes'))
+					->setErrorContainer('period-length-error-container'),
 				new CLabel(_('Minutes'), 'period-minutes-focusable')
-			]))->addClass(ZBX_STYLE_FORM_FIELDS_INLINE)
+			]))->addClass(ZBX_STYLE_FORM_FIELDS_INLINE),
+			(new CDiv())
+				->addClass(ZBX_STYLE_ERROR_CONTAINER)
+				->setId('period-length-error-container')
 		]))
 	]);
 
 $form
-	->addItem($form_grid)
-	->addItem(
-		(new CScriptTag('
-			maintenance_timeperiod_edit.init();
-		'))->setOnDocumentReady()
-	);
+	->addItem($form_grid);
 
 $output = [
 	'header' => $data['title'],
@@ -227,13 +244,16 @@ $output = [
 	'buttons' => [
 		[
 			'title' => $data['is_edit'] ? _('Update') : _('Add'),
+			'class' => 'js-submit',
 			'keepOpen' => true,
-			'isSubmit' => true,
-			'action' => 'maintenance_timeperiod_edit.submit();'
+			'isSubmit' => true
 		]
 	],
 	'script_inline' => getPagePostJs().
-		$this->readJsFile('maintenance.timeperiod.edit.js.php')
+		$this->readJsFile('maintenance.timeperiod.edit.js.php').
+		'maintenance_timeperiod_edit.init('.json_encode([
+			'rules' => $data['js_validation_rules']
+		]).');'
 ];
 
 if ($data['user']['debug_mode'] == GROUP_DEBUG_MODE_ENABLED) {

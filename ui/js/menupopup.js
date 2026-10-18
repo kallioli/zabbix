@@ -14,62 +14,6 @@
 
 
 /**
- * Get menu popup history section data.
- *
- * @param string options['itemid']           Item ID.
- * @param bool   options['hasLatestGraphs']  Link to history page with showgraph action (optional).
- *
- * @return array
- */
-function getMenuPopupHistory(options) {
-	var items = [],
-		url = new Curl('history.php');
-
-	if (!options.allowed_ui_latest_data) {
-		return [];
-	}
-
-	url.setArgument('itemids[]', options.itemid);
-
-	// latest graphs
-	if (options.hasLatestGraphs !== undefined && options.hasLatestGraphs) {
-		url.setArgument('action', 'showgraph');
-		url.setArgument('to', 'now');
-
-		url.setArgument('from', 'now-1h');
-		items.push({
-			label: t('Last hour graph'),
-			url: url.getUrl()
-		});
-
-		url.setArgument('from', 'now-7d');
-		items.push({
-			label: t('Last week graph'),
-			url: url.getUrl()
-		});
-
-		url.setArgument('from', 'now-1M');
-		items.push({
-			label: t('Last month graph'),
-			url: url.getUrl()
-		});
-	}
-
-	// latest values
-	url.setArgument('action', 'showvalues');
-	url.setArgument('from', 'now-1h');
-	items.push({
-		label: t('Latest values'),
-		url: url.getUrl()
-	});
-
-	return [{
-		label: t('History'),
-		items: items
-	}];
-}
-
-/**
  * Get menu popup host section data.
  *
  * @param {string} options['hostid']                  Host ID.
@@ -281,7 +225,8 @@ function getMenuPopupHost(options, trigger_element) {
 			});
 
 			// discovery
-			url = new Curl('host_discovery.php');
+			url = new Curl('zabbix.php');
+			url.setArgument('action', 'lldrule.list');
 			url.setArgument('filter_set', '1');
 			url.setArgument('filter_hostids[]', options.hostid);
 			url.setArgument('context', 'host');
@@ -624,101 +569,111 @@ function getMenuPopupMapElementImage(options) {
  */
 function getMenuPopupDashboard(options, trigger_element) {
 	const sections = [];
-	const parameters = {dashboardid: options.dashboardid};
 
-	// Dashboard actions.
+	const main_section = [];
+
 	if (options.can_edit_dashboards) {
-		const url_create = new Curl('zabbix.php');
-		url_create.setArgument('action', 'dashboard.view');
-		url_create.setArgument('new', '1');
+		main_section.push({
+			label: t('Sharing'),
+			clickCallback: function() {
+				jQuery(this).closest('.menu-popup').menuPopup('close', null);
 
-		const url_clone = new Curl('zabbix.php');
-		url_clone.setArgument('action', 'dashboard.view');
-		url_clone.setArgument('dashboardid', options.dashboardid);
-		url_clone.setArgument('clone', '1');
+				PopUp('popup.dashboard.share.edit', {dashboardid: options.dashboardid}, {
+					dialogueid: 'dashboard_share_edit',
+					dialogue_class: 'modal-popup-generic',
+					trigger_element
+				});
+			},
+			disabled: !options.editable
+		});
 
-		const url_delete = new Curl('zabbix.php');
-		url_delete.setArgument('action', 'dashboard.delete');
-		url_delete.setArgument('dashboardids', [options.dashboardid]);
-		url_delete.setArgument(CSRF_TOKEN_NAME, options.csrf_token);
+		main_section.push({
+			label: t('Create new'),
+			url: zabbixUrl({action: 'dashboard.view', new: '1'})
+		});
 
-		sections.push({
-			label: t('Actions'),
-			items: [
-				{
-					label: t('Sharing'),
-					clickCallback: function () {
-						jQuery(this).closest('.menu-popup').menuPopup('close', null);
+		main_section.push({
+			label: t('Clone'),
+			url: zabbixUrl({action: 'dashboard.view', dashboardid: options.dashboardid, clone: '1'})
+		});
 
-						PopUp('popup.dashboard.share.edit', parameters, {
-							dialogueid: 'dashboard_share_edit',
-							dialogue_class: 'modal-popup-generic',
-							trigger_element
-						});
-					},
-					disabled: !options.editable
-				},
-				{
-					label: t('Create new'),
-					url: url_create.getUrl()
-				},
-				{
-					label: t('Clone'),
-					url: url_clone.getUrl()
-				},
-				{
-					label: t('Delete'),
-					clickCallback: function () {
-						jQuery(this).closest('.menu-popup').menuPopup('close', null);
+		main_section.push({
+			label: t('Delete'),
+			clickCallback: function () {
+				jQuery(this).closest('.menu-popup').menuPopup('close', null);
 
-						if (!confirm(t('Delete dashboard?'))) {
-							return false;
-						}
-
-						redirect(url_delete.getUrl(), 'post', CSRF_TOKEN_NAME, true);
-					},
-					disabled: !options.editable
+				if (!confirm(t('Delete dashboard?'))) {
+					return false;
 				}
-			]
+
+				const delete_url = zabbixUrl({
+					action: 'dashboard.delete',
+					dashboardids: [options.dashboardid],
+					[CSRF_TOKEN_NAME]: options.csrf_token
+				});
+
+				redirect(delete_url, 'post', CSRF_TOKEN_NAME, true);
+			},
+			disabled: !options.editable
 		});
 	}
 
-	// Report actions.
-	if (options.can_view_reports) {
-		const report_actions = [
-			{
-				label: t('View related reports'),
-				clickCallback: function () {
-					jQuery(this).closest('.menu-popup').menuPopup('close', null);
+	const export_url_params = {
+		action: 'export.dashboards',
+		dashboardids: [options.dashboardid],
+		backurl: zabbixUrl({action: 'dashboard.view'})
+	};
 
-					PopUp('popup.scheduledreport.list', parameters, {
-						dialogue_class: 'modal-popup-generic',
-						trigger_element
-					});
-				},
-				disabled: !options.has_related_reports
+	main_section.push({
+		label: t('Export'),
+		items: [
+			{
+				label: t('YAML'),
+				url: zabbixUrl({...export_url_params, format: 'yaml'})
+			},
+			{
+				label: t('XML'),
+				url: zabbixUrl({...export_url_params, format: 'xml'})
+			},
+			{
+				label: t('JSON'),
+				url: zabbixUrl({...export_url_params, format: 'json'})
 			}
-		];
+		]
+	});
+
+	sections.push({items: main_section});
+
+	if (options.can_view_reports) {
+		const reports_section = [];
 
 		if (options.can_create_reports) {
-			report_actions.unshift({
+			reports_section.push({
 				label: t('Create new report'),
-				clickCallback: function () {
+				clickCallback: function() {
 					jQuery(this).closest('.menu-popup').menuPopup('close', null);
-
-					PopUp('popup.scheduledreport.edit', parameters, {
-						dialogue_class: 'modal-popup-generic',
-						trigger_element
-					});
+					ZABBIX.PopupManager.open('scheduledreport.edit', {dashboardid: options.dashboardid});
 				}
 			});
 		}
 
-		sections.push({
-			label: options.can_edit_dashboards ? null : t('Actions'),
-			items: report_actions
-		})
+		reports_section.push({
+			label: t('View related reports'),
+			clickCallback: function() {
+				jQuery(this).closest('.menu-popup').menuPopup('close', null);
+
+				PopUp('popup.scheduledreport.list', {dashboardid: options.dashboardid}, {
+					dialogue_class: 'modal-popup-generic',
+					trigger_element
+				});
+			},
+			disabled: !options.has_related_reports
+		});
+
+		sections.push({items: reports_section});
 	}
+
+	sections[0].label = t('Actions');
 
 	return sections;
 }
@@ -733,8 +688,11 @@ function getMenuPopupDashboard(options, trigger_element) {
  *        {bool}   options['allowed_ui_conf_hosts']       Whether user has access to Configuration > Hosts.
  *        {bool}   options['allowed_ui_latest_data']      Whether user has access to Monitoring > Latest data.
  *        {bool}   options['allowed_ui_problems']         Whether user has access to Monitoring > Problems.
+ *        {bool}   options['allowed_ui_conf_maintenance'] Whether user has access to Configuration > Maintenance.
+ *        {bool}   options['allowed_edit_maintenance']    Whether user has permission to edit Maintenance.
  *        {bool}   options['backurl']                     URL from where the menu popup was called.
  *        {bool}   options['show_events']                 Show Problems item enabled. Default: false.
+ *        {bool}   options['isWritable']                  Whether user has edit permission to related trigger.
  *        {string} options['eventid']                     (optional) Required for "Update problem" section and event
  *                                                        rank change.
  *        {array}  options['eventids']                    (optional)
@@ -873,7 +831,7 @@ function getMenuPopupTrigger(options, trigger_element) {
 		let items = [];
 		const curl = new Curl('zabbix.php');
 
-		curl.setArgument('action', 'popup.acknowledge.create');
+		curl.setArgument('action', 'acknowledge.rank.change');
 
 		/*
 		 * Some widgets cannot show symptoms. So it is not possible to convert to symptoms cause if only cause events
@@ -984,6 +942,36 @@ function getMenuPopupTrigger(options, trigger_element) {
 		};
 	}
 
+	const has_eventid = options.eventid !== undefined && Number(options.eventid) > 0;
+
+	if (options.allowed_ui_conf_maintenance && options.allowed_edit_maintenance && has_eventid) {
+		const item_urls = [];
+
+		const maintenance = [
+			{label: t('Suppress host'), context: 'host'},
+			{label: t('Suppress trigger'), context: 'trigger'},
+			{label: t('Suppress by event name'), context: 'event_name'},
+			{label: t('Suppress by tags'), context: 'event_tags'}
+		];
+
+		for (const item of maintenance) {
+			item_urls.push({
+				label: item.label,
+				url: zabbixUrl({
+					action: 'popup',
+					popup: 'maintenance.edit',
+					context: item.context,
+					eventids: [options.eventid]
+				}),
+				disabled: !options.isWritable
+			});
+		}
+		sections.push({
+			label: t('Maintenance'),
+			items: item_urls
+		});
+	}
+
 	// urls
 	if ('urls' in options) {
 		sections.push({
@@ -1057,7 +1045,7 @@ function getMenuPopupItem(options) {
 		items.push({
 			label: t('Values'),
 			url: url.getUrl(),
-			disabled: !options.history && !options.trends
+			disabled: !options.history
 		});
 
 		url = new Curl('history.php');
@@ -1067,7 +1055,7 @@ function getMenuPopupItem(options) {
 		items.push({
 			label: t('500 latest values'),
 			url: url.getUrl(),
-			disabled: !options.history && !options.trends
+			disabled: !options.history
 		});
 
 		sections.push({
@@ -1080,7 +1068,7 @@ function getMenuPopupItem(options) {
 		const config_urls = [];
 		const config_triggers = {
 			label: t('Triggers'),
-			disabled: options.binary_value_type || options.triggers.length === 0
+			disabled: !options.is_trigger_supported || options.triggers.length === 0
 		};
 
 		if (options.isWriteable) {
@@ -1144,7 +1132,7 @@ function getMenuPopupItem(options) {
 
 		config_urls.push({
 			label: t('Create trigger'),
-			disabled: options.binary_value_type,
+			disabled: !options.is_trigger_supported,
 			clickCallback: function() {
 				ZABBIX.PopupManager.open('trigger.edit', {
 					hostid: options.hostid,
@@ -1155,38 +1143,30 @@ function getMenuPopupItem(options) {
 			}
 		});
 
-		if (options.isDiscovery) {
-			config_urls.push({
-				label: t('Create dependent item'),
-				disabled: true
-			});
-		}
-		else {
-			config_urls.push({
-				label: t('Create dependent item'),
-				clickCallback: () => {
-					ZABBIX.PopupManager.open('item.edit', {
-						context: options.context,
-						hostid: options.hostid,
-						master_itemid: options.itemid,
-						type: 18 // ITEM_TYPE_DEPENDENT
-					});
-				}
-			});
-		}
-
-		url = new Curl('host_discovery.php');
-		url.setArgument('form', 'create');
-		url.setArgument('hostid', options.hostid);
-		url.setArgument('type', 18); // ITEM_TYPE_DEPENDENT
-		url.setArgument('master_itemid', options.itemid);
-		url.setArgument('backurl', options.backurl);
-		url.setArgument('context', options.context);
+		config_urls.push({
+			label: t('Create dependent item'),
+			disabled: options.isDiscovery,
+			clickCallback: () => {
+				ZABBIX.PopupManager.open('item.edit', {
+					context: options.context,
+					hostid: options.hostid,
+					master_itemid: options.itemid,
+					type: 18 // ITEM_TYPE_DEPENDENT
+				});
+			}
+		});
 
 		config_urls.push({
 			label: t('Create dependent discovery rule'),
-			url: url.getUrl(),
-			disabled: options.isDiscovery
+			disabled: options.isDiscovery,
+			clickCallback: () => {
+				ZABBIX.PopupManager.open('lldrule.edit', {
+					context: options.context,
+					hostid: options.hostid,
+					master_itemid: options.itemid,
+					type: 18 // ITEM_TYPE_DEPENDENT
+				});
+			}
 		});
 
 		sections.push({
@@ -1283,7 +1263,7 @@ function getMenuPopupItemPrototype(options) {
 
 	config_urls.push({
 		label: t('Create trigger prototype'),
-		disabled: options.is_binary_value_type || options.is_discovered_prototype,
+		disabled: !options.is_trigger_supported || options.is_discovered_prototype,
 		clickCallback: () => {
 			ZABBIX.PopupManager.open('trigger.prototype.edit', {
 				parent_discoveryid: options.parent_discoveryid,

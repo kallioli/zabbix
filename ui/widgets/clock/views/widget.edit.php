@@ -28,13 +28,17 @@ $form
 		new CWidgetFieldSelectView($data['fields']['time_type'])
 	)
 	->addField(
+		(new CWidgetFieldTimeZoneView($data['fields']['tzone_timezone']))->addRowClass('field-tzone-timezone')
+	)
+	->addField(
 		(new CWidgetFieldMultiSelectItemView($data['fields']['itemid']))
 			->setPopupParameter('value_types', [
 				ITEM_VALUE_TYPE_FLOAT,
 				ITEM_VALUE_TYPE_STR,
 				ITEM_VALUE_TYPE_LOG,
 				ITEM_VALUE_TYPE_UINT64,
-				ITEM_VALUE_TYPE_TEXT
+				ITEM_VALUE_TYPE_TEXT,
+				ITEM_VALUE_TYPE_JSON
 			])
 			->addRowClass('js-row-itemid')
 	)
@@ -97,9 +101,6 @@ function getTimeZoneFieldsGroupView(array $fields): CWidgetFieldsGroupView {
 		)
 		->addField(
 			(new CWidgetFieldColorView($fields['tzone_color']))->addLabelClass('offset-3')
-		)
-		->addField(
-			(new CWidgetFieldTimeZoneView($fields['tzone_timezone']))->addRowClass('field-tzone-timezone')
 		)
 		->addField(
 			(new CWidgetFieldRadioButtonListView($fields['tzone_format']))->addRowClass('field-tzone-format')

@@ -205,6 +205,10 @@ $geomap-marker-selected-stroke: #747474;
 // Statuses
 $status-disabled-border-color: rgba(#000000, 0.2);
 
+$btn-plus-more: #333333;
+$btn-plus-more-bg-color: #ffffff;
+$btn-plus-more-border-color: #888888;
+
 // Multiselect
 $multiselect-selected-bg-color: #777777;
 
@@ -228,7 +232,7 @@ $arrow-fill-down: #000000;
 $arrow-fill-up-down: #000000;
 
 // Important! @import string should come after variables
-@import 'screen.scss';
+@import 'screen';
 @import "base/icons-severity";
 
 // layout/sidebar
@@ -272,6 +276,12 @@ a.btn-icon,
 	&:focus,
 	&:visited {
 		border-bottom: none;
+	}
+}
+
+.skip-link {
+	&:focus-visible {
+		border-bottom-width: 1px;
 	}
 }
 
@@ -523,25 +533,26 @@ a.link-action {
 	}
 }
 
-.table-paging {
+.pager {
 	a {
+		&:focus {
+			background-color: #777777 !important;
+		}
+	}
+
+	.selected {
 		&:focus {
 			background-color: #777777 !important;
 		}
 	}
 }
 
-.paging-selected {
-	&:focus {
-		background-color: #777777 !important;
-	}
-}
-
 .tag {
-	&.green-bg,
-	&.yellow-bg {
-		background-color: $ui-bg-selected-color;
-		color: $white;
+	&.tag-inherited,
+	&.tag-inherited-duplicate {
+		&::before {
+			opacity: 1;
+		}
 	}
 }
 
@@ -724,11 +735,6 @@ textarea.has-error {
 	}
 }
 
-// Checkbox disabling.
-.filter-highlight-row-cb {
-	display: none;
-}
-
 // Severity statuses.
 
 .status-container {
@@ -741,6 +747,17 @@ textarea.has-error {
 		border-color: rgba($ui-bg-color, .2);
 		background-color: $ui-bg-selected-color;
 		color: $ui-bg-color;
+	}
+}
+
+.status-container {
+	.status-amp-severity-trace,
+	.status-amp-severity-debug,
+	.status-amp-severity-info,
+	.status-amp-severity-warn,
+	.status-amp-severity-error,
+	.status-amp-severity-fatal {
+		color: $font-color;
 	}
 }
 
@@ -981,7 +998,7 @@ td.inactive-bg {
 }
 
 .problem-icon-link {
-	border-radius: 3px;
+	border-radius: var(--badge-border-radius);
 
 	&:focus {
 		box-shadow: 0 0 0 2px $btn-focus-outline-color;
@@ -1004,7 +1021,7 @@ td.inactive-bg {
 			height: $icon-medium-size;
 			vertical-align: top;
 			margin-right: 4px;
-			border-radius: 3px;
+			border-radius: var(--badge-border-radius);
 			content: '';
 		}
 	}
@@ -1092,6 +1109,65 @@ td.inactive-bg {
 	.tabfilter-item-label {
 		&.focused {
 			box-shadow: 0 0 0 2px $btn-focus-outline-color;
+		}
+	}
+}
+
+// Datatable.
+
+.datatable {
+	.datatable-body {
+		.cell.cell-data {
+			&.na-bg,
+			&.info-bg,
+			&.warning-bg,
+			&.average-bg,
+			&.high-bg,
+			&.disaster-bg {
+				border-bottom-color: $ui-border-color;
+				color: #000000;
+				padding-left: 42px;
+			}
+		}
+
+		.row.row-selected .cell.cell-data {
+			border-bottom-color: $ui-border-color;
+
+			&.na-bg,
+			&.info-bg,
+			&.warning-bg,
+			&.average-bg,
+			&.high-bg,
+			&.disaster-bg {
+				background-color: $ui-hover-bg-color !important;
+			}
+		}
+
+		.row:not(.row-disabled):hover .cell.cell-data {
+			background-color: $ui-hover-bg-color !important;
+
+			&.na-bg,
+			&.info-bg,
+			&.warning-bg,
+			&.average-bg,
+			&.high-bg,
+			&.disaster-bg {
+				background-color: $ui-hover-bg-color !important;
+			}
+		}
+	}
+
+	&.compact-view .datatable-body .cell.cell-data {
+		&.na-bg,
+		&.info-bg,
+		&.warning-bg,
+		&.average-bg,
+		&.high-bg,
+		&.disaster-bg {
+			&::after {
+				background-position: center 0;
+				background-size: 22px;
+			}
 		}
 	}
 }

@@ -24,13 +24,13 @@ require_once __DIR__ . '/../../include/CWebTest.php';
 class testAlarmNotification extends CWebTest {
 
 	/**
-	 * Attach MessageBehavior, CTableBehavior to the test.
+	 * Attach MessageBehavior, CDatatableBehavior to the test.
 	 *
 	 * @return array
 	 */
 	public function getBehaviors() {
 		return [
-			CTableBehavior::class,
+			CDatatableBehavior::class,
 			CMessageBehavior::class
 		];
 	}
@@ -458,7 +458,7 @@ class testAlarmNotification extends CWebTest {
 				self::$hostid[self::HOST_NAME])->waitUntilReady();
 
 		// Check that problems displayed in table.
-		$this->assertTableDataColumn($data['trigger_name'], 'Problem');
+		$this->assertDatatableDataColumn($data['trigger_name'], 'Problem');
 
 		// Find appeared Alarm notification overlay dialog and check triggered problems by trigger name.
 		$alarm_dialog = $this->getAlarmOverlay();
@@ -609,13 +609,14 @@ class testAlarmNotification extends CWebTest {
 	/**
 	 * Check notification display after changing user Frontend notification settings.
 	 *
-	 * @onBefore resetTriggerSeverities
-	 * @onAfter closeAndAcknowledgeEvents
 	 * @onAfter deleteEvents
 	 *
 	 * @dataProvider getNotificationSettingsData
 	 */
 	public function testAlarmNotification_NotificationSettings($data) {
+		// Delete old setting whatever it was.
+		DBexecute('DELETE FROM profiles WHERE source='.zbx_dbstr('triggers.severities').' AND userid=1');
+
 		// Set checked trigger severity in messaging settings.
 		$this->page->login()->open('zabbix.php?action=userprofile.notification.edit')->waitUntilReady();
 		$form = $this->query('id:userprofile-notification-form')->asForm()->one();
@@ -643,7 +644,7 @@ class testAlarmNotification extends CWebTest {
 
 		// Check that problems displayed in table.
 		$triggered_problems = (array_key_exists('suppressed_problem', $data)) ? $data['suppressed_problem'] : self::ALL_TRIGGERS;
-		$this->assertTableDataColumn($triggered_problems, 'Problem');
+		$this->assertDatatableDataColumn($triggered_problems, 'Problem');
 
 		if ($data['trigger_name'] === '') {
 			$this->assertFalse($this->query('xpath://div[@class="overlay-dialogue notif ui-draggable"]')->one()->isDisplayed());
@@ -669,21 +670,6 @@ class testAlarmNotification extends CWebTest {
 	}
 
 	/**
-	 * Update Frontend notifications settings, set all severities checkboxes => true.
-	 */
-	protected function resetTriggerSeverities() {
-		// Delete old setting whatever it was.
-		DBexecute('DELETE FROM profiles WHERE source='.zbx_dbstr('triggers.severities').' AND userid=1');
-
-		// Insert new row where value_str field means that all severities are checked.
-		DBexecute('INSERT INTO profiles (profileid, userid, idx, value_str, source, type)'.
-				' VALUES (9950, 1, '.zbx_dbstr('web.messages').', '.
-				zbx_dbstr('a:6:{i:0;s:1:"1";i:1;s:1:"1";i:2;s:1:"1";i:3;s:1:"1";i:4;s:1:"1";i:5;s:1:"1";}').', '.
-				zbx_dbstr('triggers.severities').', 3)'
-		);
-	}
-
-	/**
 	 * Get color value from alarm notification overlay.
 	 *
 	 * @return array
@@ -706,7 +692,7 @@ class testAlarmNotification extends CWebTest {
 	}
 
 	protected function getAlarmOverlay() {
-		return $this->query('xpath://div['.CXPathHelper::fromClass('overlay-dialogue notif').']')->waitUntilVisible(3)->one();
+		return $this->query('xpath://div['.CXPathHelper::fromClass('overlay-dialogue notif').']')->waitUntilVisible()->one();
 	}
 
 	/**

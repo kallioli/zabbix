@@ -27,6 +27,8 @@
 #	define ZBX_PG_DEADLOCK		"40P01"
 #endif
 
+ZBX_PTR_VECTOR_IMPL(dbconn_ptr, zbx_dbconn_t *)
+
 struct zbx_db_result
 {
 #if defined(HAVE_MYSQL)
@@ -48,11 +50,9 @@ struct zbx_db_result
 
 static const zbx_db_config_t	*db_config = NULL;
 
-static zbx_db_query_mask_t	db_log_masked_values = ZBX_DB_DONT_MASK_QUERIES;
+static ZBX_THREAD_LOCAL zbx_db_query_mask_t	db_log_masked_values = ZBX_DB_DONT_MASK_QUERIES;
 
-#if defined(HAVE_POSTGRESQL)
-static 	ZBX_THREAD_LOCAL char	ZBX_PG_ESCAPE_BACKSLASH = 1;
-#elif defined(HAVE_SQLITE3)
+#if defined(HAVE_SQLITE3)
 static zbx_mutex_t		db_sqlite_access = ZBX_MUTEX_NULL;
 #endif
 
@@ -98,8 +98,8 @@ int	dbconn_init(char **error)
 		}
 		else
 		{
-			zbx_dbconn_execute(db, "%s", zbx_dbschema_get_schema());
-			zbx_dbconn_close(db);
+			dbconn_execute(db, "%s", zbx_dbschema_get_schema());
+			dbconn_close(db);
 		}
 
 		zbx_dbconn_free(db);
@@ -177,10 +177,10 @@ static char	*db_replace_nonprintable_chars(const char *sql, char **sql_printable
 	{
 		*sql_printable = zbx_strdup(NULL, sql);
 		zbx_replace_invalid_utf8_and_nonprintable(*sql_printable);
-	}
 
-	if (ZBX_DB_MASK_QUERIES == db_log_masked_values)
-		db_mask_printable_sql_values(sql_printable);
+		if (ZBX_DB_MASK_QUERIES == db_log_masked_values)
+			db_mask_printable_sql_values(sql_printable);
+	}
 
 	return *sql_printable;
 }
@@ -188,7 +188,7 @@ static char	*db_replace_nonprintable_chars(const char *sql, char **sql_printable
 static void	dbconn_errlog(zbx_dbconn_t *db, zbx_err_codes_t zbx_errno, int db_errno, const char *db_error,
 		const char *context)
 {
-	char	*s;
+	char	*s, *sql_printable = NULL;
 
 	db->last_db_errcode = zbx_errno;
 
@@ -223,8 +223,8 @@ static void	dbconn_errlog(zbx_dbconn_t *db, zbx_err_codes_t zbx_errno, int db_er
 			s = zbx_dsprintf(NULL, "query failed: [%d] %s", db_errno, db->last_db_strerror);
 			break;
 		case ERR_Z3008:
-			s = zbx_dsprintf(NULL, "query failed due to primary key constraint: [%d] %s", db_errno,
-					db->last_db_strerror);
+			s = zbx_dsprintf(NULL, "query failed due to primary key constraint: [%d] %s [%s]", db_errno,
+					db->last_db_strerror, db_replace_nonprintable_chars(context, &sql_printable));
 			break;
 		case ERR_Z3009:
 			s = zbx_dsprintf(NULL, "query failed due to read-only transaction: [%d] %s", db_errno,
@@ -237,6 +237,7 @@ static void	dbconn_errlog(zbx_dbconn_t *db, zbx_err_codes_t zbx_errno, int db_er
 	zabbix_log(LOG_LEVEL_ERR, "[Z%04d] %s", (int)zbx_errno, s);
 
 	zbx_free(s);
+	zbx_free(sql_printable);
 }
 
 #if defined(HAVE_MYSQL)
@@ -334,7 +335,7 @@ static void	db_get_postgresql_error(char **error, const PGresult *pg_result)
  * Purpose: close database connection                                         *
  *                                                                            *
  ******************************************************************************/
-static void	dbconn_close(zbx_dbconn_t *db)
+void	dbconn_close(zbx_dbconn_t *db)
 {
 #if defined(HAVE_MYSQL)
 	if (NULL != db->conn)
@@ -368,11 +369,14 @@ static void	dbconn_close(zbx_dbconn_t *db)
  ******************************************************************************/
 static int	dbconn_open(zbx_dbconn_t *db)
 {
-	int		ret = ZBX_DB_OK, last_txn_error, last_txn_level;
+	int			ret = ZBX_DB_OK, last_txn_error, last_txn_level;
+	zbx_dbconn_mode_t	last_mode;
+
 #if defined(HAVE_MYSQL)
-	int		err_no = 0;
+	int				err_no = 0;
+	struct	zbx_db_version_info_t	version_info = {0};
 #elif defined(HAVE_POSTGRESQL)
-#	define ZBX_DB_MAX_PARAMS	9
+#	define ZBX_DB_MAX_PARAMS	11
 
 	int		rc;
 	char		*cport = NULL;
@@ -391,15 +395,17 @@ static int	dbconn_open(zbx_dbconn_t *db)
 
 	last_txn_error = db->txn_error;
 	last_txn_level = db->txn_level;
+	last_mode = db->mode;
 
 	db->txn_error = ZBX_DB_OK;
 	db->txn_level = 0;
+	db->mode = DBCONN_MODE_DEFAULT;
 
 #if defined(HAVE_MYSQL)
 	if (NULL == (db->conn = mysql_init(NULL)))
 	{
 		zabbix_log(LOG_LEVEL_CRIT, "cannot allocate or initialize MYSQL database connection object");
-		exit(EXIT_FAILURE);
+		zbx_exit(EXIT_FAILURE);
 	}
 
 	if (1 == db->autoincrement)
@@ -538,12 +544,16 @@ static int	dbconn_open(zbx_dbconn_t *db)
 		ret = ZBX_DB_FAIL;
 	}
 
+	zbx_dbconn_extract_version_info(db, &version_info);
+
 	/* innodb_snapshot_isolation variable became ON by default in MariaDB 11.6.2, we need it to be OFF */
-	if (ZBX_DB_OK == ret && ON == zbx_mariadb_fork_get() && 110602 <= db_get_server_version())
+	if (ZBX_DB_OK == ret && ON == version_info.mariadb_fork && 110602 <= version_info.current_version)
 	{
 		if (0 < (ret = dbconn_execute(db, "set innodb_snapshot_isolation='OFF'")))
 			ret = ZBX_DB_OK;
 	}
+
+	zbx_db_version_info_clear(&version_info);
 
 	if (ZBX_DB_OK == ret)
 	{
@@ -630,10 +640,19 @@ static int	dbconn_open(zbx_dbconn_t *db)
 		values[i++] = db->config->dbpassword;
 	}
 
-	if (0 != db->config->dbport)
+	if (NULL != db->config->dbports)
 	{
 		keywords[i] = "port";
-		values[i++] = cport = zbx_dsprintf(cport, "%u", db->config->dbport);
+		values[i++] = db->config->dbports;
+
+		if (NULL != strchr(db->config->dbports, ','))
+		{
+			keywords[i] = "target_session_attrs";
+			values[i++] = "read-write";
+
+			keywords[i] = "connect_timeout";
+			values[i++] = "3";
+		}
 	}
 
 	keywords[i] = NULL;
@@ -655,7 +674,7 @@ static int	dbconn_open(zbx_dbconn_t *db)
 	{
 		char	*dbschema_esc;
 
-		dbschema_esc = db_dyn_escape_string(db->config->dbschema, ZBX_SIZE_T_MAX, ZBX_SIZE_T_MAX,
+		dbschema_esc = dbconn_dyn_escape_string(db, db->config->dbschema, ZBX_SIZE_T_MAX, ZBX_SIZE_T_MAX,
 				ESCAPE_SEQUENCE_ON);
 		if (ZBX_DB_DOWN == (rc = dbconn_execute(db, "set schema '%s'", dbschema_esc)) || ZBX_DB_FAIL == rc)
 			ret = rc;
@@ -688,7 +707,7 @@ static int	dbconn_open(zbx_dbconn_t *db)
 	}
 
 	if (NULL != (row = zbx_db_fetch(result)))
-		ZBX_PG_ESCAPE_BACKSLASH = (0 == strcmp(row[0], "off"));
+		db->pg_escape_backslash = (0 == strcmp(row[0], "off"));
 
 	zbx_db_free_result(result);
 
@@ -732,12 +751,9 @@ static int	dbconn_open(zbx_dbconn_t *db)
 
 	zbx_db_free_result(result);
 
-	if (90000 <= db_get_server_version())
-	{
-		/* change the output format for values of type bytea from hex (the default) to escape */
-		if (0 < (ret = dbconn_execute(db, "set bytea_output=escape")))
-			ret = ZBX_DB_OK;
-	}
+	/* change the output format for values of type bytea from hex (the default) to escape */
+	if (0 < (ret = dbconn_execute(db, "set bytea_output=escape")))
+		ret = ZBX_DB_OK;
 out:
 #elif defined(HAVE_SQLITE3)
 #ifdef HAVE_FUNCTION_SQLITE3_OPEN_V2
@@ -806,6 +822,7 @@ out:
 
 	db->txn_error = last_txn_error;
 	db->txn_level = last_txn_level;
+	db->mode = last_mode;
 
 	return ret;
 }
@@ -815,17 +832,21 @@ out:
  * Purpose: set connection as managed by connection pool                      *
  *                                                                            *
  ******************************************************************************/
-void	dbconn_set_managed(zbx_dbconn_t *db)
+void	dbconn_set_managed(zbx_dbconn_t *db, zbx_dbconn_type_t type)
 {
-	db->managed = DBCONN_TYPE_MANAGED;
+	db->managed = type;
 }
 
-int	db_is_escape_sequence(char c)
+int	dbconn_is_escape_sequence(const zbx_dbconn_t *db, char c)
 {
+#if !defined(HAVE_POSTGRESQL)
+	ZBX_UNUSED(db);
+#endif
+
 #if defined(HAVE_MYSQL)
 	if ('\'' == c || '\\' == c)
 #elif defined(HAVE_POSTGRESQL)
-	if ('\'' == c || ('\\' == c && 1 == ZBX_PG_ESCAPE_BACKSLASH))
+	if ('\'' == c || ('\\' == c && 1 == db->pg_escape_backslash))
 #else
 	if ('\'' == c)
 #endif
@@ -847,6 +868,7 @@ static int	dbconn_vexecute(zbx_dbconn_t *db, const char *fmt, va_list args)
 	char		*sql = NULL, *sql_printable = NULL;
 	int		ret = ZBX_DB_OK;
 	double		sec = 0;
+	size_t		sql_alloc = 0, sql_offset = 0;
 #if defined(HAVE_POSTGRESQL)
 	PGresult	*result;
 	char		*error = NULL;
@@ -854,11 +876,13 @@ static int	dbconn_vexecute(zbx_dbconn_t *db, const char *fmt, va_list args)
 	int		err;
 	char		*error = NULL;
 #endif
+	if (DBCONN_MODE_DEFERRED_BEGIN == db->mode && 0 == db->txn_level)
+		zbx_dbconn_begin(db);
 
 	if (0 != db->config->log_slow_queries)
 		sec = zbx_time();
 
-	sql = zbx_dvsprintf(sql, fmt, args);
+	zbx_vsnprintf_alloc(&sql, &sql_alloc, &sql_offset, fmt, args);
 
 	if (0 == db->txn_level)
 		zabbix_log(LOG_LEVEL_DEBUG, "query without transaction detected");
@@ -871,9 +895,15 @@ static int	dbconn_vexecute(zbx_dbconn_t *db, const char *fmt, va_list args)
 		goto clean;
 	}
 
-	zabbix_log(LOG_LEVEL_DEBUG, "query [txnlev:%d] [%s]", db->txn_level,
-			db_replace_nonprintable_chars(sql, &sql_printable));
+	if (SUCCEED == ZBX_CHECK_LOG_LEVEL(LOG_LEVEL_DEBUG))
+	{
+		char		buf_sql_trunc[MAX_BUFFER_LEN + 1];
+		const char	*sql_trunc = zbx_truncate_value(sql, MAX_BUFFER_LEN, buf_sql_trunc,
+				sizeof(buf_sql_trunc));
 
+		zabbix_log(LOG_LEVEL_DEBUG, "query [txnlev:%d] [%s]", db->txn_level,
+				db_replace_nonprintable_chars(sql_trunc, &sql_printable));
+	}
 #if defined(HAVE_MYSQL)
 	if (NULL == db->conn)
 	{
@@ -1089,11 +1119,19 @@ static int	dbconn_commit(zbx_dbconn_t *db)
 
 	if (0 == db->txn_level)
 	{
+		if (DBCONN_MODE_DEFERRED_BEGIN == db->mode)
+		{
+			db->mode = DBCONN_MODE_DEFAULT;
+			return ZBX_DB_OK;
+		}
+
 		zabbix_log(LOG_LEVEL_CRIT, "ERROR: commit without transaction."
 				" Please report it to Zabbix Team.");
 		zbx_this_should_never_happen_backtrace();
 		assert(0);
 	}
+
+	db->mode = DBCONN_MODE_DEFAULT;
 
 	if (ZBX_DB_OK != db->txn_error)
 		return ZBX_DB_FAIL; /* commit called on failed transaction */
@@ -1128,6 +1166,12 @@ static int	dbconn_rollback(zbx_dbconn_t *db)
 
 	if (0 == db->txn_level)
 	{
+		if (DBCONN_MODE_DEFERRED_BEGIN == db->mode)
+		{
+			db->mode = DBCONN_MODE_DEFAULT;
+			return ZBX_DB_OK;
+		}
+
 		zabbix_log(LOG_LEVEL_CRIT, "ERROR: rollback without transaction."
 				" Please report it to Zabbix Team.");
 		zbx_this_should_never_happen_backtrace();
@@ -1138,6 +1182,7 @@ static int	dbconn_rollback(zbx_dbconn_t *db)
 
 	/* allow rollback of failed transaction */
 	db->txn_error = ZBX_DB_OK;
+	db->mode = DBCONN_MODE_DEFAULT;
 
 	rc = dbconn_execute(db, "rollback;");
 
@@ -1169,17 +1214,20 @@ static zbx_db_result_t	dbconn_vselect(zbx_dbconn_t *db, const char *fmt, va_list
 	char		*sql = NULL;
 	zbx_db_result_t	result = NULL;
 	double		sec = 0;
+	size_t		sql_alloc = 0, sql_offset = 0;
 #if defined(HAVE_POSTGRESQL)
 	char		*error = NULL;
 #elif defined(HAVE_SQLITE3)
 	int		ret = FAIL;
 	char		*error = NULL;
 #endif
+	if (DBCONN_MODE_DEFERRED_BEGIN == db->mode && 0 == db->txn_level)
+		zbx_dbconn_begin(db);
 
 	if (0 != db->config->log_slow_queries)
 		sec = zbx_time();
 
-	sql = zbx_dvsprintf(sql, fmt, args);
+	zbx_vsnprintf_alloc(&sql, &sql_alloc, &sql_offset, fmt, args);
 
 	if (ZBX_DB_OK != db->txn_error)
 	{
@@ -1332,84 +1380,9 @@ static zbx_db_result_t	dbconn_select_n(zbx_dbconn_t *db, const char *query, int 
 	return dbconn_select(db, "%s limit %d", query, n);
 }
 
-/*
- * Public API
- */
-
-/******************************************************************************
- *                                                                            *
- * Purpose: set connection options                                            *
- *                                                                            *
- * Parameters: db      - [IN]                                                 *
- *             options - [IN] connection options:                             *
- *                               ZBX_DB_CONNECT_NORMAL (retry on failure)     *
- *                               ZBX_DB_CONNECT_EXIT (exit on failure)        *
- *                               ZBX_DB_CONNECT_ONCE (return on failure)      *
- *                                                                            *
- *                                                                            *
- * Return value: old connection options                                       *
- *                                                                            *
- ******************************************************************************/
-int	zbx_dbconn_set_connect_options(zbx_dbconn_t *db, int options)
+int	dbconn_is_open(zbx_dbconn_t *db)
 {
-	if (0 != db->managed)
-	{
-		THIS_SHOULD_NEVER_HAPPEN_MSG("Cannot change connection options for managed connections");
-		return ZBX_DB_CONNECT_NORMAL;
-	}
-
-	int	old_options = db->connect_options;
-
-	db->connect_options = options;
-
-	return old_options;
-}
-
-/******************************************************************************
- *                                                                            *
- * Purpose: set autoincrement                                                 *
- *                                                                            *
- ******************************************************************************/
-void	zbx_dbconn_set_autoincrement(zbx_dbconn_t *db, int options)
-{
-	db->autoincrement = options;
-}
-
-/******************************************************************************
- *                                                                            *
- * Purpose: create database connection object                                 *
- *                                                                            *
- ******************************************************************************/
-zbx_dbconn_t	*zbx_dbconn_create(void)
-{
-	zbx_dbconn_t	*db;
-
-	db = (zbx_dbconn_t *)zbx_malloc(NULL, sizeof(zbx_dbconn_t));
-	memset(db, 0, sizeof(zbx_dbconn_t));
-
-	db->managed = DBCONN_TYPE_UNMANAGED;
-	db->config = db_config;
-	db->txn_error = ZBX_DB_OK;
-	db->txn_end_error = ZBX_DB_OK;
-	db->connect_options = ZBX_DB_CONNECT_NORMAL;
-
-#if defined(HAVE_SQLITE3)
-	db->sqlite_access = &db_sqlite_access;
-#endif
-	return db;
-}
-
-/******************************************************************************
- *                                                                            *
- * Purpose: free database connection object                                   *
- *                                                                            *
- ******************************************************************************/
-void	zbx_dbconn_free(zbx_dbconn_t *db)
-{
-	dbconn_close(db);
-	zbx_free(db->last_db_strerror);
-
-	zbx_free(db);
+	return (db->conn != NULL ? SUCCEED : FAIL);
 }
 
 /******************************************************************************
@@ -1421,23 +1394,17 @@ void	zbx_dbconn_free(zbx_dbconn_t *db)
  *               ZBX_DB_FAIL - failed to connect                              *
  *                                                                            *
  ******************************************************************************/
-int	zbx_dbconn_open(zbx_dbconn_t *db)
+int	dbconn_open_retry(zbx_dbconn_t *db)
 {
-#define ZBX_DB_WAIT_RETRY_COUNT	6
-	int	err;
 #if defined(HAVE_POSTGRESQL)
+#	define ZBX_DB_WAIT_RETRY_COUNT	6
+
 	int	retries = ZBX_DB_WAIT_RETRY_COUNT;
 #endif
 
+	int	err;
+
 	zabbix_log(LOG_LEVEL_DEBUG, "In %s() options:%d", __func__, db->connect_options);
-
-	if (DBCONN_TYPE_MANAGED == db->managed)
-	{
-		THIS_SHOULD_NEVER_HAPPEN_MSG("Cannot open managed connections");
-		err = ZBX_DB_FAIL;
-
-		goto out;
-	}
 
 	while (ZBX_DB_OK != (err = dbconn_open(db)))
 	{
@@ -1488,11 +1455,129 @@ int	zbx_dbconn_open(zbx_dbconn_t *db)
 		db->last_db_errcode = 0;
 #endif
 	}
-out:
+
+	zabbix_log(LOG_LEVEL_DEBUG, "End of %s():%d", __func__, err);
+
+#if defined(HAVE_POSTGRESQL)
+#	undef ZBX_DB_WAIT_RETRY_COUNT
+#endif
+
+	return err;
+}
+
+/*
+ * Public API
+ */
+
+/******************************************************************************
+ *                                                                            *
+ * Purpose: set connection options                                            *
+ *                                                                            *
+ * Parameters: db      - [IN]                                                 *
+ *             options - [IN] connection options:                             *
+ *                               ZBX_DB_CONNECT_NORMAL (retry on failure)     *
+ *                               ZBX_DB_CONNECT_EXIT (exit on failure)        *
+ *                               ZBX_DB_CONNECT_ONCE (return on failure)      *
+ *                                                                            *
+ *                                                                            *
+ * Return value: old connection options                                       *
+ *                                                                            *
+ ******************************************************************************/
+int	zbx_dbconn_set_connect_options(zbx_dbconn_t *db, int options)
+{
+	if (0 != db->managed)
+	{
+		THIS_SHOULD_NEVER_HAPPEN_MSG("Cannot change connection options for managed connections");
+		return ZBX_DB_CONNECT_NORMAL;
+	}
+
+	int	old_options = db->connect_options;
+
+	db->connect_options = options;
+
+	return old_options;
+}
+
+/******************************************************************************
+ *                                                                            *
+ * Purpose: set autoincrement                                                 *
+ *                                                                            *
+ ******************************************************************************/
+void	zbx_dbconn_set_autoincrement(zbx_dbconn_t *db, int options)
+{
+	db->autoincrement = options;
+}
+
+/******************************************************************************
+ *                                                                            *
+ * Purpose: create database connection object                                 *
+ *                                                                            *
+ ******************************************************************************/
+zbx_dbconn_t	*zbx_dbconn_create(void)
+{
+	return zbx_dbconn_create_custom(db_config);
+}
+
+zbx_dbconn_t	*zbx_dbconn_create_custom(const zbx_db_config_t	*config)
+{
+	zbx_dbconn_t	*db;
+
+	db = (zbx_dbconn_t *)zbx_malloc(NULL, sizeof(zbx_dbconn_t));
+	memset(db, 0, sizeof(zbx_dbconn_t));
+
+	db->managed = DBCONN_TYPE_UNMANAGED;
+	db->config = config;
+	db->txn_error = ZBX_DB_OK;
+	db->txn_end_error = ZBX_DB_OK;
+	db->connect_options = ZBX_DB_CONNECT_NORMAL;
+
+#if defined(HAVE_POSTGRESQL)
+	db->pg_escape_backslash = 1;
+#elif defined(HAVE_SQLITE3)
+	db->sqlite_access = &db_sqlite_access;
+#endif
+	return db;
+}
+
+/******************************************************************************
+ *                                                                            *
+ * Purpose: free database connection object                                   *
+ *                                                                            *
+ ******************************************************************************/
+void	zbx_dbconn_free(zbx_dbconn_t *db)
+{
+	dbconn_close(db);
+	zbx_free(db->last_db_strerror);
+
+	zbx_free(db);
+}
+
+/******************************************************************************
+ *                                                                            *
+ * Purpose: open database connection                                          *
+ *                                                                            *
+ * Return value: ZBX_DB_OK - successfully connected                           *
+ *               ZBX_DB_DOWN - database is down                               *
+ *               ZBX_DB_FAIL - failed to connect                              *
+ *                                                                            *
+ ******************************************************************************/
+int	__zbx_attr_weak zbx_dbconn_open(zbx_dbconn_t *db)
+{
+	int	err;
+
+	zabbix_log(LOG_LEVEL_DEBUG, "In %s() options:%d", __func__, db->connect_options);
+
+	if (DBCONN_TYPE_MANAGED == db->managed)
+	{
+		THIS_SHOULD_NEVER_HAPPEN_MSG("Cannot open managed connections");
+		err = ZBX_DB_FAIL;
+	}
+	else
+		err = dbconn_open_retry(db);
+
 	zabbix_log(LOG_LEVEL_DEBUG, "End of %s():%d", __func__, err);
 
 	return err;
-#undef ZBX_DB_WAIT_RETRY_COUNT
 }
 
 /******************************************************************************
@@ -1530,8 +1615,8 @@ int	zbx_dbconn_begin(zbx_dbconn_t *db)
 
 	while (ZBX_DB_DOWN == rc)
 	{
-		zbx_dbconn_close(db);
-		zbx_dbconn_open(db);
+		dbconn_close(db);
+		dbconn_open_retry(db);
 
 		if (ZBX_DB_DOWN == (rc = dbconn_begin(db)))
 		{
@@ -1542,6 +1627,11 @@ int	zbx_dbconn_begin(zbx_dbconn_t *db)
 	}
 
 	return rc;
+}
+
+void	zbx_dbconn_begin_deferred(zbx_dbconn_t *db)
+{
+	db->mode = DBCONN_MODE_DEFERRED_BEGIN;
 }
 
 /******************************************************************************
@@ -1582,8 +1672,8 @@ int	zbx_dbconn_rollback(zbx_dbconn_t *db)
 	{
 		zabbix_log(LOG_LEVEL_WARNING, "cannot perform transaction rollback, connection will be reset");
 
-		zbx_dbconn_close(db);
-		rc = zbx_dbconn_open(db);
+		dbconn_close(db);
+		rc = dbconn_open_retry(db);
 	}
 	else
 	{
@@ -1632,8 +1722,8 @@ int	zbx_dbconn_vexecute(zbx_dbconn_t *db, const char *fmt, va_list args)
 
 	while (ZBX_DB_DOWN == rc)
 	{
-		zbx_dbconn_close(db);
-		zbx_dbconn_open(db);
+		dbconn_close(db);
+		dbconn_open_retry(db);
 
 		if (ZBX_DB_DOWN == (rc = dbconn_vexecute(db, fmt, args)))
 		{
@@ -1684,8 +1774,8 @@ zbx_db_result_t	__zbx_attr_weak zbx_dbconn_vselect(zbx_dbconn_t *db, const char 
 
 	while ((zbx_db_result_t)ZBX_DB_DOWN == rc)
 	{
-		zbx_dbconn_close(db);
-		zbx_dbconn_open(db);
+		dbconn_close(db);
+		dbconn_open_retry(db);
 
 		if ((zbx_db_result_t)ZBX_DB_DOWN == (rc = dbconn_vselect(db, fmt, args)))
 		{
@@ -1736,8 +1826,8 @@ zbx_db_result_t	zbx_dbconn_select_n(zbx_dbconn_t *db, const char *query, int n)
 
 	while ((zbx_db_result_t)ZBX_DB_DOWN == rc)
 	{
-		zbx_dbconn_close(db);
-		zbx_dbconn_open(db);
+		dbconn_close(db);
+		dbconn_open_retry(db);
 
 		if ((zbx_db_result_t)ZBX_DB_DOWN == (rc = dbconn_select_n(db, query, n)))
 		{
@@ -2114,14 +2204,14 @@ out:
  * Purpose: returns escaped DB schema name                                    *
  *                                                                            *
  ******************************************************************************/
-char	*zbx_db_get_schema_esc(void)
+char	*zbx_dbconn_get_schema_esc(const zbx_dbconn_t *db)
 {
-	static char	*name;
+	static ZBX_THREAD_LOCAL char	*name;
 
 	if (NULL == name)
 	{
-		name = zbx_db_dyn_escape_string(NULL == db_config->dbschema ||
-				'\0' == *db_config->dbschema ? "public" : db_config->dbschema);
+		name = zbx_dbconn_dyn_escape_string(db, NULL == db->config->dbschema ||
+				'\0' == *db->config->dbschema ? "public" : db->config->dbschema);
 	}
 
 	return name;
@@ -2139,7 +2229,7 @@ int	zbx_dbconn_table_exists(zbx_dbconn_t *db, const char *table_name)
 	zbx_db_result_t	result;
 	int		ret;
 
-	table_name_esc = zbx_db_dyn_escape_string(table_name);
+	table_name_esc = zbx_dbconn_dyn_escape_string(db, table_name);
 
 #if defined(HAVE_MYSQL)
 	result = zbx_dbconn_select(db, "show tables like '%s'", table_name_esc);
@@ -2149,7 +2239,7 @@ int	zbx_dbconn_table_exists(zbx_dbconn_t *db, const char *table_name)
 			" from information_schema.tables"
 			" where table_name='%s'"
 				" and table_schema='%s'",
-			table_name_esc, zbx_db_get_schema_esc());
+			table_name_esc, zbx_dbconn_get_schema_esc(db));
 #elif defined(HAVE_SQLITE3)
 	result = zbx_dbconn_select(db,
 			"select 1"
@@ -2202,8 +2292,8 @@ int	zbx_dbconn_field_exists(zbx_dbconn_t *db, const char *table_name, const char
 
 	zbx_db_free_result(result);
 #elif defined(HAVE_POSTGRESQL)
-	table_name_esc = zbx_db_dyn_escape_string(table_name);
-	field_name_esc = zbx_db_dyn_escape_string(field_name);
+	table_name_esc = zbx_dbconn_dyn_escape_string(db, table_name);
+	field_name_esc = zbx_dbconn_dyn_escape_string(db, field_name);
 
 	result = zbx_dbconn_select(db,
 			"select 1"
@@ -2211,7 +2301,7 @@ int	zbx_dbconn_field_exists(zbx_dbconn_t *db, const char *table_name, const char
 			" where table_name='%s'"
 				" and column_name='%s'"
 				" and table_schema='%s'",
-			table_name_esc, field_name_esc, zbx_db_get_schema_esc());
+			table_name_esc, field_name_esc, zbx_dbconn_get_schema_esc(db));
 
 	zbx_free(field_name_esc);
 	zbx_free(table_name_esc);
@@ -2220,7 +2310,7 @@ int	zbx_dbconn_field_exists(zbx_dbconn_t *db, const char *table_name, const char
 
 	zbx_db_free_result(result);
 #elif defined(HAVE_SQLITE3)
-	table_name_esc = zbx_db_dyn_escape_string(table_name);
+	table_name_esc = zbx_dbconn_dyn_escape_string(db, table_name);
 
 	result = zbx_dbconn_select(db, "PRAGMA table_info('%s')", table_name_esc);
 
@@ -2252,8 +2342,8 @@ int	zbx_dbconn_trigger_exists(zbx_dbconn_t *db, const char *table_name, const ch
 	zbx_db_result_t	result;
 	int		ret;
 
-	table_name_esc = zbx_db_dyn_escape_string(table_name);
-	trigger_name_esc = zbx_db_dyn_escape_string(trigger_name);
+	table_name_esc = zbx_dbconn_dyn_escape_string(db, table_name);
+	trigger_name_esc = zbx_dbconn_dyn_escape_string(db, trigger_name);
 
 #if defined(HAVE_MYSQL)
 	result = zbx_dbconn_select(db,
@@ -2267,7 +2357,7 @@ int	zbx_dbconn_trigger_exists(zbx_dbconn_t *db, const char *table_name, const ch
 			" where event_object_table='%s'"
 			" and trigger_name='%s'"
 			" and trigger_schema='%s'",
-			table_name_esc, trigger_name_esc, zbx_db_get_schema_esc());
+			table_name_esc, trigger_name_esc, zbx_dbconn_get_schema_esc(db));
 #endif
 	ret = (NULL == zbx_db_fetch(result) ? FAIL : SUCCEED);
 
@@ -2290,8 +2380,8 @@ int	zbx_dbconn_index_exists(zbx_dbconn_t *db, const char *table_name, const char
 	zbx_db_result_t	result;
 	int		ret;
 
-	table_name_esc = zbx_db_dyn_escape_string(table_name);
-	index_name_esc = zbx_db_dyn_escape_string(index_name);
+	table_name_esc = zbx_dbconn_dyn_escape_string(db, table_name);
+	index_name_esc = zbx_dbconn_dyn_escape_string(db, index_name);
 
 #if defined(HAVE_MYSQL)
 	result = zbx_dbconn_select(db,
@@ -2305,7 +2395,7 @@ int	zbx_dbconn_index_exists(zbx_dbconn_t *db, const char *table_name, const char
 			" where tablename='%s'"
 				" and indexname='%s'"
 				" and schemaname='%s'",
-			table_name_esc, index_name_esc, zbx_db_get_schema_esc());
+			table_name_esc, index_name_esc, zbx_dbconn_get_schema_esc(db));
 #endif
 
 	ret = (NULL == zbx_db_fetch(result) ? FAIL : SUCCEED);
@@ -2340,7 +2430,7 @@ int	zbx_dbconn_pk_exists(zbx_dbconn_t *db, const char *table_name)
 			" where table_name='%s'"
 				" and constraint_type='PRIMARY KEY'"
 				" and constraint_schema='%s'",
-			table_name, zbx_db_get_schema_esc());
+			table_name, zbx_dbconn_get_schema_esc(db));
 #endif
 	ret = (NULL == zbx_db_fetch(result) ? FAIL : SUCCEED);
 
@@ -2393,8 +2483,8 @@ static int	dbconn_prepare_multiple_query_str(zbx_dbconn_t *db, const char *query
 			zbx_vector_str_append(&str_ids, zbx_dsprintf(NULL, ZBX_FS_UI64, ids->values[j]));
 
 		zbx_strcpy_alloc(sql, sql_alloc, sql_offset, query);
-		zbx_db_add_str_condition_alloc(sql, sql_alloc, sql_offset, field_name, (const char**)str_ids.values,
-				batch_size);
+		zbx_dbconn_add_str_condition_alloc(db, sql, sql_alloc, sql_offset, field_name,
+				(const char**)str_ids.values, batch_size);
 		zbx_strcpy_alloc(sql, sql_alloc, sql_offset, ";\n");
 
 		zbx_vector_str_clear_ext(&str_ids, zbx_str_free);
@@ -2536,8 +2626,9 @@ static int	db_large_query_select(zbx_db_large_query_t *query)
 			if (FAIL == (size = db_large_query_select_chunk(query, query->ids.str->values_num)))
 				return FAIL;
 
-			zbx_db_add_str_condition_alloc(query->sql, query->sql_alloc, query->sql_offset, query->field,
-					(const char * const *)&query->ids.str->values[query->offset], size);
+			zbx_dbconn_add_str_condition_alloc(query->db, query->sql, query->sql_alloc, query->sql_offset,
+					query->field, (const char * const *)&query->ids.str->values[query->offset],
+					size);
 			break;
 		case ZBX_DB_LARGE_QUERY:
 			if (NULL != query->result)

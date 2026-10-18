@@ -13,6 +13,7 @@
 **/
 
 #include "lld_protocol.h"
+#include "lld_manager.h"
 
 #include "zbxserialize.h"
 #include "zbxipcservice.h"
@@ -99,7 +100,7 @@ void	zbx_lld_deserialize_value(const unsigned char *data, char **value)
 {
 	zbx_uint32_t	value_len;
 
-	data += zbx_deserialize_str(data, value, value_len);
+	(void)zbx_deserialize_str(data, value, value_len);
 }
 
 
@@ -220,7 +221,7 @@ void	zbx_lld_queue_value(zbx_uint64_t itemid, zbx_uint64_t hostid, const char *v
 	if (0 == socket.fd && FAIL == zbx_ipc_socket_open(&socket, ZBX_IPC_SERVICE_LLD, SEC_PER_MIN, &errmsg))
 	{
 		zabbix_log(LOG_LEVEL_CRIT, "cannot connect to LLD manager service: %s", errmsg);
-		exit(EXIT_FAILURE);
+		zbx_exit(EXIT_FAILURE);
 	}
 
 	data_len = zbx_lld_serialize_item_value(&data, itemid, hostid, value, ts, meta, lastlogsize, mtime, error);
@@ -228,7 +229,7 @@ void	zbx_lld_queue_value(zbx_uint64_t itemid, zbx_uint64_t hostid, const char *v
 	if (FAIL == zbx_ipc_socket_write(&socket, ZBX_IPC_LLD_REQUEST, data, data_len))
 	{
 		zabbix_log(LOG_LEVEL_CRIT, "cannot send data to LLD manager service");
-		exit(EXIT_FAILURE);
+		zbx_exit(EXIT_FAILURE);
 	}
 
 	zbx_free(data);

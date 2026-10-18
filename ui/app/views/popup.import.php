@@ -38,7 +38,9 @@ $titles = [
 	'httptests' => _('Web scenarios'),
 	'maps' => _('Maps'),
 	'images' => _('Images'),
-	'mediaTypes' => _('Media types')
+	'mediaTypes' => _('Media types'),
+	'dashboards' => _('Dashboards'),
+	'global_regexes' => _('Regular expressions')
 ];
 
 switch ($data['rules_preset']) {
@@ -53,6 +55,12 @@ switch ($data['rules_preset']) {
 		break;
 	case 'mediatype':
 		$doc_url = CDocHelper::POPUP_MEDIA_IMPORT;
+		break;
+	case 'dashboard':
+		$doc_url = CDocHelper::POPUP_DASHBOARD_IMPORT;
+		break;
+	case 'regex':
+		$doc_url = CDocHelper::POPUP_REGEXP_IMPORT;
 		break;
 	}
 
@@ -164,8 +172,7 @@ $form = (new CForm('post', null, 'multipart/form-data'))
 	->setId('import-form')
 	->addVar('import', 1)
 	->addVar('rules_preset', $data['rules_preset'])
-	->addItem($form_grid)
-	->addItem((new CScriptTag('popup_import.init();'))->setOnDocumentReady());
+	->addItem($form_grid);
 
 $output = [
 	'header' => $data['title'],
@@ -174,14 +181,15 @@ $output = [
 	'buttons' => [
 		[
 			'title' => _('Import'),
-			'class' => '',
-			'keepOpen' => true,
-			'isSubmit' => true,
-			'action' => 'popup_import.submitPopup();'
+			'class' => 'js-import',
+			'isSubmit' => true
 		]
 	],
 	'script_inline' => getPagePostJs().
-		$this->readJsFile('popup.import.js.php')
+		$this->readJsFile('popup.import.js.php').
+		'popup_import.init('.json_encode([
+			'submit_compare' => $data['submit_compare']
+		]).');'
 ];
 
 if ($data['user']['debug_mode'] == GROUP_DEBUG_MODE_ENABLED) {

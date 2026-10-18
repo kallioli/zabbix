@@ -63,7 +63,7 @@ class CDService extends CApiService {
 
 		$sqlParts = [
 			'select'	=> ['dservices' => 'ds.dserviceid'],
-			'from'		=> ['dservices' => 'dservices ds'],
+			'from'		=> 'dservices ds',
 			'where'		=> [],
 			'group'		=> [],
 			'order'		=> [],
@@ -135,10 +135,8 @@ class CDService extends CApiService {
 		if (!is_null($options['druleids'])) {
 			zbx_value2array($options['druleids']);
 
-			$sqlParts['from']['dhosts'] = 'dhosts dh';
-
+			$sqlParts['join']['dh'] = ['table' => 'dhosts', 'using' => 'dhostid'];
 			$sqlParts['where']['druleid'] = dbConditionInt('dh.druleid', $options['druleids']);
-			$sqlParts['where']['dhds'] = 'dh.dhostid=ds.dhostid';
 
 			if ($options['groupCount']) {
 				$sqlParts['group']['druleid'] = 'dh.druleid';
@@ -158,6 +156,16 @@ class CDService extends CApiService {
 // limit
 		if (zbx_ctype_digit($options['limit']) && $options['limit']) {
 			$sqlParts['limit'] = $options['limit'];
+		}
+
+		if (self::$userData['type'] != USER_TYPE_SUPER_ADMIN && !$options['nopermissions']) {
+			$sqlParts['join']['dh'] = ['table' => 'dhosts', 'using' => 'dhostid'];
+			$sqlParts['join']['dr'] = ['left_table' => 'dh', 'table' => 'drules', 'using' => 'druleid'];
+			$sqlParts['join']['p'] = ['type' => 'left', 'left_table' => 'dr', 'table' => 'proxy', 'using' => 'proxyid'];
+			$sqlParts['where'][] = '('.
+				'dr.proxyid IS NULL'.
+				' OR '.CApiUserGroupHelper::getProxyPermissionsCondition('p').
+			')';
 		}
 //-------
 

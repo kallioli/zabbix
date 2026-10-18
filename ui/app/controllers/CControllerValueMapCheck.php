@@ -107,15 +107,6 @@ class CControllerValueMapCheck extends CController {
 			case 'template':
 				$rules = self::getValidationRules($valuemap_names);
 
-				if ($this->hasInput('valuemap_names')) {
-					$rules['fields']['name'] += ['not_in' => $this->getInput('valuemap_names')];
-
-					if (!array_key_exists('messages', $rules['fields']['name'])) {
-						$rules['fields']['name']['messages'] = [];
-					}
-					$rules['fields']['name']['messages'] += ['not_in' => _('Given valuemap name is already taken.')];
-				}
-
 				$this->setInputValidationMethod(self::INPUT_VALIDATION_FORM);
 				$ret = $this->validateInput($rules) && $this->validateValueMap();
 

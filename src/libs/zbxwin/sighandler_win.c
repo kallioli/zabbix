@@ -25,6 +25,8 @@
 #include "zbxwinservice.h"
 #include "zbxlog.h"
 
+#include <process.h>
+
 #define ZBX_EXIT_NONE		0
 #define ZBX_EXIT_SUCCESS	1
 #define ZBX_EXIT_FAILURE	2
@@ -57,10 +59,19 @@ int	ZBX_EXIT_STATUS(void)
 	return ZBX_EXIT_FAILURE == InterlockedCompareExchange(&sig_exiting, 0, 0) ? FAIL : SUCCEED;
 }
 
-int	zbx_init_thread_signal_handler(void)
+int	zbx_init_thread_signal_handler(sigjmp_buf *jmp_ret)
 {
-	/* worker threads inherit the process-wide console and service handlers */
+	/* worker threads inherit the process-wide console and service handlers, and there is no signal to jump */
+	/* back from; see the typedef in zbxnix.h */
+	ZBX_UNUSED(jmp_ret);
+
 	return SUCCEED;
+}
+
+void	zbx_exit_thread(int ret)
+{
+	/* the counterpart of _beginthreadex(), which is how every thread here is started */
+	_endthreadex((unsigned int)ret);
 }
 
 void	zbx_set_common_signal_handlers(zbx_on_exit_t zbx_on_exit_cb_arg)
@@ -119,8 +130,20 @@ void	zbx_set_exit_on_terminate(void)
 {
 }
 
-void	zbx_unset_exit_on_terminate(void)
+/* On Unix the terminate signal, once the program has asked for it, no longer exits but calls this back so that */
+/* the main loop wakes up and winds down on its own. The stop request plays that part here. */
+static zbx_on_exit_t	exit_on_terminate_cb = NULL;
+
+static void	stop_notify(void)
 {
+	if (NULL != exit_on_terminate_cb)
+		exit_on_terminate_cb(SUCCEED, zbx_on_exit_args);
+}
+
+void	zbx_unset_exit_on_terminate(zbx_on_exit_t on_exit_cb)
+{
+	exit_on_terminate_cb = on_exit_cb;
+	zbx_service_set_stop_notify(NULL != on_exit_cb ? stop_notify : NULL);
 }
 
 void	zbx_init_library_nix(zbx_get_progname_f get_progname_cb, zbx_get_process_info_by_thread_f

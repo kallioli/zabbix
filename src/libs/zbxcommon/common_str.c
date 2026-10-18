@@ -53,7 +53,7 @@ int	zbx_vsnprintf_check_len(const char *fmt, va_list args)
 	if (0 > (rv = vsnprintf(NULL, 0, fmt, args)))
 	{
 		THIS_SHOULD_NEVER_HAPPEN;
-		exit(EXIT_FAILURE);
+		zbx_exit(EXIT_FAILURE);
 	}
 
 	return rv;
@@ -76,59 +76,19 @@ int	zbx_vsnprintf_check_len(const char *fmt, va_list args)
  *           WARNING: DO NOT USE IN A LOOP OR RECURSIVE CONTEXT.              *
  *                                                                            *
  ******************************************************************************/
-char	*zbx_dvsprintf(char *dest, const char *f, va_list args)
+char	*zbx_dsprintf(char *dest, const char *fmt, ...)
 {
-	char	*string = NULL;
-	int	n, size = MAX_STRING_LEN >> 1;
+	char	*str = NULL;
+	size_t	str_len = 0, str_offset = 0;
+	va_list args;
 
-	va_list curr;
-
-	while (1)
-	{
-		string = (char *)zbx_malloc(string, size);
-
-		va_copy(curr, args);
-		n = vsnprintf(string, size, f, curr);
-		va_end(curr);
-
-		if (0 <= n && n < size)
-			break;
-
-		/* result was truncated */
-		if (-1 == n)
-			size = size * 3 / 2 + 1;	/* the length is unknown */
-		else
-			size = n + 1;	/* n bytes + trailing '\0' */
-
-		zbx_free(string);
-	}
+	va_start(args, fmt);
+	zbx_vsnprintf_alloc(&str, &str_len, &str_offset, fmt, args);
+	va_end(args);
 
 	zbx_free(dest);
 
-	return string;
-}
-
-/******************************************************************************
- *                                                                            *
- * Purpose: dynamical formatted output conversion                             *
- *                                                                            *
- * Return value: formatted string                                             *
- *                                                                            *
- * Comments: returns a pointer to allocated memory                            *
- *                                                                            *
- ******************************************************************************/
-char	*zbx_dsprintf(char *dest, const char *f, ...)
-{
-	char	*string;
-	va_list args;
-
-	va_start(args, f);
-
-	string = zbx_dvsprintf(dest, f, args);
-
-	va_end(args);
-
-	return string;
+	return str;
 }
 
 /******************************************************************************
@@ -217,7 +177,7 @@ static int	test_vsnprintf(void)
 	zabbix_log(LOG_LEVEL_CRIT, "vsnprintf() returned %d", res);
 
 	THIS_SHOULD_NEVER_HAPPEN;
-	exit(EXIT_FAILURE);
+	zbx_exit(EXIT_FAILURE);
 }
 
 int	zbx_hpux_vsnprintf_is_c99(void)
@@ -246,9 +206,9 @@ int	zbx_hpux_vsnprintf_is_c99(void)
  *             fmt       - [IN] format                                        *
  *                                                                            *
  ******************************************************************************/
-void	zbx_snprintf_alloc(char **str, size_t *alloc_len, size_t *offset, const char *fmt, ...)
+void	zbx_vsnprintf_alloc(char **str, size_t *alloc_len, size_t *offset, const char *fmt, va_list args)
 {
-	va_list	args;
+	va_list	cpy;
 	size_t	avail_len, written_len;
 
 #if defined(__hpux)
@@ -267,9 +227,9 @@ void	zbx_snprintf_alloc(char **str, size_t *alloc_len, size_t *offset, const cha
 		while (1)
 		{
 			avail_len = *alloc_len - *offset;
-			va_start(args, fmt);
-			bytes_written = vsnprintf(*str + *offset, avail_len, fmt, args);
-			va_end(args);
+			va_copy(cpy, args);
+			bytes_written = vsnprintf(*str + *offset, avail_len, fmt, cpy);
+			va_end(cpy);
 
 			if (0 <= bytes_written)
 				break;
@@ -284,7 +244,7 @@ void	zbx_snprintf_alloc(char **str, size_t *alloc_len, size_t *offset, const cha
 			zabbix_log(LOG_LEVEL_CRIT, "vsnprintf() returned %d", bytes_written);
 
 			THIS_SHOULD_NEVER_HAPPEN;
-			exit(EXIT_FAILURE);
+			zbx_exit(EXIT_FAILURE);
 		}
 
 		*offset += bytes_written;
@@ -297,21 +257,21 @@ void	zbx_snprintf_alloc(char **str, size_t *alloc_len, size_t *offset, const cha
 retry:
 	if (NULL == *str)
 	{
-		va_start(args, fmt);
+		va_copy(cpy, args);
 
 		/* zbx_vsnprintf_check_len() cannot return negative result. */
 		/* '\0' + one byte to prevent operation retry. */
-		*alloc_len = (size_t)zbx_vsnprintf_check_len(fmt, args) + 2;
+		*alloc_len = (size_t)zbx_vsnprintf_check_len(fmt, cpy) + 2;
 
-		va_end(args);
+		va_end(cpy);
 		*offset = 0;
 		*str = (char *)zbx_malloc(*str, *alloc_len);
 	}
 
 	avail_len = *alloc_len - *offset;
-	va_start(args, fmt);
-	written_len = zbx_vsnprintf(*str + *offset, avail_len, fmt, args);
-	va_end(args);
+	va_copy(cpy, args);
+	written_len = zbx_vsnprintf(*str + *offset, avail_len, fmt, cpy);
+	va_end(cpy);
 
 	if (written_len == avail_len - 1)
 	{
@@ -322,6 +282,15 @@ retry:
 	}
 
 	*offset += written_len;
+}
+
+void	zbx_snprintf_alloc(char **str, size_t *alloc_len, size_t *offset, const char *fmt, ...)
+{
+	va_list	args;
+
+	va_start(args, fmt);
+	zbx_vsnprintf_alloc(str, alloc_len, offset, fmt, args);
+	va_end(args);
 }
 
 #if defined(_WINDOWS) || defined(__MINGW32__)

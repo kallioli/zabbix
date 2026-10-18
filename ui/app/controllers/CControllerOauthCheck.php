@@ -18,63 +18,56 @@ class CControllerOauthCheck extends CController {
 
 	public function init() {
 		$this->setPostContentType(self::POST_CONTENT_TYPE_JSON);
+		$this->setInputValidationMethod(self::INPUT_VALIDATION_FORM);
+	}
+
+	public static function getValidationRules(): array {
+		return ['object', 'fields' => [
+			'mediatypeid' => ['db media_type_oauth.mediatypeid'],
+			'redirection_url' => ['db media_type_oauth.redirection_url', 'required', 'not_empty',
+				'use' => [CUrlValidator::class, ['schemes' => CMediatypeHelper::OAUTH_URL_SCHEMES]]
+			],
+			'client_id' => ['db media_type_oauth.client_id', 'required', 'not_empty'],
+			'client_secret' => ['db media_type_oauth.client_secret', 'not_empty'],
+			'authorization_url' => ['string', 'not_empty',
+				'use' => [CUrlValidator::class, ['schemes' => CMediatypeHelper::OAUTH_URL_SCHEMES]]
+			],
+			'authorization_url_parameters' => ['objects', 'uniq' => ['value', 'name'],
+				'fields' => [
+					'value' => ['string'],
+					'name' => ['string', 'required', 'not_empty', 'when' => ['value', 'not_empty']]
+				],
+				'messages' => ['uniq' => _('Name and value combination is not unique.')]
+			],
+			'token_url' => ['string', 'not_empty',
+				'use' => [CUrlValidator::class, ['schemes' => CMediatypeHelper::OAUTH_URL_SCHEMES]]
+			],
+			'token_url_parameters' => ['objects', 'uniq' => ['value', 'name'],
+				'fields' => [
+					'value' => ['string'],
+					'name' => ['string', 'required', 'not_empty', 'when' => ['value', 'not_empty']]
+				],
+				'messages' => ['uniq' => _('Name and value combination is not unique.')]
+			],
+			'authorization_mode' => ['string', 'in' => ['auto', 'manual']],
+			'code' => ['string', 'required', 'not_empty', 'when' => ['authorization_mode', 'in' => ['manual']]]
+		]];
 	}
 
 	protected function checkInput(): bool {
-		$fields = [
-			'mediatypeid' =>					'id',
-			'redirection_url' =>				'db media_type_oauth.redirection_url|required|not_empty',
-			'client_id' => 						'db media_type_oauth.client_id|required|not_empty',
-			'client_secret' =>					'db media_type_oauth.client_secret|not_empty',
-			'authorization_url' =>				'string|not_empty',
-			'authorization_url_parameters' =>	'array',
-			'token_url' =>						'string|not_empty',
-			'token_url_parameters' =>			'array',
-			'authorization_mode' =>				'string|in auto,manual',
-			'code' =>							'string|not_empty'
-		];
-
-		$ret = $this->validateInput($fields);
-
-		if ($ret) {
-			$url_validator = new CUrlValidator(['schemes' => CMediatypeHelper::OAUTH_URL_SCHEMES]);
-
-			if ($this->hasInput('redirection_url') && !$url_validator->validate($this->getInput('redirection_url'))) {
-				error(_s('Incorrect value for field "%1$s": %2$s.', _('Redirection endpoint'),
-					$url_validator->getError()
-				));
-
-				$ret = false;
-			}
-
-			if ($this->hasInput('authorization_url')
-					&& !$url_validator->validate($this->getInput('authorization_url'))) {
-				error(_s('Incorrect value for field "%1$s": %2$s.', _('Authorization endpoint'),
-					$url_validator->getError()
-				));
-
-				$ret = false;
-			}
-
-			if ($this->hasInput('token_url') && !$url_validator->validate($this->getInput('token_url'))) {
-				error(_s('Incorrect value for field "%1$s": %2$s.', _('Token endpoint'),
-					$url_validator->getError()
-				));
-
-				$ret = false;
-			}
-		}
+		$ret = $this->validateInput(self::getValidationRules());
 
 		if (!$ret) {
+			$form_errors = $this->getValidationError();
+			$response = $form_errors
+				? ['form_errors' => $form_errors]
+				: ['error' => [
+					'title' => _('Invalid OAuth configuration'),
+					'messages' => array_column(get_and_clear_messages(), 'message')
+				]];
+
 			$this->setResponse(
-				(new CControllerResponseData([
-					'main_block' => json_encode([
-						'error' => [
-							'title' => _('Invalid OAuth configuration'),
-							'messages' => array_column(get_and_clear_messages(), 'message')
-						]
-					])
-				]))->disableView()
+				new CControllerResponseData(['main_block' => json_encode($response)])
 			);
 		}
 

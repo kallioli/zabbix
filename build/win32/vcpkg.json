@@ -1,6 +1,6 @@
 {
   "name": "zabbix-proxy-win",
-  "version-string": "7.4.14",
+  "version-string": "8.0.0",
   "description": "Third-party libraries required to build the Windows Zabbix proxy",
   "dependencies": [
     "zlib",

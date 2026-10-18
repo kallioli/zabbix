@@ -30,9 +30,10 @@ use Widgets\SvgGraph\Includes\{
 class WidgetView extends CControllerDashboardWidgetView {
 
 	private const GRAPH_WIDTH_MIN = 1;
-	private const GRAPH_WIDTH_MAX = 65535;
+	private const GRAPH_WIDTH_MAX = 8000;
+
 	private const GRAPH_HEIGHT_MIN = 1;
-	private const GRAPH_HEIGHT_MAX = 65535;
+	private const GRAPH_HEIGHT_MAX = 4500;
 
 	protected function init(): void {
 		parent::init();
@@ -85,6 +86,9 @@ class WidgetView extends CControllerDashboardWidgetView {
 			'displaying' => [
 				'show_simple_triggers' => $this->fields_values['simple_triggers'] == SVG_GRAPH_SIMPLE_TRIGGERS_ON,
 				'show_working_time' => $this->fields_values['working_time'] == SVG_GRAPH_WORKING_TIME_ON,
+				'show_hostnames' => $this->isTemplateDashboard()
+					? SVG_GRAPH_LABELS_IN_HOSTNAMES_HIDE
+					: $this->fields_values['show_hostnames'],
 				'show_percentile_left' => $this->fields_values['percentile_left'] == SVG_GRAPH_PERCENTILE_LEFT_ON,
 				'percentile_left_value' => $percentile_left_value,
 				'show_percentile_right' => $this->fields_values['percentile_right'] == SVG_GRAPH_PERCENTILE_RIGHT_ON,
@@ -102,6 +106,7 @@ class WidgetView extends CControllerDashboardWidgetView {
 				'left_y_units' => $this->fields_values['lefty_units'] == SVG_GRAPH_AXIS_UNITS_STATIC
 					? $this->fields_values['lefty_static_units']
 					: null,
+				'left_y_unsigned' => $this->fields_values['lefty_unsigned'] == SVG_GRAPH_AXIS_UNSIGNED_ON,
 				'show_right_y_axis' => $this->fields_values['righty'] == SVG_GRAPH_AXIS_ON,
 				'right_y_scale' => $this->fields_values['righty_scale'],
 				'right_y_min' => $righty_min,
@@ -109,6 +114,7 @@ class WidgetView extends CControllerDashboardWidgetView {
 				'right_y_units' => $this->fields_values['righty_units'] == SVG_GRAPH_AXIS_UNITS_STATIC
 					? $this->fields_values['righty_static_units']
 					: null,
+				'right_y_unsigned' => $this->fields_values['righty_unsigned'] == SVG_GRAPH_AXIS_UNSIGNED_ON,
 				'show_x_axis' => $this->fields_values['axisx'] == SVG_GRAPH_AXIS_ON
 			],
 			'legend' => [
@@ -154,8 +160,7 @@ class WidgetView extends CControllerDashboardWidgetView {
 					&& !$has_custom_time_period,
 				'show_problems' => $graph_data['problems']['show_problems'],
 				'show_simple_triggers' => $graph_data['displaying']['show_simple_triggers'],
-				'time_period' => $this->fields_values['time_period'],
-				'hint_max_rows' => ZBX_WIDGET_ROWS
+				'time_period' => $this->fields_values['time_period']
 			]);
 		}
 

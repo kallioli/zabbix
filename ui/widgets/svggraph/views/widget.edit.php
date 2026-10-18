@@ -91,6 +91,17 @@ function getDisplayOptionsTab(CWidgetFormView $form, array $fields): CDiv {
 			->setWidth(ZBX_TEXTAREA_TINY_WIDTH)
 	);
 
+	$labels_in_hostnames = null;
+
+	if (array_key_exists('show_hostnames', $fields)) {
+		$show_hostnames = $form->registerField(new CWidgetFieldRadioButtonListView($fields['show_hostnames']));
+
+		$labels_in_hostnames = [
+			$show_hostnames->getLabel(),
+			new CFormField($show_hostnames->getView())
+		];
+	}
+
 	return (new CDiv())
 		->addClass(ZBX_STYLE_GRID_COLUMNS)
 		->addClass(ZBX_STYLE_GRID_COLUMNS_2)
@@ -111,6 +122,7 @@ function getDisplayOptionsTab(CWidgetFormView $form, array $fields): CDiv {
 		)
 		->addItem(
 			(new CFormGrid())
+				->addItem($labels_in_hostnames)
 				->addItem([
 					$percentile_left->getLabel(),
 					new CFormField([
@@ -163,6 +175,7 @@ function getAxesTab(CWidgetFormView $form, array $fields): CDiv {
 			->setPlaceholder(_('value'))
 			->setWidth(ZBX_TEXTAREA_TINY_WIDTH)
 	);
+	$lefty_unsigned = $form->registerField(new CWidgetFieldCheckBoxView($fields['lefty_unsigned']));
 	$righty = $form->registerField(new CWidgetFieldCheckBoxView($fields['righty']));
 	$righty_scale = $form->registerField(new CWidgetFieldSelectView($fields['righty_scale']));
 	$righty_min = $form->registerField(
@@ -177,6 +190,7 @@ function getAxesTab(CWidgetFormView $form, array $fields): CDiv {
 			->setPlaceholder(_('value'))
 			->setWidth(ZBX_TEXTAREA_TINY_WIDTH)
 	);
+	$righty_unsigned = $form->registerField(new CWidgetFieldCheckBoxView($fields['righty_unsigned']));
 	$axisx = $form->registerField(new CWidgetFieldCheckBoxView($fields['axisx']));
 
 	return (new CDiv())
@@ -207,6 +221,10 @@ function getAxesTab(CWidgetFormView $form, array $fields): CDiv {
 						$lefty_static_units->getView()
 					])
 				])
+				->addItem([
+					$lefty_unsigned->getLabel(),
+					new CFormField($lefty_unsigned->getView())
+				])
 		)
 		->addItem(
 			(new CFormGrid())
@@ -232,6 +250,10 @@ function getAxesTab(CWidgetFormView $form, array $fields): CDiv {
 						$righty_units->getView()->addClass(ZBX_STYLE_FORM_INPUT_MARGIN),
 						$righty_static_units->getView()
 					])
+				])
+				->addItem([
+					$righty_unsigned->getLabel(),
+					new CFormField($righty_unsigned->getView())
 				])
 		)
 		->addItem(

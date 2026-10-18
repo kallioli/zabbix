@@ -49,10 +49,12 @@ class CAction extends CApiService {
 		EVENT_SOURCE_DISCOVERY => [
 			ZBX_CONDITION_TYPE_DHOST_IP, ZBX_CONDITION_TYPE_DSERVICE_TYPE, ZBX_CONDITION_TYPE_DSERVICE_PORT,
 			ZBX_CONDITION_TYPE_DSTATUS, ZBX_CONDITION_TYPE_DUPTIME, ZBX_CONDITION_TYPE_DVALUE, ZBX_CONDITION_TYPE_DRULE,
-			ZBX_CONDITION_TYPE_DCHECK, ZBX_CONDITION_TYPE_PROXY, ZBX_CONDITION_TYPE_DOBJECT
+			ZBX_CONDITION_TYPE_DCHECK, ZBX_CONDITION_TYPE_PROXY, ZBX_CONDITION_TYPE_PROXY_GROUP,
+			ZBX_CONDITION_TYPE_DOBJECT
 		],
 		EVENT_SOURCE_AUTOREGISTRATION => [
-			ZBX_CONDITION_TYPE_PROXY, ZBX_CONDITION_TYPE_HOST_NAME, ZBX_CONDITION_TYPE_HOST_METADATA
+			ZBX_CONDITION_TYPE_PROXY, ZBX_CONDITION_TYPE_PROXY_GROUP, ZBX_CONDITION_TYPE_HOST_NAME,
+			ZBX_CONDITION_TYPE_HOST_METADATA
 		],
 		EVENT_SOURCE_INTERNAL => [
 			ZBX_CONDITION_TYPE_HOST_GROUP, ZBX_CONDITION_TYPE_HOST, ZBX_CONDITION_TYPE_TEMPLATE,
@@ -97,8 +99,9 @@ class CAction extends CApiService {
 
 		$sqlParts = [
 			'select'	=> ['actions' => 'a.actionid'],
-			'from'		=> ['actions' => 'actions a'],
+			'from'		=> 'actions a',
 			'where'		=> [],
+			'group'		=> [],
 			'order'		=> [],
 			'limit'		=> null
 		];
@@ -181,6 +184,53 @@ class CAction extends CApiService {
 					' AND c.conditiontype='.ZBX_CONDITION_TYPE_TRIGGER.
 					' AND c.value!='.zbx_dbstr('0').
 					' AND p.hgsetid IS NULL'.
+			')';
+
+			// Check permissions for proxies used in filter conditions.
+			$sqlParts['where'][] = 'NOT EXISTS ('.
+				'SELECT NULL FROM conditions c'.
+				' JOIN proxy p ON '.zbx_dbcast_2bigint('c.value').'=p.proxyid'.
+				' WHERE a.actionid=c.actionid'.
+					' AND c.conditiontype='.ZBX_CONDITION_TYPE_PROXY.
+					' AND NOT ('.
+						CApiUserGroupHelper::getProxyPermissionsCondition('p').
+					')'.
+			')';
+
+			// Check permissions for proxy group used in filter conditions.
+			$sqlParts['where'][] = 'NOT EXISTS ('.
+				'SELECT NULL FROM conditions c'.
+				' JOIN proxy_group pg ON '.zbx_dbcast_2bigint('c.value').'=pg.proxy_groupid'.
+				' WHERE a.actionid=c.actionid'.
+					' AND c.conditiontype='.ZBX_CONDITION_TYPE_PROXY_GROUP.
+					' AND NOT ('.
+						CApiUserGroupHelper::getProxyGroupPermissionsCondition('pg').
+					')'.
+			')';
+
+			// Check permissions for discovery rules used in filter conditions.
+			$sqlParts['where'][] = 'NOT EXISTS ('.
+				'SELECT NULL FROM conditions c'.
+				' JOIN drules dr ON '.zbx_dbcast_2bigint('c.value').'=dr.druleid'.
+				' JOIN proxy p ON dr.proxyid=p.proxyid'.
+				' WHERE a.actionid=c.actionid'.
+					' AND c.conditiontype='.ZBX_CONDITION_TYPE_DRULE.
+					' AND NOT ('.
+						CApiUserGroupHelper::getProxyPermissionsCondition('p').
+					')'.
+			')';
+
+			// Check permissions for discovery checks used in filter conditions.
+			$sqlParts['where'][] = 'NOT EXISTS ('.
+				'SELECT NULL FROM conditions c'.
+				' JOIN dchecks dc ON '.zbx_dbcast_2bigint('c.value').'=dc.dcheckid'.
+				' JOIN drules dr ON dc.druleid=dr.druleid'.
+				' JOIN proxy p ON dr.proxyid=p.proxyid'.
+				' WHERE a.actionid=c.actionid'.
+					' AND c.conditiontype='.ZBX_CONDITION_TYPE_DCHECK.
+					' AND NOT ('.
+						CApiUserGroupHelper::getProxyPermissionsCondition('p').
+					')'.
 			')';
 
 			// Check permissions of user groups mentioned for "send message" operations.
@@ -283,41 +333,36 @@ class CAction extends CApiService {
 		if (!is_null($options['groupids'])) {
 			zbx_value2array($options['groupids']);
 
-			$sqlParts['from']['conditions_groups'] = 'conditions cg';
+			$sqlParts['join']['cg'] = ['table' => 'conditions', 'using' => 'actionid'];
 			$sqlParts['where'][] = dbConditionString('cg.value', $options['groupids']);
 			$sqlParts['where']['ctg'] = 'cg.conditiontype='.ZBX_CONDITION_TYPE_HOST_GROUP;
-			$sqlParts['where']['acg'] = 'a.actionid=cg.actionid';
 		}
 
 		// hostids
 		if (!is_null($options['hostids'])) {
 			zbx_value2array($options['hostids']);
 
-			$sqlParts['from']['conditions_hosts'] = 'conditions ch';
+			$sqlParts['join']['ch'] = ['table' => 'conditions', 'using' => 'actionid'];
 			$sqlParts['where'][] = dbConditionString('ch.value', $options['hostids']);
 			$sqlParts['where']['cth'] = 'ch.conditiontype='.ZBX_CONDITION_TYPE_HOST;
-			$sqlParts['where']['ach'] = 'a.actionid=ch.actionid';
 		}
 
 		// triggerids
 		if (!is_null($options['triggerids'])) {
 			zbx_value2array($options['triggerids']);
 
-			$sqlParts['from']['conditions_triggers'] = 'conditions ct';
+			$sqlParts['join']['ct'] = ['table' => 'conditions', 'using' => 'actionid'];
 			$sqlParts['where'][] = dbConditionString('ct.value', $options['triggerids']);
 			$sqlParts['where']['ctt'] = 'ct.conditiontype='.ZBX_CONDITION_TYPE_TRIGGER;
-			$sqlParts['where']['act'] = 'a.actionid=ct.actionid';
 		}
 
 		// mediatypeids
 		if (!is_null($options['mediatypeids'])) {
 			zbx_value2array($options['mediatypeids']);
 
-			$sqlParts['from']['opmessage'] = 'opmessage om';
-			$sqlParts['from']['operations_media'] = 'operations omed';
+			$sqlParts['join']['omed'] = ['table' => 'operations', 'using' => 'actionid'];
+			$sqlParts['join']['om'] = ['left_table' => 'omed', 'table' => 'opmessage', 'using' => 'operationid'];
 			$sqlParts['where'][] = dbConditionId('om.mediatypeid', $options['mediatypeids']);
-			$sqlParts['where']['aomed'] = 'a.actionid=omed.actionid';
-			$sqlParts['where']['oom'] = 'omed.operationid=om.operationid';
 		}
 
 		// operation messages
@@ -325,22 +370,18 @@ class CAction extends CApiService {
 		if (!is_null($options['usrgrpids'])) {
 			zbx_value2array($options['usrgrpids']);
 
-			$sqlParts['from']['opmessage_grp'] = 'opmessage_grp omg';
-			$sqlParts['from']['operations_usergroups'] = 'operations oug';
+			$sqlParts['join']['oug'] = ['table' => 'operations', 'using' => 'actionid'];
+			$sqlParts['join']['omg'] = ['left_table' => 'oug', 'table' => 'opmessage_grp', 'using' => 'operationid'];
 			$sqlParts['where'][] = dbConditionInt('omg.usrgrpid', $options['usrgrpids']);
-			$sqlParts['where']['aoug'] = 'a.actionid=oug.actionid';
-			$sqlParts['where']['oomg'] = 'oug.operationid=omg.operationid';
 		}
 
 		// userids
 		if (!is_null($options['userids'])) {
 			zbx_value2array($options['userids']);
 
-			$sqlParts['from']['opmessage_usr'] = 'opmessage_usr omu';
-			$sqlParts['from']['operations_users'] = 'operations ou';
+			$sqlParts['join']['ou'] = ['table' => 'operations', 'using' => 'actionid'];
+			$sqlParts['join']['omu'] = ['left_table' => 'ou', 'table' => 'opmessage_usr', 'using' => 'operationid'];
 			$sqlParts['where'][] = dbConditionInt('omu.userid', $options['userids']);
-			$sqlParts['where']['aou'] = 'a.actionid=ou.actionid';
-			$sqlParts['where']['oomu'] = 'ou.operationid=omu.operationid';
 		}
 
 		// operation commands
@@ -348,11 +389,9 @@ class CAction extends CApiService {
 		if (!is_null($options['scriptids'])) {
 			zbx_value2array($options['scriptids']);
 
-			$sqlParts['from']['opcommand'] = 'opcommand oc';
-			$sqlParts['from']['operations_scripts'] = 'operations os';
+			$sqlParts['join']['os'] = ['table' => 'operations', 'using' => 'actionid'];
+			$sqlParts['join']['oc'] = ['left_table' => 'os', 'table' => 'opcommand', 'using' => 'operationid'];
 			$sqlParts['where'][] = dbConditionInt('oc.scriptid', $options['scriptids']);
-			$sqlParts['where']['aos'] = 'a.actionid=os.actionid';
-			$sqlParts['where']['ooc'] = 'os.operationid=oc.operationid';
 		}
 
 		// filter
@@ -2209,7 +2248,7 @@ class CAction extends CApiService {
 					['if' => ['field' => 'conditiontype', 'in' => ZBX_CONDITION_TYPE_DSTATUS], 'type' => API_INT32, 'flags' => API_REQUIRED, 'in' => implode(',', [DOBJECT_STATUS_UP, DOBJECT_STATUS_DOWN, DOBJECT_STATUS_DISCOVER, DOBJECT_STATUS_LOST])],
 					['if' => ['field' => 'conditiontype', 'in' => ZBX_CONDITION_TYPE_DUPTIME], 'type' => API_INT32, 'flags' => API_REQUIRED, 'in' => '0:'.SEC_PER_MONTH],
 					['if' => ['field' => 'conditiontype', 'in' => ZBX_CONDITION_TYPE_DVALUE], 'type' => API_STRING_UTF8, 'flags' => API_REQUIRED, 'length' => DB::getFieldLength('conditions', 'value')],
-					['if' => ['field' => 'conditiontype', 'in' => implode(',', [ZBX_CONDITION_TYPE_DRULE, ZBX_CONDITION_TYPE_DCHECK, ZBX_CONDITION_TYPE_PROXY])], 'type' => API_ID, 'flags' => API_REQUIRED],
+					['if' => ['field' => 'conditiontype', 'in' => implode(',', [ZBX_CONDITION_TYPE_DRULE, ZBX_CONDITION_TYPE_DCHECK, ZBX_CONDITION_TYPE_PROXY, ZBX_CONDITION_TYPE_PROXY_GROUP])], 'type' => API_ID, 'flags' => API_REQUIRED],
 					['if' => ['field' => 'conditiontype', 'in' => ZBX_CONDITION_TYPE_DOBJECT], 'type' => API_INT32, 'flags' => API_REQUIRED, 'in' => implode(',', [EVENT_OBJECT_DHOST, EVENT_OBJECT_DSERVICE])]
 				];
 				$operator_rules = [
@@ -2222,17 +2261,19 @@ class CAction extends CApiService {
 					['if' => ['field' => 'conditiontype', 'in' => ZBX_CONDITION_TYPE_DRULE], 'type' => API_INT32, 'in' => implode(',', get_operators_by_conditiontype(ZBX_CONDITION_TYPE_DRULE))],
 					['if' => ['field' => 'conditiontype', 'in' => ZBX_CONDITION_TYPE_DCHECK], 'type' => API_INT32, 'in' => implode(',', get_operators_by_conditiontype(ZBX_CONDITION_TYPE_DCHECK))],
 					['if' => ['field' => 'conditiontype', 'in' => ZBX_CONDITION_TYPE_PROXY], 'type' => API_INT32, 'in' => implode(',', get_operators_by_conditiontype(ZBX_CONDITION_TYPE_PROXY))],
+					['if' => ['field' => 'conditiontype', 'in' => ZBX_CONDITION_TYPE_PROXY_GROUP], 'type' => API_INT32, 'in' => implode(',', get_operators_by_conditiontype(ZBX_CONDITION_TYPE_PROXY_GROUP))],
 					['if' => ['field' => 'conditiontype', 'in' => ZBX_CONDITION_TYPE_DOBJECT], 'type' => API_INT32, 'in' => implode(',', get_operators_by_conditiontype(ZBX_CONDITION_TYPE_DOBJECT))]
 				];
 				break;
 
 			case EVENT_SOURCE_AUTOREGISTRATION:
 				$value_rules = [
-					['if' => ['field' => 'conditiontype', 'in' => ZBX_CONDITION_TYPE_PROXY], 'type' => API_ID, 'flags' => API_REQUIRED],
+					['if' => ['field' => 'conditiontype', 'in' => implode(',', [ZBX_CONDITION_TYPE_PROXY, ZBX_CONDITION_TYPE_PROXY_GROUP])], 'type' => API_ID, 'flags' => API_REQUIRED],
 					['if' => ['field' => 'conditiontype', 'in' => implode(',', [ZBX_CONDITION_TYPE_HOST_NAME, ZBX_CONDITION_TYPE_HOST_METADATA])], 'type' => API_STRING_UTF8, 'flags' => API_REQUIRED | API_NOT_EMPTY, 'length' => DB::getFieldLength('conditions', 'value')]
 				];
 				$operator_rules = [
 					['if' => ['field' => 'conditiontype', 'in' => ZBX_CONDITION_TYPE_PROXY], 'type' => API_INT32, 'in' => implode(',', get_operators_by_conditiontype(ZBX_CONDITION_TYPE_PROXY))],
+					['if' => ['field' => 'conditiontype', 'in' => ZBX_CONDITION_TYPE_PROXY_GROUP], 'type' => API_INT32, 'in' => implode(',', get_operators_by_conditiontype(ZBX_CONDITION_TYPE_PROXY_GROUP))],
 					['if' => ['field' => 'conditiontype', 'in' => ZBX_CONDITION_TYPE_HOST_NAME], 'type' => API_INT32, 'flags' => API_REQUIRED, 'in' => implode(',', get_operators_by_conditiontype(ZBX_CONDITION_TYPE_HOST_NAME))],
 					['if' => ['field' => 'conditiontype', 'in' => ZBX_CONDITION_TYPE_HOST_METADATA], 'type' => API_INT32, 'flags' => API_REQUIRED, 'in' => implode(',', get_operators_by_conditiontype(ZBX_CONDITION_TYPE_HOST_METADATA))]
 				];
@@ -2521,6 +2562,7 @@ class CAction extends CApiService {
 		self::checkTriggersPermissions($actions);
 		self::checkDRulesPermissions($actions);
 		self::checkDChecksPermissions($actions);
+		self::checkProxyGroupsPermissions($actions);
 		self::checkProxiesPermissions($actions);
 		self::checkServicesPermissions($actions);
 	}
@@ -2632,6 +2674,7 @@ class CAction extends CApiService {
 		self::checkTriggersPermissions($actions);
 		self::checkDRulesPermissions($actions);
 		self::checkDChecksPermissions($actions);
+		self::checkProxyGroupsPermissions($actions);
 		self::checkProxiesPermissions($actions);
 		self::checkServicesPermissions($actions);
 	}
@@ -2674,7 +2717,7 @@ class CAction extends CApiService {
 	 * @throws APIException
 	 */
 	private static function checkFilter(array $actions): void {
-		$condition_formula_parser = new CConditionFormula();
+		$condition_formula_parser = new CConditionFormulaParser();
 		$ip_range_parser = new CIPRangeParser(['v6' => ZBX_HAVE_IPV6, 'dns' => false, 'max_ipv4_cidr' => 30]);
 
 		foreach ($actions as $i => $action) {
@@ -2687,7 +2730,7 @@ class CAction extends CApiService {
 			if ($action['filter']['evaltype'] == CONDITION_EVAL_TYPE_EXPRESSION) {
 				$condition_formula_parser->parse($action['filter']['formula']);
 
-				$constants = array_column($condition_formula_parser->constants, 'value', 'value');
+				$constants = array_column($condition_formula_parser->getConstants(), 'value', 'value');
 
 				if (count($action['filter']['conditions']) != count($constants)) {
 					self::exception(ZBX_API_ERROR_PARAMETERS,
@@ -3324,15 +3367,83 @@ class CAction extends CApiService {
 
 		$proxyids = array_keys($proxyids);
 
-		$count = API::Proxy()->get([
-			'countOutput' => true,
-			'proxyids' => $proxyids
+		$proxies = API::Proxy()->get([
+			'output' => [],
+			'proxyids' => $proxyids,
+			'preservekeys' => true
 		]);
 
-		if ($count != count($proxyids)) {
-			self::exception(ZBX_API_ERROR_PERMISSIONS,
-				_('Incorrect action condition proxy. Proxy does not exist or you have no access to it.')
-			);
+		foreach ($actions as $i1 => $action) {
+			if (!array_key_exists('filter', $action) || !array_key_exists('conditions', $action['filter'])) {
+				continue;
+			}
+
+			foreach ($action['filter']['conditions'] as $i2 => $condition) {
+				if ($condition['conditiontype'] != ZBX_CONDITION_TYPE_PROXY) {
+					continue;
+				}
+
+				if (!array_key_exists($condition['value'], $proxies)) {
+					self::exception(ZBX_API_ERROR_PERMISSIONS,_s('Invalid parameter "%1$s": %2$s.',
+						'/'.($i1 + 1).'/filter/conditions/'.($i2 + 1).'/value',
+						_('object does not exist, or you have no permissions to it')
+					));
+				}
+			}
+		}
+	}
+
+	/**
+	 * Checks if the current user has access to the given proxy groups.
+	 *
+	 * @param array $actions
+	 *
+	 * @throws APIException if the user doesn't have write permissions for the given proxy groups.
+	 */
+	private static function checkProxyGroupsPermissions(array $actions): void {
+		$proxy_groupids = [];
+
+		foreach ($actions as $action) {
+			if (!array_key_exists('filter', $action) || !array_key_exists('conditions', $action['filter'])) {
+				continue;
+			}
+
+			foreach ($action['filter']['conditions'] as $condition) {
+				if ($condition['conditiontype'] == ZBX_CONDITION_TYPE_PROXY_GROUP) {
+					$proxy_groupids[$condition['value']] = true;
+				}
+			}
+		}
+
+		if (!$proxy_groupids) {
+			return;
+		}
+
+		$proxy_groupids = array_keys($proxy_groupids);
+
+		$proxy_groups = API::ProxyGroup()->get([
+			'output' => [],
+			'proxy_groupids' => $proxy_groupids,
+			'preservekeys' => true
+		]);
+
+		foreach ($actions as $i1 => $action) {
+			if (!array_key_exists('filter', $action) || !array_key_exists('conditions', $action['filter'])) {
+				continue;
+			}
+
+			foreach ($action['filter']['conditions'] as $i2 => $condition) {
+				if ($condition['conditiontype'] != ZBX_CONDITION_TYPE_PROXY_GROUP) {
+					continue;
+				}
+
+				if (!array_key_exists($condition['value'], $proxy_groups)) {
+					self::exception(ZBX_API_ERROR_PERMISSIONS,_s('Invalid parameter "%1$s": %2$s.',
+						'/'.($i1 + 1).'/filter/conditions/'.($i2 + 1).'/value',
+						_('object does not exist, or you have no permissions to it')
+					));
+				}
+			}
 		}
 	}
 

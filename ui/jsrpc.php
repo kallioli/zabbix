@@ -376,6 +376,7 @@ switch ($data['method']) {
 				$proxies = API::Proxy()->get([
 					'output' => ['proxyid', 'name'],
 					'search' => array_key_exists('search', $data) ? ['name' => $data['search']] : null,
+					'proxy_groupids' => array_key_exists('without_proxy_group', $data) ? 0 : null,
 					'limit' => $limit
 				]);
 
@@ -479,6 +480,19 @@ switch ($data['method']) {
 
 				if (array_key_exists('exclude_provisioned', $data) && $data['exclude_provisioned']) {
 					$options['filter']['userdirectoryid'] = 0;
+				}
+
+				if (array_key_exists('has_devices_access', $data) && $data['has_devices_access']) {
+					$roles = API::Role()->get([
+						'output' => ['roleid'],
+						'selectRules' => [CRoleHelper::DEVICES_ACCESS]
+					]);
+
+					$roles = array_filter($roles, static fn($role) =>
+						$role['rules'][CRoleHelper::DEVICES_ACCESS] == 1
+					);
+
+					$options['filter']['roleid'] = array_column($roles, 'roleid');
 				}
 
 				$users = API::User()->get($options);
@@ -611,33 +625,16 @@ switch ($data['method']) {
 
 			case 'valuemaps':
 			case 'template_valuemaps':
-				if ($data['context'] === 'host') {
-					$hosts = API::Host()->get([
-						'output' => ['name'],
-						'hostids' => $data['hostids'],
-						'preservekeys' => true
-					]);
-				}
-				else {
-					$hosts = API::Template()->get([
-						'output' => ['name'],
-						'templateids' => $data['hostids'],
-						'preservekeys' => true
-					]);
+				if (!array_key_exists('hostids', $data)) {
+					break;
 				}
 
 				$valuemaps = API::ValueMap()->get([
-					'output' => ['valuemapid', 'name', 'hostid'],
+					'output' => ['valuemapid', 'name'],
 					'hostids' => $data['hostids'],
-					'search' => ['name' => $data['search'] ? $data['search'] : null],
+					'search' => ['name' => $data['search'] ?: null],
 					'limit' => $limit
 				]);
-
-				foreach ($valuemaps as &$valuemap) {
-					$valuemap['prefix'] = $hosts[$valuemap['hostid']]['name'].NAME_DELIMITER;
-					unset($valuemap['hostid']);
-				}
-				unset($valuemap);
 
 				$result = CArrayHelper::renameObjectsKeys($valuemaps, ['valuemapid' => 'id']);
 				CArrayHelper::sort($result, ['name']);
@@ -783,6 +780,34 @@ switch ($data['method']) {
 					$result[] = ['id' => (string) $nr, 'name' => $title];
 				}
 				break;
+
+			case 'devices':
+				$options = [
+					'output' => ['uuid', 'name'],
+					'filter' => ['status' => ZBX_DEVICE_STATUS_ACTIVATED],
+					'search' => array_key_exists('search', $data) ? ['name' => $data['search']] : null,
+					'limit' => $limit
+				];
+
+				if (array_key_exists('userid', $data)) {
+					$options['userids'] = [$data['userid']];
+				}
+
+				$devices = API::Device()->get($options);
+
+				if ($devices) {
+					CArrayHelper::sort($devices, [
+						['field' => 'name', 'order' => ZBX_SORT_UP]
+					]);
+
+					if (array_key_exists('limit', $data)) {
+						$devices = array_slice($devices, 0, $data['limit']);
+					}
+
+					$result = CArrayHelper::renameObjectsKeys($devices, ['uuid' => 'id']);
+				}
+
+				break;
 		}
 		break;
 
@@ -909,6 +934,22 @@ switch ($data['method']) {
 
 		if (array_key_exists('itemid', $data) && is_scalar($data['itemid'])) {
 			$items = API::Item()->get([
+				'output' => ['value_type'],
+				'itemids' => $data['itemid'],
+				'webitems' => true
+			]);
+
+			if ($items) {
+				$result = $items[0]['value_type'];
+			}
+		}
+		break;
+
+	case 'item_prototype_value_type.get':
+		$result = '';
+
+		if (array_key_exists('itemid', $data) && is_scalar($data['itemid'])) {
+			$items = API::ItemPrototype()->get([
 				'output' => ['value_type'],
 				'itemids' => $data['itemid'],
 				'webitems' => true

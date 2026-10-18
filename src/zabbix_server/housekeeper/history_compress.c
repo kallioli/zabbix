@@ -46,6 +46,7 @@ static zbx_history_table_compression_options_t	compression_tables[] = {
 	{"history_text",	"itemid",	"clock,ns",	POLICY_COMPRESS_AFTER},
 	{"history_log",		"itemid",	"clock,ns",	POLICY_COMPRESS_AFTER},
 	{"history_bin",		"itemid",	"clock,ns",	POLICY_COMPRESS_AFTER},
+	{"history_json",	"itemid",	"clock,ns",	POLICY_COMPRESS_AFTER},
 	{"trends",		"itemid",	"clock",	POLICY_COMPRESS_AFTER},
 	{"trends_uint",		"itemid",	"clock",	POLICY_COMPRESS_AFTER},
 	/* Since auditlog table uses CUID from auditid field to partition table into chunks we need to use different */
@@ -443,7 +444,7 @@ void	hk_history_compression_init(void)
 	zabbix_log(LOG_LEVEL_DEBUG, "In %s()", __func__);
 
 	zbx_db_connect(ZBX_DB_CONNECT_NORMAL);
-	zbx_config_get(&cfg, ZBX_CONFIG_FLAGS_DB_EXTENSION);
+	zbx_config_get(&cfg, ZBX_CONFIG_FLAGS_DB_EXTENSION | ZBX_CONFIG_FLAGS_DB_HISTORY_COMPRESION);
 
 	compression_status_cache = cfg.db.history_compression_status;
 	compress_older_cache = cfg.db.history_compress_older;

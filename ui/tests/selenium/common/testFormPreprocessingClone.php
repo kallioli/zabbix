@@ -279,7 +279,7 @@ class testFormPreprocessingClone extends CWebTest {
 
 		// Get LLD key and  preprocessing.
 		$lld_key = CDBHelper::getValue('SELECT key_ FROM items WHERE itemid ='.$this->lldid);
-		$lld_original_steps = $this->getSteps('host_discovery.php?form=update&context='.$context.'&itemid='.$this->lldid);
+		$lld_original_steps = $this->getSteps('zabbix.php?action=popup&popup=lldrule.edit&itemid='.$this->lldid.'&context='.$context);
 
 		// Get item prototype key and preprocessing.
 		$item_prototype_key = CDBHelper::getValue('SELECT key_ FROM items WHERE itemid ='.$this->item_prototypeid);
@@ -293,12 +293,13 @@ class testFormPreprocessingClone extends CWebTest {
 		// Open host or template via breadcrumb and make a clone of it.
 		$this->query('xpath://li[1]/ul[@class="breadcrumbs"]/li[2]//a')->one()->click();
 		$modal = COverlayDialogElement::find()->one()->waitUntilReady();
-		$modal->query('button:Clone')->waitUntilClickable()->one()->click();
+		$modal->query('button:Clone')->waitUntilClickable()->one()->click()->waitUntilNotVisible();
 		$form = $modal->asForm();
 
 		$new_host_name = 'Cloned host name'.time();
 		$form->fill([($template) ? 'Template name' : 'Host name' => $new_host_name]);
 		$form->submit();
+		$modal->ensureNotPresent();
 		$this->page->waitUntilReady();
 		$this->assertMessage(TEST_GOOD, ($template) ? 'Template added' : 'Host added');
 
@@ -320,7 +321,7 @@ class testFormPreprocessingClone extends CWebTest {
 		// Get new cloned lld rule id and assert lld preprocessing.
 		$new_lldid = CDBHelper::getValue('SELECT itemid FROM items WHERE hostid ='.$cloned_hostid.
 				' AND key_ ='.zbx_dbstr($lld_key));
-		$lld_cloned_steps = $this->getSteps('host_discovery.php?form=update&context='.$context.'&itemid='.$new_lldid);
+		$lld_cloned_steps = $this->getSteps('zabbix.php?action=popup&popup=lldrule.edit&itemid='.$new_lldid.'&context='.$context);
 		$this->assertEquals($lld_original_steps, $lld_cloned_steps);
 
 		// Get new cloned item prototype id and assert item prototype preprocessing.

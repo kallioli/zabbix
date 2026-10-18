@@ -1,4 +1,4 @@
-<?php
+<?php declare(strict_types = 0);
 /*
 ** Copyright (C) 2001-2026 Zabbix SIA
 **
@@ -16,45 +16,63 @@
 
 class CControllerRegExDelete extends CController {
 
-	protected function checkInput() {
+	protected function init(): void {
+		$this->setPostContentType(self::POST_CONTENT_TYPE_JSON);
+	}
+
+	protected function checkInput(): bool {
 		$fields = [
-			'regexids' => 'required|array_db regexps.regexpid'
+			'regexpids' => 'required|array_db regexps.regexpid'
 		];
 
 		$ret = $this->validateInput($fields);
 
 		if (!$ret) {
-			$this->setResponse(new CControllerResponseFatal());
+			$this->setResponse(
+				new CControllerResponseData(['main_block' => json_encode([
+					'error' => [
+						'messages' => array_column(get_and_clear_messages(), 'message')
+					]
+				])])
+			);
 		}
 
 		return $ret;
 	}
 
-	protected function checkPermissions() {
+	protected function checkPermissions(): bool {
 		return $this->checkAccess(CRoleHelper::UI_ADMINISTRATION_GENERAL);
 	}
 
-	protected function doAction() {
-		$regexids = $this->getinput('regexids');
+	protected function doAction(): void {
+		$regexpids = $this->getinput('regexpids');
+		$output = [];
+		$deleted = count($regexpids);
 
-		$result = API::Regexp()->delete($regexids);
-
-		$response = new CControllerResponseRedirect(
-			(new CUrl('zabbix.php'))->setArgument('action', 'regex.list')
-		);
+		$result = (bool) API::Regexp()->delete($regexpids);
 
 		if ($result) {
-			$response->setFormData(['uncheck' => '1']);
-			CMessageHelper::setSuccessTitle(_n('Regular expression deleted', 'Regular expressions deleted',
-				count($regexids)
-			));
+			$output['success']['title'] = _n('Regular expression deleted', 'Regular expressions deleted', $deleted);
+
+			if ($messages = get_and_clear_messages()) {
+				$output['success']['messages'] = array_column($messages, 'message');
+			}
 		}
 		else {
-			CMessageHelper::setErrorTitle(_n('Cannot delete regular expression', 'Cannot delete regular expressions',
-				count($regexids)
-			));
+			$output['error'] = [
+				'title' => _n('Cannot delete regular expression', 'Cannot delete regular expressions', $deleted),
+				'messages' => array_column(get_and_clear_messages(), 'message')
+			];
+
+			$regexps = API::Regexp()->get([
+				'output' => [],
+				'regexpids' => $regexpids,
+				'preservekeys' => true
+			]);
+
+			$output['keepids'] = array_keys($regexps);
 		}
 
-		$this->setResponse($response);
+		$this->setResponse(new CControllerResponseData(['main_block' => json_encode($output)]));
 	}
 }

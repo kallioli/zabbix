@@ -57,6 +57,7 @@ zbx_pp_history_t	*zbx_pp_history_cache_history_acquire(zbx_pp_history_cache_t *h
 void			zbx_pp_history_cache_history_set_and_release(zbx_pp_history_cache_t *history_cache,
 				zbx_pp_history_t *history_in, zbx_pp_history_t *history_out);
 zbx_uint64_t		zbx_pp_history_cache_history_size(zbx_pp_history_cache_t *history_cache);
+void	zbx_pp_history_free_unique(const zbx_pp_history_t *history_in, zbx_pp_history_t *history_out);
 
 typedef enum
 {
@@ -92,7 +93,6 @@ typedef struct
 	int			dep_itemids_num;
 	zbx_uint64_t		*dep_itemids;
 
-	unsigned char		type;
 	unsigned char		value_type;
 	unsigned char		flags;
 	zbx_pp_process_mode_t	mode;
@@ -107,8 +107,7 @@ typedef struct
 zbx_pp_item_preproc_t;
 
 zbx_pp_item_preproc_t	*zbx_pp_item_preproc_copy(zbx_pp_item_preproc_t *preproc);
-zbx_pp_item_preproc_t	*zbx_pp_item_preproc_create(zbx_uint64_t hostid, unsigned char type, unsigned char value_type,
-		unsigned char flags);
+zbx_pp_item_preproc_t	*zbx_pp_item_preproc_create(zbx_uint64_t hostid, unsigned char value_type, unsigned char flags);
 void	zbx_pp_item_preproc_release(zbx_pp_item_preproc_t *preproc);
 int	zbx_pp_preproc_has_history(int type);
 int	zbx_pp_preproc_has_serial_history(int type);

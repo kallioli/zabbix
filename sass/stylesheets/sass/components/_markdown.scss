@@ -83,7 +83,7 @@
 	}
 
 	code {
-		font-family: $font-stack-mono;
+		font-family: var(--font-stack-mono);
 		font-size: $font-mono-size;
 	}
 
@@ -91,7 +91,7 @@
 		padding: 5px;
 		background: $form-dark-bg-color;
 		border: 1px solid $form-border-color;
-		border-radius: 2px;
+		border-radius: var(--surface-border-radius);
 	}
 
 	blockquote {

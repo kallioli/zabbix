@@ -7,7 +7,7 @@ This template is designed for the effortless deployment of Apache Tomcat monitor
 
 ## Requirements
 
-Zabbix version: 7.4 and higher.
+Zabbix version: 8.0 and higher.
 
 ## Tested versions
 
@@ -16,7 +16,7 @@ This template has been tested on:
 
 ## Configuration
 
-> Zabbix should be configured according to the instructions in the [Templates out of the box](https://www.zabbix.com/documentation/7.4/manual/config/templates_out_of_the_box) section.
+> Zabbix should be configured according to the instructions in the [Templates out of the box](https://www.zabbix.com/documentation/8.0/manual/config/templates_out_of_the_box) section.
 
 ## Setup
 
@@ -31,8 +31,8 @@ Metrics are collected by JMX.
 
 |Name|Description|Default|
 |----|-----------|-------|
-|{$TOMCAT.USER}|<p>User for JMX</p>||
-|{$TOMCAT.PASSWORD}|<p>Password for JMX</p>||
+|{$TOMCAT.USER}|<p>Tomcat JMX user.</p>||
+|{$TOMCAT.PASSWORD}|<p>Tomcat JMX password.</p>||
 |{$TOMCAT.LLD.FILTER.REQUEST_PROCESSOR.MATCHES}|<p>Filter for discoverable global request processors.</p>|`.*`|
 |{$TOMCAT.LLD.FILTER.REQUEST_PROCESSOR.NOT_MATCHES}|<p>Filter to exclude global request processors.</p>|`CHANGE_IF_NEEDED`|
 |{$TOMCAT.LLD.FILTER.MANAGER.MATCHES}|<p>Filter for discoverable managers.</p>|`.*`|
