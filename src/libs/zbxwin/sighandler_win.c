@@ -59,6 +59,13 @@ int	ZBX_EXIT_STATUS(void)
 	return ZBX_EXIT_FAILURE == InterlockedCompareExchange(&sig_exiting, 0, 0) ? FAIL : SUCCEED;
 }
 
+/* whether the stop under way is an ordinary one rather than a failure; the supervisor uses it to decide how */
+/* hard it winds its units down */
+int	ZBX_IS_NORMAL_EXIT(void)
+{
+	return ZBX_EXIT_FAILURE != InterlockedCompareExchange(&sig_exiting, 0, 0) ? SUCCEED : FAIL;
+}
+
 int	zbx_init_thread_signal_handler(sigjmp_buf *jmp_ret)
 {
 	/* worker threads inherit the process-wide console and service handlers, and there is no signal to jump */
