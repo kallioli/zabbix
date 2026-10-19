@@ -134,10 +134,14 @@ int	zbx_db_init(char **error)
 		return FAIL;
 	}
 
-	idcache = zbx_shmem_malloc(idcache_mem, NULL, sizeof(zbx_db_idcache_t));
+	/* The segment was sized for one chunk holding both structures, so both come out of one allocation: the */
+	/* pool cache placed right after a chunk of the id cache's own size would land in the allocator's free  */
+	/* space, behind the chunk's size field, as the sanitized Windows build showed.                         */
+	idcache = zbx_shmem_malloc(idcache_mem, NULL, ZBX_SIZE_T_ALIGN8(sizeof(zbx_db_idcache_t)) +
+			sizeof(zbx_dbconn_pool_info_t));
 	memset(idcache->lastids, 0, sizeof(idcache->lastids));
 
-	pool_cache = (zbx_dbconn_pool_info_t *)(idcache + 1);
+	pool_cache = (zbx_dbconn_pool_info_t *)((char *)idcache + ZBX_SIZE_T_ALIGN8(sizeof(zbx_db_idcache_t)));
 	memset(pool_cache, 0, sizeof(zbx_dbconn_pool_info_t));
 
 	return SUCCEED;
