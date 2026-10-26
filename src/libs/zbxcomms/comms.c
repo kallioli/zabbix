@@ -2229,12 +2229,8 @@ void	zbx_tcp_recv_context_init(zbx_socket_t *s, zbx_tcp_recv_context_t *tcp_recv
 	{
 		tcp_recv_context->max_len = s->max_len_limit;
 	}
-#if defined(_WINDOWS)
-	else
-	{
-		tcp_recv_context->max_len = ZBX_MAX_RECV_DATA_SIZE;
-	}
-#else
+	/* the proxy receives its configuration with ZBX_TCP_LARGE and needs the large limit on Windows too; */
+	/* the agent never passes the flag, so it keeps the default limit as before */
 	else if (0 != (flags & ZBX_TCP_LARGE))
 	{
 		tcp_recv_context->max_len = ZBX_MAX_RECV_LARGE_DATA_SIZE;
@@ -2243,7 +2239,6 @@ void	zbx_tcp_recv_context_init(zbx_socket_t *s, zbx_tcp_recv_context_t *tcp_recv
 	{
 		tcp_recv_context->max_len = ZBX_MAX_RECV_DATA_SIZE;
 	}
-#endif
 	zbx_socket_free(s);
 	tcp_recv_context->allocated = 0;
 

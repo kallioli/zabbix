@@ -48,6 +48,14 @@
 /* Define to 1 if you have the <pdhmsg.h> header file. */
 #define HAVE_PDHMSG_H 1
 
+/* configure records the width of size_t on Unix; zbxcommon.h enables the 16 GiB large receive limit,
+   which the proxy needs for the configuration the server sends it, only when it is wider than 4 */
+#ifdef _WIN64
+#	define SIZEOF_SIZE_T 8
+#else
+#	define SIZEOF_SIZE_T 4
+#endif
+
 /* Define to 1 if you have the <psapi.h> header file. */
 #define HAVE_PSAPI_H 1
 
