@@ -2374,6 +2374,17 @@ ssize_t	zbx_tcp_recv_context(zbx_socket_t *s, zbx_tcp_recv_context_t *context, u
 				goto out;
 			}
 
+			if (zbx_compress_max_size() < context->reserved)
+			{
+				zbx_set_socket_strerror("uncompressed message size exceeds what this platform can uncompress");
+				zabbix_log(LOG_LEVEL_WARNING, "Uncompressed message size " ZBX_FS_UI64 " from %s"
+						" exceeds the " ZBX_FS_UI64 " bytes zlib addresses on this platform."
+						" Message ignored.", context->reserved, s->peer,
+						(zbx_uint64_t)zbx_compress_max_size());
+				nbytes = ZBX_PROTO_ERROR;
+				goto out;
+			}
+
 			if (sizeof(s->buf_stat) > context->expected_len)
 			{
 				context->buf_stat_bytes -= context->offset;

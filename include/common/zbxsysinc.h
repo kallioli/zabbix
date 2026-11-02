@@ -57,6 +57,16 @@
 /* to speed build process and reduce size of the Win32 header files */
 #	define WIN32_LEAN_AND_MEAN	1
 #	include <windows.h>
+
+/* configure records the width of size_t on Unix and nothing does here; zbxcommon.h sizes the large receive */
+/* limit by it (16 GiB when it is wider than 4), which the proxy needs for the configuration the server sends */
+#	ifndef SIZEOF_SIZE_T
+#		ifdef _WIN64
+#			define SIZEOF_SIZE_T	8
+#		else
+#			define SIZEOF_SIZE_T	4
+#		endif
+#	endif
 #endif
 
 #ifdef HAVE_PROCESS_H

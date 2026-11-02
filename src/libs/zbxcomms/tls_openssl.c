@@ -2098,7 +2098,8 @@ ssize_t	zbx_tls_write(zbx_socket_t *s, const char *buf, size_t len, short *event
 
 	while (1)
 	{
-		if (0 == (n = SSL_write(s->tls_ctx->ctx, buf + offset, (int)(len - (size_t)offset))))
+		if (0 == (n = SSL_write(s->tls_ctx->ctx, buf + offset,
+				len - (size_t)offset > (size_t)INT_MAX ? INT_MAX : (int)(len - (size_t)offset))))
 			break;
 
 		if (0 > n)

@@ -20,5 +20,6 @@
 int	zbx_compress(const char *in, size_t size_in, char **out, size_t *size_out);
 int	zbx_uncompress(const char *in, size_t size_in, char *out, size_t *size_out);
 const char	*zbx_compress_strerror(void);
+size_t	zbx_compress_max_size(void);
 
 #endif

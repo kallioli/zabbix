@@ -21,12 +21,14 @@
 #define ZBX_SOCKET_POLL_TIMEOUT	1000
 
 #ifdef _WINDOWS
-#	define ZBX_TCP_WRITE(s, b, bl)		((ssize_t)send((s), (b), (int)(bl), 0))
-#	define ZBX_TCP_READ(s, b, bl)		((ssize_t)recv((s), (b), (int)(bl), 0))
-#	define ZBX_TCP_RECV(s, b, bl, f)		((ssize_t)recv((s), (b), (int)(bl), f))
+/* winsock takes int lengths; a longer buffer goes out in several calls, the callers loop on the count sent */
+#	define ZBX_SOCKET_LEN(bl)		((size_t)(bl) > (size_t)INT_MAX ? INT_MAX : (int)(bl))
+#	define ZBX_TCP_WRITE(s, b, bl)		((ssize_t)send((s), (b), ZBX_SOCKET_LEN(bl), 0))
+#	define ZBX_TCP_READ(s, b, bl)		((ssize_t)recv((s), (b), ZBX_SOCKET_LEN(bl), 0))
+#	define ZBX_TCP_RECV(s, b, bl, f)		((ssize_t)recv((s), (b), ZBX_SOCKET_LEN(bl), f))
 #	define zbx_socket_close(s)		if (ZBX_SOCKET_ERROR != (s)) closesocket(s)
 #	define zbx_bind(s, a, l)		(bind((s), (a), (int)(l)))
-#	define zbx_sendto(fd, b, n, f, a, l)	(sendto((fd), (b), (int)(n), (f), (a), (l)))
+#	define zbx_sendto(fd, b, n, f, a, l)	(sendto((fd), (b), ZBX_SOCKET_LEN(n), (f), (a), (l)))
 #	define ZBX_PROTO_AGAIN			WSAEINTR
 #	define ZBX_SOCKET_ERROR			INVALID_SOCKET
 #else
