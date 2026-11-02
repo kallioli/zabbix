@@ -23,6 +23,9 @@
 
 static int	zbx_zlib_errno = 0;
 
+/* zlib sizes are uLong, 32 bits on 64-bit Windows; this stands for a size it cannot address */
+#define ZBX_ZLIB_ESIZE	1
+
 /******************************************************************************
  *                                                                            *
  * Purpose: returns last conversion error message                             *
@@ -45,6 +48,9 @@ const char	*zbx_compress_strerror(void)
 			break;
 		case Z_DATA_ERROR:
 			zbx_strlcpy(message, "corrupted input data", sizeof(message));
+			break;
+		case ZBX_ZLIB_ESIZE:
+			zbx_strlcpy(message, "data size exceeds what zlib addresses on this platform", sizeof(message));
 			break;
 		default:
 			zbx_snprintf(message, sizeof(message), "unknown error (%d)", zbx_zlib_errno);
@@ -74,6 +80,12 @@ int	zbx_compress(const char *in, size_t size_in, char **out, size_t *size_out)
 {
 	Bytef	*buf;
 	uLongf	buf_size;
+
+	if (zbx_compress_max_size() < size_in)
+	{
+		zbx_zlib_errno = ZBX_ZLIB_ESIZE;
+		return FAIL;
+	}
 
 	buf_size = compressBound(size_in);
 	buf = (Bytef *)zbx_malloc(NULL, buf_size);
@@ -105,7 +117,15 @@ int	zbx_compress(const char *in, size_t size_in, char **out, size_t *size_out)
  ******************************************************************************/
 int	zbx_uncompress(const char *in, size_t size_in, char *out, size_t *size_out)
 {
-	uLongf	size_o = *size_out;
+	uLongf	size_o;
+
+	if (zbx_compress_max_size() < size_in || zbx_compress_max_size() < *size_out)
+	{
+		zbx_zlib_errno = ZBX_ZLIB_ESIZE;
+		return FAIL;
+	}
+
+	size_o = (uLongf)*size_out;
 
 	if (Z_OK != (zbx_zlib_errno = uncompress((Bytef *)out, &size_o, (const Bytef *)in, size_in)))
 		return FAIL;
@@ -141,3 +161,21 @@ const char	*zbx_compress_strerror(void)
 }
 
 #endif
+
+/******************************************************************************
+ *                                                                            *
+ * Purpose: returns the largest data size zlib can address on this platform   *
+ *                                                                            *
+ * Comments: zlib measures data in uLong, 32 bits on 64-bit Windows, while    *
+ *           the protocol limits are size_t; callers check a size against     *
+ *           this before allocating for it.                                   *
+ *                                                                            *
+ ******************************************************************************/
+size_t	zbx_compress_max_size(void)
+{
+#ifdef HAVE_ZLIB
+	return (size_t)(~(uLong)0);
+#else
+	return (size_t)-1;
+#endif
+}
